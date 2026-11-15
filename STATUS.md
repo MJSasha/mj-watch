@@ -12,6 +12,7 @@
 - Секреты и полные ссылки раздач зашифрованы Android Keystore AES-GCM, backup выключен; redirect запрещён, local HTTP ограничен явно разрешёнными origins. Долгий media stream не ограничен общим control-request call timeout.
 - Room 1→2 мигрирует историю, избранное и прогресс без destructive reset.
 - Исходники отправлены в MJSasha/mj-watch. GitHub Actions собирает APK и запускает phone/TV AVD tests; публикации Releases нет.
+- Финальный CI `97a43a4`: [run 43725158513](https://github.com/MJSasha/mj-watch/actions/runs/43725158513) — build, phone API35 и TV API36 завершены success. APK и отчёты доступны в artifacts этого запуска.
 
 ## Проверено на fixtures / mock HTTP
 

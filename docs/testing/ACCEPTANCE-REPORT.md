@@ -13,7 +13,7 @@
 - Mobile `dev.mjwatch.mobile`, TV `dev.mjwatch.tv`. Co-install проверен на API26. Разные launcher/Leanback manifests; MJAnime не изменяется.
 - Debug APK подписаны локальным debug key. Release APK unsigned, production signing не настроен. [SHA256 локальных APK](APK-SHA256.txt); CI пересобирает свои artifacts, поэтому его debug key/checksum отличается.
 - Основная runtime-регрессия относится к `a9e5f34`; итоговый `97a43a4` добавляет только явные backup/device-transfer exclusions Android 12+ в manifest/XML. Финальная API26 smoke-проверка выполнена и после этого изменения.
-- [GitHub Actions для этих исходников](https://github.com/MJSasha/mj-watch/actions/runs/43725158513): unit/lint/build + phone API35 x86_64 и TV API36 x86_64. Финальный результат указан в STATUS.md.
+- [GitHub Actions для этих исходников](https://github.com/MJSasha/mj-watch/actions/runs/43725158513): все три jobs завершены success — unit/lint/build, phone API35 x86_64 и TV API36 x86_64. APK и отчёты сохранены как workflow artifacts.
 
 ## Android runtime
 
