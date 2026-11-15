@@ -10,3 +10,5 @@ SHA-256 изученных Go API 145.2 сохранены рядом, исхо�
 XML fixture синтетический, основан на Torznab RSS https://github.com/Jackett/Jackett#torznab-query-syntax. Live Jackett не предоставлен.
 
 TMDB API v3: https://developer.themoviedb.org/reference/search-multi, ru-RU, read access token в Keystore. По умолчанию none. Логотип получен без изменений с официальной страницы https://www.themoviedb.org/about/logos-attribution, условия https://developer.themoviedb.org/docs/faq. Live TMDB не тестировался без токена.
+
+Jackett DownloadController v0.24.3067: https://github.com/Jackett/Jackett/blob/v0.24.3067/src/Jackett.Server/Controllers/DownloadController.cs . `GET /dl/{indexerId}` проверяет `jackett_apikey`, возвращает bencode body либо HTTP redirect с `Location: magnet:...`. Этот redirect обрабатывается как данные, без HTTP-follow. Только magnet передаётся TorrServer; исходный URL Jackett с ключом туда не отправляется. Отдельный mock HTTP test подтверждает контракт.

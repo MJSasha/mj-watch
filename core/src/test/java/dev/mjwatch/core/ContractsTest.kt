@@ -65,6 +65,33 @@ class ContractsTest {
         val exported=org.json.JSONObject(encodeConfig(c));assertEquals(c.jackett,exported.getJSONObject("jackett").getString("baseUrl"))
         assertEquals("none",exported.getJSONObject("metadata").getString("provider"))
     }
+    @Test fun metadataParserAndOfflineCache()=runBlocking {
+        val items=TmdbAdapter.parse("""{"results":[{"id":999999999,"media_type":"movie","title":"Fixture","release_date":"2026-01-01","genre_ids":[16],"original_language":"ja","overview":"Fixture description","backdrop_path":"/fixture.jpg"},{"id":7,"media_type":"person","name":"Ignored"}]}""")
+        assertEquals(1,items.size);assertEquals(2026,items.single().year);assertTrue(items.single().animation);assertNull(items.single().poster)
+        assertEquals(items.single(),metadataFromJson(items.single().json()))
+        val db=androidx.room.Room.inMemoryDatabaseBuilder(org.robolectric.RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
+        try {
+            var calls=0;var offline=false
+            val adapter=object:MetadataAdapter {override suspend fun search(query:String):List<Metadata> {calls++;if(offline) throw java.io.IOException("offline");return items}}
+            val repo=MetadataRepository(adapter,db.dao());assertFalse(repo.search("fixture").cached)
+            assertTrue(repo.search("fixture").cached);assertEquals(1,calls)
+            val row=db.dao().metadata("query:search:fixture")!!;db.dao().put(row.copy(updatedAt=0));offline=true
+            val cached=repo.search("fixture");assertTrue(cached.cached);assertEquals(items,cached.items);assertEquals(2,calls)
+        } finally {db.close()}
+    }
+    @Test fun schemaMigrationPreservesHistoryAndProgress()=runBlocking {
+        val context=org.robolectric.RuntimeEnvironment.getApplication();val name="migration-contract.db";context.deleteDatabase(name)
+        val old=context.openOrCreateDatabase(name,0,null)
+        old.execSQL("CREATE TABLE library (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, source TEXT NOT NULL, openedAt INTEGER NOT NULL, bookmarked INTEGER NOT NULL, releaseJson TEXT NOT NULL)")
+        old.execSQL("CREATE TABLE progress (`key` TEXT NOT NULL PRIMARY KEY, releaseId TEXT NOT NULL, fileId INTEGER NOT NULL, path TEXT NOT NULL, positionMs INTEGER NOT NULL, durationMs INTEGER, updatedAt INTEGER NOT NULL, completed INTEGER NOT NULL)")
+        old.execSQL("INSERT INTO library VALUES ('old','Old title','fixture',123,1,'')")
+        old.execSQL("INSERT INTO progress VALUES ('old|file','old',17,'file',12345,90000,456,0)")
+        old.version=1;old.close()
+        val db=androidx.room.Room.databaseBuilder(context,WatchDatabase::class.java,name).addMigrations(WatchDatabase.MIGRATION_1_2).build()
+        try {assertTrue(db.dao().entry("old")!!.bookmarked);assertEquals(12345L,db.dao().progress().first().single().positionMs);assertNull(db.dao().entry("old")!!.metadataId)
+            db.dao().put(CachedMetadata("fixture","{}",1));assertNotNull(db.dao().metadata("fixture"))
+        } finally {db.close();context.deleteDatabase(name)}
+    }
     @Test fun configExportHasNoSecrets() {
         val raw=encodeConfig(dev.mjwatch.core.Config(jackett="https://host",torrServer="https://server"))
         assertFalse(raw.contains("apikey",true)); assertFalse(raw.contains("Authorization",true));

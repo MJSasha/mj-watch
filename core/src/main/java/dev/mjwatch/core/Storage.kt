@@ -17,22 +17,45 @@ import javax.crypto.spec.GCMParameterSpec
 
 @Entity(tableName = "library")
 data class LibraryEntry(@PrimaryKey val id: String, val title: String, val source: String,
-    val openedAt: Long = 0, val bookmarked: Boolean = false, val releaseJson: String = "")
+    val openedAt: Long = 0, val bookmarked: Boolean = false, val releaseJson: String = "", val metadataId:String?=null)
 @Entity(tableName = "progress")
 data class Progress(@PrimaryKey val key: String, val releaseId: String, val fileId: Int, val path: String,
     val positionMs: Long, val durationMs: Long?, val updatedAt: Long, val completed: Boolean)
+@Entity(tableName="metadataCache")
+data class CachedMetadata(@PrimaryKey val id:String,val json:String,val updatedAt:Long)
 @Dao interface WatchDao {
+    @Query("SELECT * FROM metadataCache WHERE id=:id") suspend fun metadata(id:String):CachedMetadata?
+    @Upsert suspend fun put(entry:CachedMetadata)
+    @Transaction suspend fun cacheMetadata(query:String,items:List<Metadata>,now:Long) {
+        items.forEach {put(CachedMetadata(it.id,it.json(),now))}
+        put(CachedMetadata("query:$query",org.json.JSONArray(items.map {it.id}).toString(),now))
+    }
+    @Transaction suspend fun cachedMetadata(query:String):List<Metadata> {
+        val row=metadata("query:$query") ?: return emptyList()
+        val ids=org.json.JSONArray(row.json)
+        return (0 until ids.length()).mapNotNull {metadata(ids.getString(it))?.let {metadataFromJson(it.json)}}
+    }
     @Query("SELECT * FROM library ORDER BY openedAt DESC") fun library(): Flow<List<LibraryEntry>>
     @Query("SELECT * FROM progress ORDER BY updatedAt DESC") fun progress(): Flow<List<Progress>>
     @Query("SELECT * FROM library WHERE id=:id") suspend fun entry(id: String): LibraryEntry?
-    @Transaction suspend fun opened(value:LibraryEntry) {val old=entry(value.id);put(value.copy(bookmarked=old?.bookmarked ?: false))}
+    @Transaction suspend fun opened(value:LibraryEntry) {val old=entry(value.id);put(value.copy(bookmarked=old?.bookmarked ?: false,metadataId=value.metadataId ?: old?.metadataId))}
     @Transaction suspend fun toggleBookmark(value:LibraryEntry) {val old=entry(value.id) ?: value;put(old.copy(bookmarked=!old.bookmarked))}
     @Upsert suspend fun put(entry: LibraryEntry)
     @Upsert suspend fun put(progress: Progress)
     @Query("DELETE FROM library WHERE id=:id") suspend fun delete(id: String)
 }
-@Database(entities = [LibraryEntry::class, Progress::class], version = 1, exportSchema = false)
-abstract class WatchDatabase : RoomDatabase() { abstract fun dao(): WatchDao }
+@Database(entities = [LibraryEntry::class, Progress::class,CachedMetadata::class], version = 2, exportSchema = false)
+abstract class WatchDatabase : RoomDatabase() {
+    abstract fun dao(): WatchDao
+    companion object {
+        val MIGRATION_1_2=object:androidx.room.migration.Migration(1,2) {
+            override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE library ADD COLUMN metadataId TEXT")
+                db.execSQL("CREATE TABLE IF NOT EXISTS metadataCache (id TEXT NOT NULL, json TEXT NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(id))")
+            }
+        }
+    }
+}
 private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
 class Settings(private val context: Context) {
     val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()

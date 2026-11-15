@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -46,6 +47,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class Destination(val id:String,val title:String,val icon:ImageVector)
+private val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Outlined.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Outlined.Bookmarks),Destination("settings","Настройки",Icons.Outlined.Settings))
 
 @Composable fun WatchApp(model:WatchModel,tv:Boolean) {
@@ -54,6 +56,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     val progress by model.progress.collectAsStateWithLifecycle()
     val screenStates=rememberSaveableStateHolder()
     val searchScroll=rememberLazyListState()
+    val imageContext=LocalContext.current.applicationContext
+    val images=remember(state.config) {ImageLoader.Builder(imageContext).okHttpClient(guardedClient(state.config)).build()}
+    DisposableEffect(images) {onDispose {images.shutdown()}}
+    CompositionLocalProvider(LocalImages provides images) {
     WatchTheme(state.config.theme) {
         val scheme=MaterialTheme.colorScheme
         val activity=LocalContext.current as? android.app.Activity
@@ -87,10 +93,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                     Column(Modifier.weight(1f).fillMaxHeight().graphicsLayer {alpha=opacity.value}.padding(horizontal=if(tv) 32.dp else 20.dp)) {
                         if(state.page!="settings"||state.configured) Row(Modifier.fillMaxWidth().padding(vertical=16.dp),verticalAlignment=Alignment.CenterVertically) {
                             if(!top) IconButton(onClick={model.back()}) { Icon(Icons.Outlined.ArrowBack,"Назад") }
-                            Text(if(top) "MJWatch" else when(state.page){"detail"->"О раздаче";"releases"->"Выберите раздачу";"files"->"Выберите файл";else->"Подготовка потока"},style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
+                            Text(if(top) "MJWatch" else when(state.page){"detail"->if(state.selectedMetadata!=null) "О произведении" else "О раздаче";"releases"->"Выберите раздачу";"files"->"Выберите файл";else->"Подготовка потока"},style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                             if(state.config.demo) Text("ДЕМО",color=scheme.primary,style=MaterialTheme.typography.labelLarge)
                         }
-                        screenStates.SaveableStateProvider(state.page+(if(state.page in listOf("detail","releases","files")) state.selected?.id.orEmpty() else "")+(if(state.page=="files") state.config.torrServer else "")) {
+                        screenStates.SaveableStateProvider(state.page+(when(state.page) {"detail" -> state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases" -> state.query;"files" -> state.selected?.id.orEmpty()+state.config.torrServer;else -> ""})) {
                         when(state.page) {
                             "settings" -> SettingsScreen(state,model,tv)
                             "home" -> HomeScreen(state,library,progress,model,tv)
@@ -117,6 +123,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                 }
             }
         }
+    }
     }
 }
 @Composable private fun Heading(text:String) { Text(text,style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold,modifier=Modifier.semantics { heading() }) }
@@ -149,6 +156,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     else Card(onClick=onClick,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),content={content()})
 }
 @Composable private fun HomeScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
+    var category by rememberSaveable {mutableStateOf("Для вас")}
+    var featured by remember {mutableStateOf<Metadata?>(null)}
+    val catalogue=s.catalog.filter {m -> when(category) {"Фильмы" -> m.kind=="movie"&&!m.animation;"Аниме" -> m.animation&&m.originalLanguage=="ja";"Мультфильмы" -> m.animation&&m.originalLanguage!=null&&m.originalLanguage!="ja";else -> true}}
     LazyColumn(Modifier.testTag("home-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
         if(s.config.demo) item {
             val heroFocus=remember {FocusRequester()}
@@ -162,7 +172,21 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                 }
             }
         }
-        if(!s.config.demo) item { Empty("Найдите свою раздачу","Прямой поиск через Jackett. Без метаданных постеры и описания скрыты.",tv,onClick={model.page("search")}) }
+        if(s.config.metadataProvider=="tmdb") {
+            item {Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                listOf("Для вас","Фильмы","Аниме","Мультфильмы").forEach {label -> FilterChip(selected=category==label,onClick={category=label},label={Text(label)})}
+            }}
+            if(s.catalogBusy&&s.catalog.isEmpty()) item {Surface(Modifier.fillMaxWidth().height(240.dp),shape=RoundedCornerShape(24.dp)) {Box(contentAlignment=Alignment.Center) {Text("Загрузка каталога…")}}}
+            val hero=catalogue.firstOrNull {it.id==featured?.id} ?: catalogue.firstOrNull()
+            if(hero!=null) item {MetadataHero(hero,s.config,tv) {model.metadata(hero)}}
+            if(catalogue.isNotEmpty()) item {LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp)) {items(catalogue,key={it.id}) {m ->
+                Column(Modifier.width(if(tv) 220.dp else 180.dp)) {MetadataCard(m,s.config,tv,s.focusKey==m.id,onFocus={featured=m}) {model.metadata(m)}}
+            }}}
+            if(s.catalogMessage.isNotBlank()) item {Text(s.catalogMessage,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(!s.catalogBusy&&catalogue.isEmpty()) item {Empty("В подборке пока пусто","Выберите другую категорию или используйте прямой поиск.",tv,"Все категории") {category="Для вас"}}
+            item {Action("Обновить каталог",tv) {model.refreshCatalog(true)}}
+        }
+        if(!s.config.demo&&s.config.metadataProvider!="tmdb") item { Empty("Найдите свою раздачу","Прямой поиск через Jackett. Без метаданных постеры и описания скрыты.",tv,onClick={model.page("search")}) }
         val continuing=entries.filter { e -> e.openedAt>0&&progress.any { it.releaseId==e.id&&!it.completed&&it.positionMs>0 } }
         if(continuing.isNotEmpty()) item { Heading("Продолжить просмотр") }
         items(continuing,key={it.id}) { e -> LibraryCard(e,progress,model,tv) }
@@ -185,40 +209,72 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(s.message.isNotEmpty()) item { Text(s.message,modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }) }
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
-        if(s.metadata.isNotEmpty()) item { Heading("Каталог TMDB · выберите произведение") }
-        items(s.metadata,key={it.id}) { m ->
-            Card(onClick={model.metadata(m)},modifier=Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                    val context=LocalContext.current
-                    val loader=remember(s.config) {ImageLoader.Builder(context).okHttpClient(guardedClient(s.config)).build()}
-                    AsyncImage(model=m.poster,contentDescription=null,imageLoader=loader,modifier=Modifier.width(80.dp).height(120.dp),contentScale=ContentScale.Crop)
-                    Column(Modifier.weight(1f)) {Text(m.title,fontWeight=FontWeight.Bold);Text(m.overview.orEmpty(),maxLines=4)}
-                }
-            }
-        }
+        if(s.metadata.isNotEmpty()&&s.selectedMetadata==null) item {Heading("Каталог TMDB");if(s.metadataCached) Text("Данные из кеша")}
+        if(s.selectedMetadata==null) items(s.metadata.chunked(if(tv) 4 else 2),key={it.joinToString {m->m.id}}) {row -> Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
+            repeat((if(tv) 4 else 2)-row.size) {Spacer(Modifier.weight(1f))}
+        }}
         items(s.results,key={it.id}) { r -> ReleaseCard(r,tv,s.focusKey==r.id) { keyboard?.hide(); model.open(r) } }
         if(s.more&&!s.busy) item {Action("Загрузить ещё",tv) {model.loadMore()} }
     }
 }
-@Composable private fun DetailScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean,compact:Boolean=false) {
-    val r=s.selected ?: return
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(24.dp)) {
-        Row(horizontalArrangement=Arrangement.spacedBy(24.dp)) {
-            if(!compact&&(tv||LocalConfiguration.current.screenWidthDp>=840)) Surface(shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.width(180.dp).height(260.dp)) { Box(contentAlignment=Alignment.Center) { Icon(Icons.Outlined.Movie,null,Modifier.size(64.dp)) } }
-            Column(verticalArrangement=Arrangement.spacedBy(16.dp),modifier=Modifier.weight(1f)) {
-                Heading(r.title)
-                Text("${r.source} · ${r.resolution}",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Свойства устройства и дорожек ещё не проверены. Технические признаки в названии — подсказки источника.")
-                Action("Выбрать раздачу",tv) { model.page("releases") }
-                Action(if(entries.any { it.id==r.id&&it.bookmarked }) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tv) { model.bookmark() }
-            }
+@Composable private fun MetadataImage(m:Metadata,c:Config,modifier:Modifier=Modifier,backdrop:Boolean=false) {
+    val loader=LocalImages.current
+    val uri=if(c.metadataProvider=="tmdb") if(backdrop) m.backdrop ?: m.poster else m.poster else null
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant),contentAlignment=Alignment.Center) {
+        Icon(Icons.Outlined.Movie,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(uri!=null) key(m.id,uri) {AsyncImage(model=uri,imageLoader=loader,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop)}
+    }
+}
+@Composable private fun MetadataHero(m:Metadata,c:Config,tv:Boolean,showAction:Boolean=true,onClick:()->Unit={}) {
+    Box(Modifier.fillMaxWidth().heightIn(min=if(tv) 280.dp else 300.dp).clip(RoundedCornerShape(24.dp))) {
+        MetadataImage(m,c,Modifier.matchParentSize(),backdrop=true)
+        Box(Modifier.matchParentSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent,androidx.compose.ui.graphics.Color(0xF00C0E15)))))
+        Column(Modifier.align(Alignment.BottomStart).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text(m.title,color=androidx.compose.ui.graphics.Color.White,fontSize=30.sp,fontWeight=FontWeight.Bold)
+            Text("${if(m.kind=="tv") "Сериал" else "Фильм"}${m.year?.let {" · $it"} ?: ""}",color=androidx.compose.ui.graphics.Color.White)
+            if(showAction) Action("О произведении",tv,onClick=onClick)
         }
-        progress.filter { it.releaseId==r.id }.forEach { p -> Text("Сохранено ${p.path} · ${time(p.positionMs)}${p.durationMs?.let { " / ${time(it)}" } ?: ""}${if(p.completed) " · Завершено" else ""}") }
-        Text("Исходное название",style=MaterialTheme.typography.titleMedium)
-        Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+@Composable private fun MetadataCard(m:Metadata,c:Config,tv:Boolean,restoreFocus:Boolean=false,onFocus:(()->Unit)?=null,onClick:()->Unit) {
+    val requester=remember {FocusRequester()};var focused by remember {mutableStateOf(false)}
+    LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
+    LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
+    val modifier=Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus}
+    val content:@Composable ()->Unit={Column {
+        MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3))
+        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(m.title,fontWeight=FontWeight.Bold);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    }}
+    if(tv) androidx.tv.material3.Card(onClick=onClick,modifier=modifier,scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f),colors=androidx.tv.material3.CardDefaults.colors(containerColor=MaterialTheme.colorScheme.surface,focusedContainerColor=MaterialTheme.colorScheme.surfaceVariant),border=androidx.tv.material3.CardDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(3.dp,MaterialTheme.colorScheme.primary)))) {content()}
+    else Card(onClick=onClick,modifier=modifier) {content()}
+}
+@Composable private fun DetailScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean,compact:Boolean=false) {
+    val r=s.selected;val m=s.selectedMetadata
+    if(r==null&&m==null) return
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(24.dp)) {
+        if(m!=null&&s.config.metadataProvider=="tmdb") MetadataHero(m,s.config,tv,showAction=false)
+        if(m==null) Heading(r!!.title) else {
+            Heading(m.title);Text("${if(m.kind=="tv") "Сериал" else "Фильм"}${m.year?.let {" · $it"} ?: ""}",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(s.config.metadataProvider=="tmdb"&&!m.overview.isNullOrBlank()) Text(m.overview.orEmpty())
+        }
+        if(r!=null) {
+            Text("${r.source} · ${r.resolution}",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Свойства устройства и дорожек ещё не проверены. Технические признаки в названии — подсказки источника.")
+        }
+        val linkedIds=entries.filter {m!=null&&it.metadataId==m.id}.map {it.id}.toSet()
+        val saved=progress.firstOrNull {it.positionMs>0&&!it.completed&&(it.releaseId==r?.id||it.releaseId in linkedIds)}
+        if(saved!=null) Action("Продолжить с ${time(saved.positionMs)}",tv,enabled=!s.busy) {model.resume(saved)}
+        Action("Выбрать раздачу",tv) {if(r==null) model.findReleases() else model.page("releases")}
+        val id=m?.id ?: r!!.id
+        Action(if(entries.any {it.id==id&&it.bookmarked}) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tv) {model.bookmark()}
+        val linked=entries.filter {it.metadataId==m?.id&&m!=null}.map {it.id}.toSet()
+        progress.filter {it.releaseId==r?.id||it.releaseId in linked}.forEach {p -> Text("Сохранено ${p.path} · ${time(p.positionMs)}${p.durationMs?.let {" / ${time(it)}"} ?: ""}${if(p.completed) " · Завершено" else ""}")}
+        if(r!=null) {Text("Исходное название",style=MaterialTheme.typography.titleMedium);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
 @Composable private fun ReleasesScreen(s:WatchState,model:WatchModel,tv:Boolean) {
+    if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Ищем раздачи…");Action("Отменить",tv) {model.back()}};return}
     var filter by rememberSaveable {mutableStateOf("Все")}
     var selectedId by rememberSaveable {mutableStateOf(s.selected?.id)}
     var source by rememberSaveable {mutableStateOf("Все источники")}
@@ -256,16 +312,24 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     val playerLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {model.playerClosed()}
     var showAll by rememberSaveable { mutableStateOf(false) }
     var selection by rememberSaveable(s.handle?.hash) { mutableStateOf<Int?>(null) }
+    var autoLaunched by remember(s.handle?.hash) {mutableStateOf(false)}
     val progress by model.progress.collectAsStateWithLifecycle()
     fun launch(file:TorrentFile) {
+        if(!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
         val request=model.stream(file)
+        android.util.Log.d("MJWatch","Dispatching playback activity")
         playerLauncher.launch(Intent(context,PlaybackActivity::class.java).putExtra("uri",request.uri).putExtra("releaseId",s.selected!!.id).putExtra("fileId",file.serverFileId).putExtra("path",file.path).putExtra("mobile",!tv))
     }
-    LaunchedEffect(s.handle?.hash) {
+    LaunchedEffect(s.handle?.hash,s.resumePath) {
+        if(autoLaunched) return@LaunchedEffect
         val videos=s.handle?.files.orEmpty().filter {it.video&&!it.sample}
-        if(videos.size==1) {selection=videos.single().serverFileId;launch(videos.single())}
+        val target=if(s.resumePath!=null) s.handle?.files.orEmpty().singleOrNull {it.video&&it.path==s.resumePath} else videos.singleOrNull()
+        android.util.Log.d("MJWatch","Automatic file selection: resume=${s.resumePath!=null}, target=${target!=null}")
+        if(target!=null) {autoLaunched=true;selection=target.serverFileId;launch(target)}
+        if(s.resumePath!=null) {if(target==null) selection=null;model.consumeResume(target==null)}
     }
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        if(s.message.isNotBlank()) Text(s.message,color=MaterialTheme.colorScheme.error)
         Text("Выберите серию или видеофайл для просмотра.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         FilterChip(selected=showAll,onClick={showAll=!showAll},label={Text("Показывать все файлы и sample")})
         LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -370,7 +434,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         item { Action("Экспорт конфигурации",tv) {if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"} }
         item { Action("Импорт конфигурации",tv) {importer.launch(arrayOf("application/json"))} }
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
-        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch 0.1.0 · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch 0.2.0 · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported;key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
 }

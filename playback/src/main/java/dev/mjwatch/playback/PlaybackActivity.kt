@@ -55,7 +55,7 @@ class PlaybackActivity : ComponentActivity() {
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
-        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").enableMultiInstanceInvalidation().build(); dao=db.dao()
+        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).enableMultiInstanceInvalidation().build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
@@ -79,7 +79,7 @@ class PlaybackActivity : ComponentActivity() {
             }
             val headers=mutableMapOf<String,String>()
             val auth=SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
-            val http=OkHttpDataSource.Factory(guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).setDefaultRequestProperties(headers)
+            val http=OkHttpDataSource.Factory(guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap())).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
             player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(0)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)

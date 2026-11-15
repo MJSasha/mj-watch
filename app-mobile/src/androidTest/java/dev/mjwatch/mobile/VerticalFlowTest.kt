@@ -63,5 +63,23 @@ class VerticalFlowTest {
     compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Сохранено",substring=true).assertExists()
     capture("saved-progress")
+    compose.onNodeWithText("Продолжить с",substring=true).performScrollTo().performClick()
+    seen=false
+    compose.waitUntil(30000) {
+      instrumentation.runOnMainSync {seen=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().any {it.firstFrameSeen}}
+      seen
+    }
+    if(!seen) compose.runOnIdle {
+      val model=androidx.lifecycle.ViewModelProvider(compose.activity)[dev.mjwatch.designsystem.WatchModel::class.java]
+      println("Resume failure: page=${model.state.value.page}, busy=${model.state.value.busy}, message=${model.state.value.message}, resumePath=${model.state.value.resumePath}")
+    }
+    Assert.assertTrue("Resume first frame",seen)
+    instrumentation.runOnMainSync {
+      val a=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().single()
+      val f=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
+      Assert.assertTrue("Saved seek position",(f.get(a) as androidx.media3.common.Player).currentPosition>=2000)
+    }
+    UiDevice.getInstance(instrumentation).pressBack()
+
  }
 }

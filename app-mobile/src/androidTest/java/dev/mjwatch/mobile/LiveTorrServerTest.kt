@@ -44,6 +44,27 @@ class LiveTorrServerTest {
     var seen=false
     withTimeout(60_000) {while(!seen) {instrumentation.runOnMainSync {seen=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().any {it.firstFrameSeen}};delay(200)}}
     Assert.assertTrue(seen)
+    val hold=InstrumentationRegistry.getArguments().getString("holdMs")?.toLongOrNull()?.coerceIn(0,60000) ?: 0
+    if(hold>0) {
+        var initialPosition=0L
+        instrumentation.runOnMainSync {
+            val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().single()
+            val field=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
+            initialPosition=(field.get(activity) as androidx.media3.common.Player).currentPosition
+        }
+        delay(hold)
+        instrumentation.runOnMainSync {
+            val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().single()
+            val f=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
+            val player=f.get(activity) as androidx.media3.exoplayer.ExoPlayer
+            val retries=PlaybackActivity::class.java.getDeclaredField("retries").apply {isAccessible=true}.getInt(activity)
+            println("MJWatch sustained state: positionMs=${player.currentPosition}, durationMs=${player.duration}, bufferedMs=${player.bufferedPosition}, state=${player.playbackState}, ready=${player.playWhenReady}, error=${player.playerError?.errorCode}, retries=$retries")
+            Assert.assertTrue("Sustained playback",player.isPlaying)
+            Assert.assertTrue("Position advances during hold (not a throughput benchmark)",player.currentPosition-initialPosition>=1000)
+            Assert.assertEquals("No deadline reconnect",0,retries)
+            println("MJWatch live proof: video=${player.videoFormat?.sampleMimeType}, audio=${player.audioFormat?.sampleMimeType}, positionMs=${player.currentPosition}, retries=$retries")
+        }
+    }
     instrumentation.runOnMainSync {ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().forEach {it.finish()}}
  }
 }
