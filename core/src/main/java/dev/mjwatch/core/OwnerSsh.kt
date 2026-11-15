@@ -14,7 +14,7 @@ import android.util.Base64
 class HostKeyRequired(val fingerprint:String,val changed:Boolean):java.io.IOException(if(changed) "SSH host key изменился. Сверьте отпечаток с консолью сервера." else "Подтвердите SSH host key после сверки с консолью провайдера.")
 data class SshTarget(val host:String,val port:Int=22,val user:String="root",val password:String) {
  override fun toString()="SshTarget(password=redacted)"
- init {require(host.length in 1..253&&host.all {it.isLetterOrDigit()||it in ".:-"});require(port in 1..65535);require(user=="root")}
+ init {require(host.length in 1..253&&host.all {it.isLetterOrDigit()||it in ".:-"}){"Укажите IP или домен без протокола и пути"};require(port in 1..65535){"SSH-порт должен быть от 1 до 65535"};require(user=="root"){"Для установки нужен пользователь root"}}
 }
 class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  fun trust(target:SshTarget,fingerprint:String) {require(fingerprint.startsWith("SHA256:")&&fingerprint.length<128);secrets.put("sshHostKey:${target.host}:${target.port}",fingerprint)}

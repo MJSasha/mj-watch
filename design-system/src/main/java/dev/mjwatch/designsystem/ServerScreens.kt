@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -145,7 +146,7 @@ import java.util.UUID
     Action("Очистить мою историю",tv,secondary=true){confirm="Очистить открытия и позиции только текущего аккаунта? Избранное сохранится, старая очередь будет отклонена." to {controller.action("history","DELETE");controller.syncNow()}}
    }
    "server-maintenance"->{Text("Обслуживание",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Версия сервера: ${managed.data?.optString("version") ?: "не проверена"}");Text("Обновление, restart и восстановление выполняются только по SSH владельца.");SshPanel(s,model,tv,false)}
-   "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);Text("Дайте SSH-доступ. Установим TorrServer и MJWatch, настроим защиту и подключение.");SshPanel(s,model,tv,true)}
+   "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false,settings=true,onDirty={dirty=it})}
   }
   if(managed.message.isNotBlank()) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
@@ -177,19 +178,47 @@ import java.util.UUID
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){Row(Modifier.fillMaxWidth().heightIn(min=48.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,Modifier.weight(1f).padding(end=12.dp));Switch(value,onChange,Modifier.semantics {contentDescription=label})}}
 
 @Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,onDirty:(Boolean)->Unit={}) {
+ val keyboard=LocalSoftwareKeyboardController.current
  val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
  val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
  var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
+ var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
+ val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
+ fun showProgress(value:InstallationProgress){installationJson=JSONObject().put("stage",value.stage).put("state",value.state).put("code",value.code).put("updated",value.updated).toString()}
  var activeCount by remember{mutableStateOf<Int?>(null)};var restoreWarning by remember{mutableStateOf(false)}
  var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
- fun perform(block:suspend (SshTarget)->Unit){if(busy)return;busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
+ fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=if(install)installationError(e) else safeError(e);if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
  fun askConfirmation(action:()->Unit){if(busy)return;busy=true;scope.launch{try{activeCount=if(install)null else withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams")};confirmation=action}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
  fun operation(action:String,target:String=""):String {val key="maintenance:${s.config.scope}:$action:$target";return model.secrets.get(key).ifBlank{UUID.randomUUID().toString().also{model.secrets.put(key,it)}}}
+ suspend fun finishInstallation(target:SshTarget){
+  var result:InstallationProgress
+  do {
+   result=InstallationProgress.from(ssh.status(target));showProgress(result)
+   message=if(result.terminal)installationFailure(result.code) else installationLabel(JSONObject().put("stage",result.stage))
+   if(result.state=="running")delay(3000)
+  }while(result.state=="running")
+  if(result.state!="installed")return
+  showProgress(result.copy(stage="verifying",state="running"));message="Проверяем HTTPS, базу данных и TorrServer…"
+  connectInstalled(target,ssh,model,save){message=it}
+  model.secrets.put(pendingKey,"");ready=true;password=""
+ }
+ fun checkInstallation(){showProgress((progress ?: InstallationProgress()).copy(state="running",code=""));perform{target->finishInstallation(target)}}
+ fun startInstallation(){
+  showProgress(InstallationProgress());perform{target->
+   message="Проверяем SSH и передаём подписанную поставку…"
+   ssh.install(target)
+   if(save)model.secrets.put(pendingKey,JSONObject().put("host",target.host).put("port",target.port).put("password",target.password).toString())
+   message="Серверная задача запущена. Ожидаем первый ответ…";delay(3000);finishInstallation(target)
+  }
+ }
  val unlock=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){if(it.resultCode==Activity.RESULT_OK){password=if(install)runCatching{JSONObject(model.secrets.get(pendingKey)).getString("password")}.getOrDefault("") else model.secrets.get("sshPassword:${s.config.scope}");message="SSH-доступ разблокирован на этой странице"}}
- if(install&&ready){Text("Сервер готов. Приложение уже подключено.",fontSize=28.sp,fontWeight=FontWeight.Bold);Text("TorrServer и MJWatch проверены. Вы вошли как владелец. Источник раздач настраивается отдельно.");Action("Открыть приложение",tv,Modifier.fillMaxWidth()){model.page("home")};Action("Настроить TMDB",tv,secondary=true){model.page("server-tmdb")};Action("Пригласить пользователей",tv,secondary=true){model.page("server-users")};return}
+ if(install&&ready){InstallationReady(tv,onOpen={model.page("home")},onTmdb={model.page("server-tmdb")},onUsers={model.page("server-users")});return}
+ if(install&&progress!=null)InstallationScreen(progress,busy,message,tv,onRetry={checkInstallation()},onRestart={startInstallation()},onCancel={scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Ожидаем подтверждение сервера."}catch(e:CancellationException){throw e}catch(e:Exception){message=installationError(e)}}},onEdit={installationJson=null})
+ if(!install||progress==null){
+ if(install){Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Остальное MJWatch сделает сам")}
  if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
  ServerField(host,{host=it},"IP или домен сервера");ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
  if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
@@ -199,8 +228,9 @@ import java.util.UUID
  if(install){
   if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
   if(advanced)Action("Восстановить запуск по SSH",tv,secondary=true,enabled=!busy){askConfirmation{perform{target->ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("recovery")).put("confirmed",true));connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
-  Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){perform{target->ssh.install(target);if(save)model.secrets.put(pendingKey,JSONObject().put("host",target.host).put("port",target.port).put("password",target.password).toString());message="Установка запущена. Можно закрыть приложение; job продолжится на сервере.";var result:JSONObject;do{delay(3000);result=ssh.status(target);message=installationLabel(result)}while(result.optString("state")=="running");require(result.optString("state")=="installed"){installationLabel(result)};connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}
-  Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){perform{target->var result:JSONObject;do{result=ssh.status(target);message=installationLabel(result);if(result.optString("state")=="running")delay(3000)}while(result.optString("state")=="running");require(result.optString("state")=="installed"){installationLabel(result)};connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}
+  Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){startInstallation()}
+  Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){showProgress(InstallationProgress());checkInstallation()}
+
  }else if(settings){
   if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));val result=ssh.apply(target,pending);data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён по фактическому состоянию"}}
   Action("Прочитать по SSH",tv,enabled=!busy){perform{target->val read=ssh.read(target);read.put("activeStreams",ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());onDirty(false);message="Прочитано с сервера"}}
@@ -230,14 +260,15 @@ import java.util.UUID
   ServerField(archive,{archive=it},"Имя архива на сервере, .mjwb")
   Action("Восстановить по SSH",tv,secondary=true,enabled=!busy&&passphrase.length>=16&&archive.endsWith(".mjwb")){restoreWarning=true;askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","restore").put("operationId",operation("restore",archive)).put("confirmed",true).put("archive",archive).put("passphrase",passphrase));passphrase="";model.secrets.put("installOperation:${target.host}:${target.port}",UUID.randomUUID().toString());connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
  }
- if(message.isNotBlank())Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+ }
+ if(message.isNotBlank()&&(!install||progress==null))Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
  if(trust!=null)AlertDialog(onDismissRequest={trust=null},title={Text(if(trust!!.changed)"SSH host key изменился" else "Проверьте SSH host key")},text={Column{Text(trust!!.fingerprint);Text("Сверьте отпечаток с консолью провайдера. Изменение ключа может означать подмену сервера.");if(trust!!.changed)ServerField(verifiedFingerprint,{verifiedFingerprint=it},"Отпечаток из доверенной консоли")}},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),enabled=!trust!!.changed||verifiedFingerprint==trust!!.fingerprint,onClick={ssh.trust(target(),trust!!.fingerprint);trust=null;message="Доверие сохранено. Повторите операцию."}){Text("Доверять проверенному ключу")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={trust=null}){Text("Отмена")}})
  if(confirmation!=null)AlertDialog(onDismissRequest={confirmation=null},title={Text("Влияние на просмотр")},text={Text((if(restoreWarning) "Восстановление заменит данные состоянием из архива и отзовёт все сессии и приглашения. Устройствам потребуется повторный вход. " else "")+"Активных потоков по последней проверке: ${activeCount ?: "неизвестно"}. Операция может прервать видео. Продолжить?")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={val action=confirmation;confirmation=null;restoreWarning=false;action?.invoke()}){Text("Продолжить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirmation=null;restoreWarning=false}){Text("Отмена")}})
 }
 private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchModel,save:Boolean,message:(String)->Unit){
  val key="installOperation:${target.host}:${target.port}";var operation=model.secrets.get(key);if(operation.isBlank()){operation=UUID.randomUUID().toString();model.secrets.put(key,operation)}
  val bootstrap=ssh.bootstrap(target,operation);val host=if(target.host.contains(':'))"[${target.host}]" else target.host;val url="https://$host${bootstrap.getString("listen")}";val c=model.state.value.config.copy(connectionMode="managed",managedUrl=url,serverId="",userId="",demo=false)
- model.secrets.put("ca:${endpoint(url).origin()}",bootstrap.getString("ca"));val api=ManagedApi(c,model.secrets);api.saveTokens(bootstrap);val me=api.authorized("me");require(me.getString("role")=="admin");val status=api.authorized("admin/status");require(status.getBoolean("databaseHealthy")&&status.getBoolean("torrserverHealthy"));api.authorized("admin/probe","POST")
+ model.secrets.put("ca:${endpoint(url).origin()}",bootstrap.getString("ca"));val api=ManagedApi(c,model.secrets);api.saveTokens(bootstrap);val me=api.authorized("me");check(me.getString("role")=="admin"){"Сервер не подтвердил права администратора"};val status=api.authorized("admin/status");check(status.getBoolean("databaseHealthy")&&status.getBoolean("torrserverHealthy")){"HTTPS доступен, но база данных или TorrServer не прошли проверку"};api.authorized("admin/probe","POST")
  model.managed.connected(c,bootstrap)
  if(save){val id=me.getString("serverId")+":"+me.getString("userId");model.secrets.put("ssh:$id",JSONObject().put("host",target.host).put("port",target.port).toString());model.secrets.put("sshPassword:$id",target.password)}
  message("Сервер готов. Приложение уже подключено.")

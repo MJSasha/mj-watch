@@ -1,0 +1,15 @@
+go: downloading github.com/ncruces/go-strftime v0.1.9
+go: downloading github.com/mattn/go-isatty v0.0.20
+?   	dev.mjwatch/server/cmd/fixture	[no test files]
+?   	dev.mjwatch/server/cmd/mjwatch	[no test files]
+ok  	dev.mjwatch/server/internal/control	1.376s
+ok  	dev.mjwatch/server/internal/service	20.148s
+<string>:69: DeprecationWarning: invalid escape sequence \.
+.<string>:69: DeprecationWarning: invalid escape sequence \.
+.<string>:69: DeprecationWarning: invalid escape sequence \.
+.
+----------------------------------------------------------------------
+Ran 3 tests in 0.032s
+
+OK
+Packaging syntax verified

@@ -6,7 +6,10 @@ UPLOAD=ROOT/'upload'
 def run(*args,**kw): return subprocess.run(args,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,**kw).stdout.decode().strip()
 def atomic(path,value,mode=0o600):
  path=pathlib.Path(path);tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(value));tmp.chmod(mode);os.replace(tmp,path)
+CURRENT_STAGE='checking'
 def status(stage,state='running',code=''):
+ global CURRENT_STAGE
+ CURRENT_STAGE=stage
  atomic(ROOT/'status.json',dict(stage=stage,state=state,code=code,updated=int(time.time())))
  if state=='running' and (ROOT/'cancel').exists():
   atomic(ROOT/'status.json',dict(stage=stage,state='cancelled',code='cancelled_at_safe_boundary',updated=int(time.time())))
@@ -165,6 +168,10 @@ def main():
 try:main()
 except Exception as error:
  code=str(error) if isinstance(error,RuntimeError) else type(error).__name__
- try:status('failed','failed',code)
+ if isinstance(error,subprocess.CalledProcessError):
+  command=pathlib.Path(error.cmd[0]).name
+  if command in ['apt-get','openssl','curl','systemctl','useradd','id','chown','ufw']:
+   code='command_failed_'+command.replace('-','_')
+ try:status(CURRENT_STAGE,'cancelled' if code=='cancelled_at_safe_boundary' else 'failed',code)
  except Exception:pass
  sys.exit(1)
