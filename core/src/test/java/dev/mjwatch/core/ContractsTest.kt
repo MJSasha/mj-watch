@@ -39,6 +39,7 @@ class ContractsTest {
             server.enqueue(MockResponse().setBody(fixture("jacred.json")));assertEquals(1,repo.search("Sintel тест").releases.size)
             repeat(2) {index-> val request=server.takeRequest();val url=request.requestUrl!!
                 assertEquals("/prefix/api/v2.0/indexers/all/results",url.encodedPath)
+                assertEquals("MJWatch/0.2.1 (Android)",request.getHeader("User-Agent"))
                 assertNull(url.queryParameter("apikey"));assertNull(url.queryParameter("t"))
                 assertEquals(if(index==0) "" else "Sintel тест",url.queryParameter("Query"))
             }

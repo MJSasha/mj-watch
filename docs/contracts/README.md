@@ -19,4 +19,4 @@ Jackett DownloadController v0.24.3067: https://github.com/Jackett/Jackett/blob/v
 
 Проверенный исходный контракт: [jacred-fdb/jacred @ 3235bc82](https://github.com/jacred-fdb/jacred/tree/3235bc82a9c1a484a8e8726803b39331a7ef0cca), `Controllers/JackettController.cs`, `Models/Api/RootObject.cs`, `Models/Api/Result.cs`. Это версия исходного reference, не установленная версия jac.red. `core/src/test/resources/jacred.json` — синтетический fixture.
 
-Live 2026-11-15: из среды разработки `https://jac.red` и оба API возвращают nginx HTTP403, поэтому успешный live поиск не подтверждён. Никакого обхода ограничений/отключения TLS не добавлялось. Причина 403 не определена; это не доказательство необходимости API-ключа.
+Live 2026-11-15: с curl User-Agent сервис возвращает nginx HTTP403; с идентификацией `MJWatch/0.2.1 (Android)` — HTTP200, JSON `Results`, 12 результатов Sintel и успешный запрос с пустым Query. Guarded client теперь явно идентифицирует приложение этим User-Agent. Ключ/пароль для этих запросов не использовались, TLS проверяется штатно. Установленная версия сервиса неизвестна.

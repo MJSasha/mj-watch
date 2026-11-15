@@ -46,7 +46,7 @@ fun guardedClient(config: Config): OkHttpClient {
         .addInterceptor { chain ->
             val r=chain.request(); if(r.url.origin() !in allowed) throw NetworkPolicyFailure("Не разрешённый адрес")
             if(r.url.scheme != "https" && !config.localHttp) throw NetworkPolicyFailure("Включите «Разрешить HTTP» в настройках подключений")
-            chain.proceed(r)
+            chain.proceed(if(r.header("User-Agent")==null) r.newBuilder().header("User-Agent","MJWatch/0.2.1 (Android)").build() else r)
         }.build()
 }
 class HttpFailure(val status:Int):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
