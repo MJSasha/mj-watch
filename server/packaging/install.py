@@ -56,6 +56,8 @@ def check_platform(os_release):
  if not arch or not pathlib.Path('/run/systemd/system').is_dir():raise RuntimeError('unsupported_system')
  if any(shutil.which(command) is None for command in ('apt-get','systemctl','useradd','id','chown')):raise RuntimeError('missing_system_tools')
  return arch
+def check_resources():
+ if os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')<500_000_000 or shutil.disk_usage('/var/lib').free<2*1024**3:raise RuntimeError('insufficient_resources')
 def main():
  if os.geteuid()!=0:raise RuntimeError('root_required')
  ROOT.mkdir(mode=0o700,exist_ok=True)
@@ -66,7 +68,7 @@ def main():
   status('checking')
   os_release={k:v.strip('"') for k,v in (line.strip().split('=',1) for line in pathlib.Path('/etc/os-release').read_text().splitlines() if '=' in line)}
   arch=check_platform(os_release)
-  if os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')<2_000_000_000 or shutil.disk_usage('/var/lib').free<2*1024**3:raise RuntimeError('insufficient_resources')
+  check_resources()
   request=json.loads((ROOT/'request.json').read_text());host=request['host']
   if len(host)>253 or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:-' for c in host):raise RuntimeError('invalid_host')
   run('apt-get','update');run('apt-get','install','-y','openssl','ca-certificates','curl')

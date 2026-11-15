@@ -63,4 +63,17 @@ class InstallPlatformTest(unittest.TestCase):
   self.scope['shutil']=SimpleNamespace(which=lambda command:None if command=='apt-get' else '/usr/bin/'+command)
   with self.assertRaisesRegex(RuntimeError,'missing_system_tools'):self.check('ubuntu','26.04')
 
+class InstallResourcesTest(unittest.TestCase):
+ def test_ram_boundary_and_disk_minimum(self):
+  scope={}
+  source=pathlib.Path(__file__).with_name('install.py').read_text().rsplit('try:main()',1)[0]
+  exec(source,scope)
+  for ram,disk,accepted in [(499_999_999,2*1024**3,False),(500_000_000,2*1024**3,True),(512*1024**2,2*1024**3,True),(1_000_000_000,2*1024**3,True),(2_000_000_000,2*1024**3-1,False)]:
+   with self.subTest(ram=ram,disk=disk):
+    scope['os']=SimpleNamespace(sysconf=lambda name:ram if name=='SC_PHYS_PAGES' else 1)
+    scope['shutil']=SimpleNamespace(disk_usage=lambda path:SimpleNamespace(free=disk))
+    if accepted:scope['check_resources']()
+    else:
+     with self.assertRaisesRegex(RuntimeError,'insufficient_resources'):scope['check_resources']()
+
 if __name__=='__main__':unittest.main()

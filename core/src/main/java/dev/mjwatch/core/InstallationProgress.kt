@@ -32,7 +32,7 @@ fun installationFailure(code:String):String=when(code) {
  "unsupported_python" -> "Для автоустановки нужен Python 3.9 или новее."
  "missing_system_tools" -> "Не найдены необходимые системные команды: apt-get, systemctl, useradd, id или chown."
  "unsupported_system" -> "Нужен Linux amd64/arm64 с systemd."
- "insufficient_resources" -> "Недостаточно ресурсов: нужно 2 ГБ памяти и 2 ГиБ свободного места."
+ "insufficient_resources" -> "Недостаточно ресурсов: нужно 500 МБ памяти и 2 ГиБ свободного места."
  "cancelled_at_safe_boundary" -> "Установка остановлена на безопасной границе. Её можно продолжить."
  "existing_unit_conflict","existing_config_conflict","existing_account_conflict","existing_release_conflict" -> "На сервере найдены существующие службы или файлы. Они не изменены: проверьте конфликт перед повтором."
  "supply_integrity","manifest_version" -> "Не прошла проверка серверной поставки. Проверьте версию приложения и поставки."
