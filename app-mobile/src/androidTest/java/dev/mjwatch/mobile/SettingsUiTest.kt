@@ -66,7 +66,9 @@ class SettingsUiTest {
  }
  @Test fun longRawTitleNeverOverlapsBackOrBottomAction() {
     lateinit var model:WatchModel
-    compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java];model.open(Release("fixture:long-title",("Очень длинное название / Long title [2026, приключения, семейный] ").repeat(12),"Локальный fixture"))}
+    compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+    compose.waitUntil(10000) {model.state.value.config.demo&&model.state.value.configured}
+    compose.runOnIdle {model.open(Release("fixture:long-title",("Очень длинное название / Long title [2026, приключения, семейный] ").repeat(12),"Локальный fixture"))}
     val toolbar=compose.onNodeWithTag("detail-toolbar").fetchSemanticsNode().boundsInRoot
     val title=compose.onNodeWithTag("detail-title").fetchSemanticsNode().boundsInRoot
     Assert.assertTrue("Header controls precede title",toolbar.bottom<=title.top)
