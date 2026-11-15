@@ -15,7 +15,7 @@ data class WatchState(val page:String="home", val query:String="", val results:L
 class WatchModel(app:Application): AndroidViewModel(app) {
     private val settings=Settings(app)
     val secrets=SecretStore(app)
-    private val db=Room.databaseBuilder(app,WatchDatabase::class.java,"watch.db").build()
+    private val db=Room.databaseBuilder(app,WatchDatabase::class.java,"watch.db").enableMultiInstanceInvalidation().build()
     val dao=db.dao()
     val library=dao.library().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
     val progress=dao.progress().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
@@ -29,13 +29,18 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     init {viewModelScope.launch {
         var first=true
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
-            update {it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank(),page=if(!c.demo&&c.torrServer.isBlank()) "settings" else if(first) d else it.page)}
+            update {it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank(),page=if(first) if(!c.demo&&c.torrServer.isBlank()) "settings" else d else it.page)}
             first=false
         }
     }}
     fun discardDraft() {draftConfig=null;draftKey="";draftUser="";draftPassword="";draftMetadata=""}
     fun page(page:String) { cancel(); update { it.copy(page=page,message="") };if(page in setOf("home","search","library","settings")) viewModelScope.launch {settings.destination(page)} }
-    fun back() { val s=state.value; cancel(); update { it.copy(page=when(s.page) { "files","preparing" -> "releases"; "releases" -> "detail"; "detail" -> s.originPage; else -> "home" },message="") } }
+    fun back() {
+        val s=state.value;cancel()
+        val target=when(s.page) {"files","preparing" -> "releases";"releases" -> "detail";"detail" -> s.originPage;else -> "home"}
+        update {it.copy(page=target,message="")}
+        if(target in setOf("home","search","library","settings")) viewModelScope.launch {settings.destination(target)}
+    }
     fun cancel() { generation++; work?.cancel(); update { it.copy(busy=false) } }
     private fun repositories():Pair<ReleaseRepository,StreamGateway> {
         val c=state.value.config
@@ -87,11 +92,14 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun remove(entry:LibraryEntry,bookmarkOnly:Boolean=false) { viewModelScope.launch(Dispatchers.IO) { if(bookmarkOnly) dao.put(entry.copy(bookmarked=false)) else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id) } }
     fun undo(entry:LibraryEntry) { viewModelScope.launch(Dispatchers.IO) { dao.put(entry) } }
     fun prepare() {
+        if(state.value.busy) return
         cancel(); val token=generation; val release=state.value.selected ?: return
         update { it.copy(page="preparing",busy=true,message="Передаём раздачу на сервер…") }
         work=viewModelScope.launch {
             try { val handle=withContext(Dispatchers.IO) { withTimeout(60_000) {
-                val gateway=repositories().second; var h=state.value.handle ?: gateway.add(release)
+                val gateway=repositories().second
+                val previous=state.value.handle
+                var h=if(previous==null) gateway.add(release) else try {gateway.status(previous.hash)} catch(e:HttpFailure) {if(e.status==404) gateway.add(release) else throw e}
                 // Keep the acknowledged handle for safe retries; never add twice after metadata timeout.
                 if(token==generation) update { it.copy(handle=h,message="Ожидаем список файлов…") }
                 var polls=0
@@ -120,11 +128,13 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun invalidateChecks() {checkRevision++;checkJobs.values.forEach {it.cancel()}; update { it.copy(checkJackett="Не проверено",checkTorr="Не проверено") } }
     fun validate(c:Config) { if(!c.demo) { if(c.jackett.isNotBlank()) endpoint(c.jackett); if(c.torrServer.isNotBlank()) endpoint(c.torrServer); require(c.torrServer.isNotBlank()) { "Укажите TorrServer" } } }
     fun save(c:Config,key:String,user:String,password:String,metadataToken:String="") {
+        if(state.value.busy) return
+        update {it.copy(busy=true,message="")}
         viewModelScope.launch { try {
             android.util.Log.i("MJWatch", "Saving configuration (demo=${c.demo})"); validate(c)
             withContext(Dispatchers.IO) { secrets.put("tmdb",metadataToken); secrets.put("jackett:${c.jackett}",key); secrets.put("torrAuth:${c.torrServer}",if(user.isBlank()) "" else Credentials.basic(user,password)); secrets.put("torrUser:${c.torrServer}",user); secrets.put("torrPassword:${c.torrServer}",password) }
-            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination("home");settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page="home",message="Настройки сохранены · подключения можно проверить отдельно") }
-        } catch(e:Exception) { update { it.copy(message=safeError(e)) } } }
+            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination("home");settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page="home",busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
+        } catch(e:Exception) { update { it.copy(busy=false,message=safeError(e)) } } }
     }
     override fun onCleared() { db.close(); super.onCleared() }
 }

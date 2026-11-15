@@ -32,6 +32,7 @@ class VerticalFlowTest {
     compose.onAllNodes(isToggleable())[0].performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     remoteClick("Сохранить и продолжить")
+    compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithTag("home-list").performScrollToNode(hasText("О тестовой раздаче"))
     capture("home")
     remoteClick("О тестовой раздаче")

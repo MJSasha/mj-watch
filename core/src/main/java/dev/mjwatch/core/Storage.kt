@@ -35,9 +35,9 @@ data class Progress(@PrimaryKey val key: String, val releaseId: String, val file
 abstract class WatchDatabase : RoomDatabase() { abstract fun dao(): WatchDao }
 private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
 class Settings(private val context: Context) {
-    val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}
+    val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()
     suspend fun destination(value:String) {require(value in setOf("home","search","library","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
-    val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }
+    val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }.distinctUntilChanged()
     suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
 }
 fun encodeConfig(c: Config): String {

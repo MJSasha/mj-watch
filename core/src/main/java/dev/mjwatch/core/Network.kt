@@ -47,6 +47,7 @@ fun guardedClient(config: Config): OkHttpClient {
             chain.proceed(r)
         }.build()
 }
+class HttpFailure(val status:Int):IOException(when(status) {401,403 -> "Доступ отклонён: проверьте ключ или пароль";in 300..399 -> "Перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
 suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
@@ -58,7 +59,7 @@ suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, al
                     require(location.length<=65536);validateMagnet(location)
                     if(c.isActive) c.resume(location.toByteArray());return
                 }
-                if(!r.isSuccessful) throw IOException(when(r.code) { 401,403 -> "Доступ отклонён: проверьте ключ или пароль"; in 300..399 -> "Перенаправление запрещено; укажите конечный адрес"; else -> "Сервер ответил HTTP ${r.code}" })
+                if(!r.isSuccessful) throw HttpFailure(r.code)
                 val b=r.body ?: throw IOException("Пустой ответ")
                 require(b.contentLength() <= limit) { "Ответ превышает лимит" }
                 val output=java.io.ByteArrayOutputStream(); b.byteStream().use { input ->
@@ -206,8 +207,8 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
     override suspend fun check() = String(client.bytes(request("echo").build(),1024)).also { require(it.startsWith("MatriX.")) { "Неизвестная версия TorrServer" } }
     private suspend fun action(json: JSONObject): TorrentHandle = parse(String(client.bytes(request("torrents").post(json.toString().toRequestBody("application/json".toMediaType())).build())))
     override suspend fun add(release: Release): TorrentHandle {
+        val input=release.magnet?.let {validateMagnet(it);TorrentInput.Magnet(it)} ?: torrents.resolve(release)
         try {
-            val input=release.magnet?.let {validateMagnet(it);TorrentInput.Magnet(it)} ?: torrents.resolve(release)
             return when(input) {
                 is TorrentInput.Magnet -> action(JSONObject().put("action","add").put("link",input.link).put("title",release.title).put("save_to_db",false))
                 is TorrentInput.File -> {
@@ -216,6 +217,7 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
                 }
             }
         } catch(e: CancellationException) { throw e } catch(e: Exception) {
+            if(e is HttpFailure&&e.status in 400..499) throw e
             // An uncertain POST is never blindly retried. Resolve only a known hash.
             release.hash?.let { try { return status(it) } catch(c: CancellationException) { throw c } catch(_:Exception) {} }
             throw IOException("Добавление не подтверждено. Проверьте сервер перед повтором.")

@@ -1,6 +1,7 @@
 package dev.mjwatch.playback
 
 import android.app.PictureInPictureParams
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Handler
@@ -26,7 +27,11 @@ import kotlinx.coroutines.flow.first
 
 @UnstableApi
 class PlaybackActivity : ComponentActivity() {
-    companion object {private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null}
+    companion object {
+        private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null
+        fun hasActivePlayback()=active?.get()?.let {!it.released&&!it.isFinishing}==true
+        fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
+    }
     private var released=false
     private var finalWrite:Job?=null
     private lateinit var player: ExoPlayer
@@ -50,15 +55,15 @@ class PlaybackActivity : ComponentActivity() {
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
-        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").build(); dao=db.dao()
-        val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=4000 }
+        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").enableMultiInstanceInvalidation().build(); dao=db.dao()
+        val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
         root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
         val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        fun action(label: String, run: ()->Unit) { actions.addView(Button(this).apply { text=label; setOnClickListener { run() } }) }
+        fun action(label: String, run: (android.view.View)->Unit) { actions.addView(Button(this).apply { text=label; setOnClickListener { run(it) } }) }
         action("Назад") { finish() }
-        action("Дорожки") { tracks() }
+        action("Дорожки") { anchor -> tracks(anchor) }
         action("Масштаб") { view.resizeMode=if(view.resizeMode==0) 4 else 0 }
         if(intent.getBooleanExtra("mobile",true)) action("PiP") { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build()) }
         action("Другая раздача") { finish() }
@@ -69,9 +74,12 @@ class PlaybackActivity : ComponentActivity() {
         scope.launch {
             val config=Settings(applicationContext).config.first()
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
+            if(!uri.startsWith("asset:")&&runCatching {uri.toHttpUrl().origin()==endpoint(config.torrServer).origin()}.getOrDefault(false)!=true) {
+                status.text="Адрес сервера изменён. Вернитесь к карточке и выберите раздачу заново.";return@launch
+            }
             val headers=mutableMapOf<String,String>()
             val auth=SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
-            val http=OkHttpDataSource.Factory(guardedClient(config)).setDefaultRequestProperties(headers)
+            val http=OkHttpDataSource.Factory(guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).setDefaultRequestProperties(headers)
             player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(0)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
@@ -117,7 +125,7 @@ class PlaybackActivity : ComponentActivity() {
         val p=Progress("$releaseId|$path",releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
         return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {dao.put(p)} } finally {saveMutex.unlock()} }
     }
-    private fun tracks() {
+    private fun tracks(anchor:android.view.View) {
         if(!::player.isInitialized) return
         val names=mutableListOf("Субтитры выключены"); val choices=mutableListOf<Pair<Tracks.Group,Int>?>(null)
         player.currentTracks.groups.filter { it.type==C.TRACK_TYPE_AUDIO || it.type==C.TRACK_TYPE_TEXT }.forEach { group ->
@@ -134,7 +142,7 @@ class PlaybackActivity : ComponentActivity() {
                 else preferences.edit().putString("subtitle-language",language).putBoolean("subtitles-off",false).apply()
                 builder.setTrackTypeDisabled(selected.first.type,false).setOverrideForType(TrackSelectionOverride(selected.first.mediaTrackGroup, selected.second))
             }; player.trackSelectionParameters=builder.build(); panel=null
-        }.setOnDismissListener { panel=null; view.requestFocus() }.show()
+        }.setOnDismissListener { panel=null; anchor.requestFocus() }.show()
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }

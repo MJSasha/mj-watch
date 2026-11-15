@@ -100,6 +100,19 @@ class ContractsTest {
             assertEquals(TorrentInput.Magnet(magnet),input);assertEquals(1,server.requestCount)
         } finally {server.shutdown()}
     }
+    @Test fun definitiveAuthFailureDoesNotRepeatAddOrProbe()=runBlocking {
+        val server=MockWebServer();server.start()
+        try {
+            val c=dev.mjwatch.core.Config(torrServer=server.url("/").toString(),localHttp=true)
+            val client=guardedClient(c);val gateway=TorrServerGateway(c,"",client,TorznabRepository(c,"",client))
+            server.enqueue(MockResponse().setResponseCode(404))
+            val missing=runCatching {gateway.status("08ada5a7a6183aae1e09d831df6748d566095a10")}.exceptionOrNull()
+            assertEquals(404,(missing as HttpFailure).status)
+            server.enqueue(MockResponse().setResponseCode(401));server.enqueue(MockResponse().setResponseCode(500))
+            val denied=runCatching {gateway.add(Release("id","title","fixture",hash="08ada5a7a6183aae1e09d831df6748d566095a10",magnet="magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"))}.exceptionOrNull()
+            assertEquals(401,(denied as HttpFailure).status);assertEquals(2,server.requestCount)
+        } finally {server.shutdown()}
+    }
     @Test fun advertisedPaginationAndCapabilityCache()=runBlocking {
         val server=MockWebServer();server.start();var capRequests=0
         try {

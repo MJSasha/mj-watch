@@ -90,7 +90,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                             Text(if(top) "MJWatch" else when(state.page){"detail"->"О раздаче";"releases"->"Выберите раздачу";"files"->"Выберите файл";else->"Подготовка потока"},style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                             if(state.config.demo) Text("ДЕМО",color=scheme.primary,style=MaterialTheme.typography.labelLarge)
                         }
-                        screenStates.SaveableStateProvider(state.page+if(state.page in listOf("detail","releases","files")) state.selected?.id.orEmpty() else "") {
+                        screenStates.SaveableStateProvider(state.page+(if(state.page in listOf("detail","releases","files")) state.selected?.id.orEmpty() else "")+(if(state.page=="files") state.config.torrServer else "")) {
                         when(state.page) {
                             "settings" -> SettingsScreen(state,model,tv)
                             "home" -> HomeScreen(state,library,progress,model,tv)
@@ -120,11 +120,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     }
 }
 @Composable private fun Heading(text:String) { Text(text,style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold,modifier=Modifier.semantics { heading() }) }
-@Composable private fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,onClick:()->Unit) {
-    if(tv) androidx.tv.material3.Button(onClick=onClick,modifier=modifier.heightIn(min=52.dp),
+@Composable private fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,onClick:()->Unit) {
+    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=52.dp),
         colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=MaterialTheme.colorScheme.primary,contentColor=MaterialTheme.colorScheme.onPrimary,focusedContainerColor=MaterialTheme.colorScheme.primary,focusedContentColor=MaterialTheme.colorScheme.onPrimary),
         scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(3.dp,MaterialTheme.colorScheme.onSurface)))) { androidx.tv.material3.Text(text,fontSize=18.sp) }
-    else Button(onClick=onClick,modifier=modifier.heightIn(min=52.dp)) { Text(text) }
+    else Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=52.dp)) { Text(text) }
 }
 @Composable private fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical=32.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -326,13 +326,19 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     val context=LocalContext.current
     var c by remember { mutableStateOf(model.draftConfig ?: s.config) }
     var metadataToken by remember { mutableStateOf(model.draftMetadata) }; var key by remember { mutableStateOf(model.draftKey) }; var user by remember { mutableStateOf(model.draftUser) }; var password by remember { mutableStateOf(model.draftPassword) }
+    var stopConfirmation by remember {mutableStateOf(false)}
+    fun applySettings() {
+        if(c.torrServer!=s.config.torrServer&&PlaybackActivity.hasActivePlayback()) stopConfirmation=true
+        else model.save(c,key,user,password,metadataToken)
+    }
+    if(stopConfirmation) AlertDialog(onDismissRequest={stopConfirmation=false},title={Text("Остановить просмотр и применить?")},text={Text("Адрес TorrServer меняется. Позиция текущего просмотра будет сохранена.")},confirmButton={TextButton(onClick={stopConfirmation=false;PlaybackActivity.stopActivePlayback();model.save(c,key,user,password,metadataToken)}) {Text("Остановить и применить")}},dismissButton={TextButton(onClick={stopConfirmation=false}) {Text("Отмена")}})
     var leave by remember {mutableStateOf(false)}
     var baseline by remember {mutableStateOf(listOf("","","",""))}
     var preview by remember { mutableStateOf<Config?>(null) }; var importError by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if(model.draftConfig==null) { metadataToken=model.secrets.get("tmdb"); key=model.secrets.get("jackett:${s.config.jackett}");user=model.secrets.get("torrUser:${s.config.torrServer}");password=model.secrets.get("torrPassword:${s.config.torrServer}") }; baseline=listOf(model.secrets.get("jackett:${s.config.jackett}"),model.secrets.get("torrUser:${s.config.torrServer}"),model.secrets.get("torrPassword:${s.config.torrServer}"),model.secrets.get("tmdb")) }
     LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
     BackHandler(c!=s.config||listOf(key,user,password,metadataToken)!=baseline) {leave=true}
-    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;model.save(c,key,user,password,metadataToken)}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.page("home")}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
+    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.page("home")}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if(uri!=null) context.contentResolver.openOutputStream(uri)?.use { it.write(encodeConfig(c).toByteArray()) } }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) try {
         val raw=context.contentResolver.openInputStream(uri)!!.use { String(it.readBytes().also { b -> require(b.size<65536) }) }; preview=decodeConfig(raw)
@@ -360,7 +366,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         item { Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach { (id,label) -> FilterChip(selected=c.theme==id,onClick={c=c.copy(theme=id)},label={Text(label)}) } } }
         item { Text("Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.") }
         if(s.message.isNotBlank()) item { Text(s.message,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }) }
-        item { Action("Сохранить и продолжить",tv,Modifier.fillMaxWidth()) {model.save(c,key,user,password,metadataToken)} }
+        item { Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy) {applySettings()} }
         item { Action("Экспорт конфигурации",tv) {if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"} }
         item { Action("Импорт конфигурации",tv) {importer.launch(arrayOf("application/json"))} }
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}

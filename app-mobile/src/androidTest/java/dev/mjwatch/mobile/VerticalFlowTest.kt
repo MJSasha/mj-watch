@@ -24,6 +24,7 @@ class VerticalFlowTest {
     compose.onAllNodes(isToggleable())[0].performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     compose.onNodeWithText("Сохранить и продолжить").performClick()
+    compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithTag("home-list").performScrollToNode(hasText("О тестовой раздаче"))
     capture("home")
     compose.onNodeWithText("О тестовой раздаче").performClick()
@@ -56,7 +57,7 @@ class VerticalFlowTest {
       player.seekTo(2000);Assert.assertEquals(2000L,player.currentPosition)
       player.play()
     }
-    Thread.sleep(5000)
+    Thread.sleep(1000)
     UiDevice.getInstance(instrumentation).pressBack()
     compose.waitForIdle()
     compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}
