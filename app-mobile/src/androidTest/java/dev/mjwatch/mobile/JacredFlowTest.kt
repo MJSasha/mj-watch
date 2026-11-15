@@ -51,8 +51,9 @@ class JacredFlowTest {
     compose.waitUntil(10000) {compose.onAllNodesWithText("MatriX.145.2").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     compose.onNodeWithText("Сохранить и продолжить").performClick()
-    compose.waitUntil(10000) {compose.onAllNodesWithText("Поиск").fetchSemanticsNodes().isNotEmpty()}
+    compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Поиск").performClick()
+    compose.waitUntil(10000) {compose.onAllNodesWithText("Название фильма или раздачи").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Название фильма или раздачи").performTextInput("Sintel")
     compose.waitUntil(10000) {compose.onAllNodesWithText("Sintel HTTP fixture 720p").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
