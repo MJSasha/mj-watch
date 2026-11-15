@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "jackett": {
+    "baseUrl": "https://jackett.example.invalid",
+    "credentialRef": "jackett-api-key",
+    "indexers": [
+      {
+        "id": "example-indexer",
+        "label": "Источник A",
+        "torznabPath": "/api/v2.0/indexers/example-indexer/results/torznab/api",
+        "enabled": true
+      }
+    ]
+  },
+  "torrServer": {
+    "baseUrl": "https://torrserver.example.invalid",
+    "authType": "none",
+    "credentialRef": null,
+    "saveToDatabase": false
+  },
+  "metadata": {
+    "provider": "none",
+    "language": "ru-RU",
+    "credentialRef": null
+  },
+  "network": {
+    "localHttpOptIn": false,
+    "allowedLocalHttpOrigins": [],
+    "connectTimeoutMs": 5000,
+    "controlTimeoutMs": 15000,
+    "searchDeadlineMs": 25000
+  },
+  "playback": {
+    "preferredResolution": 1080,
+    "preferredAudioLanguages": ["ru", "en"],
+    "subtitles": "off",
+    "autoSelectRelease": false,
+    "autoNextEpisode": false,
+    "autoEnterPip": false
+  },
+  "appearance": {
+    "theme": "system",
+    "motion": "system"
+  }
+}

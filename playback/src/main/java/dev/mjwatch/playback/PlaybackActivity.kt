@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.first
 
 @UnstableApi
 class PlaybackActivity : ComponentActivity() {
+    companion object {private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null}
+    private var released=false
+    private var finalWrite:Job?=null
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
     private var session: MediaSession?=null
@@ -33,6 +36,7 @@ class PlaybackActivity : ComponentActivity() {
     private val saveMutex=kotlinx.coroutines.sync.Mutex()
     private val handler=Handler(Looper.getMainLooper())
     var firstFrameSeen=false; private set
+    private var terminalError=false
     private var firstFrame=false
     private var retries=0
     private var panel: android.app.AlertDialog?=null
@@ -43,6 +47,8 @@ class PlaybackActivity : ComponentActivity() {
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
+        active=java.lang.ref.WeakReference(this)
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=4000 }
@@ -66,7 +72,7 @@ class PlaybackActivity : ComponentActivity() {
             val headers=mutableMapOf<String,String>()
             val auth=SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
             val http=OkHttpDataSource.Factory(guardedClient(config)).setDefaultRequestProperties(headers)
-            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)))
+            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(0)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -87,28 +93,29 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
                     save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L; handler.postDelayed({ if(!isFinishing) { player.prepare(); player.play() } },delay) }
-                    else { status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Позиция сохранена. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
+                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L; handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
+                    else { terminalError=true;status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Позиция сохранена. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
                 }
             })
             val progress=dao.progress().first().firstOrNull { it.key=="$releaseId|$path" }
             player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: progress?.takeUnless { it.completed }?.positionMs ?: 0)
-            startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState==null || savedInstanceState.getBoolean("playing")
+            startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState==null
             view.requestFocus()
             while(isActive) { delay(5000); save()
-                if(player.playbackState==Player.STATE_BUFFERING || !firstFrame) {
+                if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача. Позиция сохранена." }
+                    if(elapsed>180_000) {terminalError=true;player.stop();status.text="Подготовка остановлена. Выберите другую раздачу."}
+                    else if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача. Позиция сохранена." }
                     else if(elapsed>30_000) status.text="Подготовка занимает больше времени · Назад — отменить"
                 }
             }
         }
     }
     private fun save(ended:Boolean=false): Job? {
-        if(!::player.isInitialized) return null
+        if(!::player.isInitialized||released) return null
         val duration=player.duration.takeIf { it>0 }; val position=player.currentPosition.coerceAtLeast(0)
         val p=Progress("$releaseId|$path",releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
-        return scope.launch(Dispatchers.IO) { saveMutex.lock(); try { dao.put(p) } finally {saveMutex.unlock()} }
+        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {dao.put(p)} } finally {saveMutex.unlock()} }
     }
     private fun tracks() {
         if(!::player.isInitialized) return
@@ -130,10 +137,12 @@ class PlaybackActivity : ComponentActivity() {
         }.setOnDismissListener { panel=null; view.requestFocus() }.show()
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
-    override fun onStop() { if(::player.isInitialized&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
+    override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); view.useController=!inPictureInPictureMode }
+    private fun releasePlayer() {if(!released) {released=true;session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
-        val pending=save(); handler.removeCallbacksAndMessages(null); session?.release(); if(::player.isInitialized) player.release()
+        val pending=save() ?: finalWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
+        if(active?.get()===this) active=null
         // Finish the final atomic Room write before closing the database.
         scope.launch { pending?.join(); db.close(); scope.cancel() }
         super.onDestroy()

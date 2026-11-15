@@ -1,6 +1,7 @@
 package dev.mjwatch.core
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.mockwebserver.*
@@ -46,15 +47,39 @@ class ContractsTest {
         listOf("file:///tmp/a","http://user:password@host","https://host/?apikey=secret","https://host/#fragment","javascript:alert(1)").forEach { assertTrue(runCatching {endpoint(it)}.isFailure) }
         assertEquals("/proxy/torrents",endpoint("https://host/proxy").child("torrents").encodedPath)
     }
+    @Test fun openingDoesNotOverwriteBookmarkOrProgress()=runBlocking {
+        val db=androidx.room.Room.inMemoryDatabaseBuilder(org.robolectric.RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
+        try {
+            val dao=db.dao();val e=LibraryEntry("test","Тест","fixture",openedAt=1)
+            dao.opened(e);dao.toggleBookmark(e)
+            dao.put(Progress("key","test",17,"file.mp4",12345,90000,5,false))
+            dao.opened(e.copy(openedAt=100))
+            assertTrue(dao.entry("test")!!.bookmarked);assertEquals(100L,dao.entry("test")!!.openedAt)
+            assertEquals(12345L,dao.progress().first().single().positionMs)
+        } finally {db.close()}
+    }
+    @Test fun handoffConfigSchemaAndPaths() {
+        val c=decodeConfig(fixture("config.example.json"))
+        assertEquals("https://jackett.example.invalid",c.jackett)
+        assertEquals("/api/v2.0/indexers/example-indexer/results/torznab/api",c.torznabPaths["example-indexer"])
+        val exported=org.json.JSONObject(encodeConfig(c));assertEquals(c.jackett,exported.getJSONObject("jackett").getString("baseUrl"))
+        assertEquals("none",exported.getJSONObject("metadata").getString("provider"))
+    }
     @Test fun configExportHasNoSecrets() {
         val raw=encodeConfig(dev.mjwatch.core.Config(jackett="https://host",torrServer="https://server"))
         assertFalse(raw.contains("apikey",true)); assertFalse(raw.contains("Authorization",true));
         assertTrue(runCatching {encodeConfig(dev.mjwatch.core.Config(jackett="https://host/?apikey=secret"))}.isFailure); assertEquals(1,decodeConfig(raw).schemaVersion)
+        assertTrue(raw.contains("baseUrl"));assertTrue(runCatching {validateTorznabPath("//other-host/api")}.isFailure)
+        assertTrue(runCatching {validateTorznabPath("/api?apikey=secret")}.isFailure)
         assertTrue(runCatching {decodeConfig("{\"schemaVersion\":3}")}.isFailure)
+    }
+    @Test fun magnetParameterOrder() {
+        validateMagnet("magnet:?dn=Test&xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10")
+        assertTrue(runCatching {validateMagnet("https://host/?xt=urn:btih:invalid")}.isFailure)
     }
     @Test fun bencodeValidation() {
         validateTorrent("d4:infod4:name4:teste e".replace(" ","").toByteArray())
-        listOf("<html>error</html>","d5:test", "d4:test99999999999999:xe").forEach {assertTrue(runCatching {validateTorrent(it.toByteArray())}.isFailure)}
+        listOf("de","d4:infoi1ee","<html>error</html>","d5:test", "d4:test99999999999999:xe").forEach {assertTrue(runCatching {validateTorrent(it.toByteArray())}.isFailure)}
     }
     @Test fun redirectIsRejectedAndCredentialsNotForwarded()= runBlocking {
         val server=MockWebServer(); val other=MockWebServer(); server.start(); other.start()
@@ -64,6 +89,16 @@ class ContractsTest {
             assertTrue(runCatching {guardedClient(c).bytes(Request.Builder().url(server.url("/")).header("Authorization","Basic sentinel").build())}.isFailure)
             assertEquals(0,other.requestCount)
         } finally {server.shutdown();other.shutdown()}
+    }
+    @Test fun jackettMagnetDownloadRedirectIsResolvedWithoutFollowing()=runBlocking {
+        val server=MockWebServer();server.start()
+        try {
+            val magnet="magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel"
+            server.enqueue(MockResponse().setResponseCode(302).setHeader("Location",magnet))
+            val c=dev.mjwatch.core.Config(jackett=server.url("/").toString(),localHttp=true)
+            val input=TorznabRepository(c,"sentinel",guardedClient(c)).resolve(Release("fixture","Sintel","fixture",download=server.url("/dl/fixture?jackett_apikey=sentinel").toString()))
+            assertEquals(TorrentInput.Magnet(magnet),input);assertEquals(1,server.requestCount)
+        } finally {server.shutdown()}
     }
     @Test fun advertisedPaginationAndCapabilityCache()=runBlocking {
         val server=MockWebServer();server.start();var capRequests=0

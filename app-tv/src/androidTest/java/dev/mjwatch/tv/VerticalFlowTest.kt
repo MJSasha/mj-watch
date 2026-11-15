@@ -22,16 +22,27 @@ class VerticalFlowTest {
       node.performSemanticsAction(SemanticsActions.RequestFocus)
       node.performKeyInput {pressKey(Key.DirectionCenter)}
     }
+    fun capture(label:String) {
+      compose.waitForIdle();InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+      val context=InstrumentationRegistry.getInstrumentation().targetContext
+      val dir=java.io.File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+      UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(dir,"tv-$label.png"))
+    }
     compose.waitForIdle()
     compose.onAllNodes(isToggleable())[0].performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     remoteClick("Сохранить и продолжить")
     compose.onNodeWithTag("home-list").performScrollToNode(hasText("О тестовой раздаче"))
+    capture("home")
     remoteClick("О тестовой раздаче")
+    compose.onNodeWithText("Выбрать раздачу").assertExists()
+    capture("detail")
     remoteClick("Выбрать раздачу")
+    compose.onNodeWithTag("release-list").performScrollToNode(hasText("Тихая орбита • тестовое видео 720p"))
     remoteClick("Тихая орбита • тестовое видео 720p")
 
     compose.waitUntil(10000) {compose.onAllNodesWithText("Выберите файл").fetchSemanticsNodes().isNotEmpty()}
+    capture("files")
     remoteClick("Сезон 1/Серия 01.mp4")
     remoteClick("Смотреть")
     val instrumentation=InstrumentationRegistry.getInstrumentation()
@@ -41,13 +52,16 @@ class VerticalFlowTest {
       Thread.sleep(200)
     }
     Assert.assertTrue("Media3 first-frame callback",seen)
+    capture("player")
     Thread.sleep(6000)
     UiDevice.getInstance(instrumentation).pressBack()
     compose.waitForIdle()
     compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Сохранено",substring=true).assertExists()
+    capture("saved-progress")
     UiDevice.getInstance(instrumentation).pressBack()
     compose.waitUntil(5000) {compose.onAllNodesWithText("О тестовой раздаче").fetchSemanticsNodes().isNotEmpty()}
+    compose.waitUntil(5000) {compose.onAllNodesWithText("О тестовой раздаче").fetchSemanticsNodes().any {it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) {false}}}
     compose.onNodeWithText("О тестовой раздаче").assertIsFocused()
  }
 }

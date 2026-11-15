@@ -1,7 +1,9 @@
 name: Android
 on:
   push:
+    paths-ignore: ["docs/**", "design/**", "STATUS.md", "README.md"]
   pull_request:
+    paths-ignore: ["docs/**", "design/**", "STATUS.md", "README.md"]
   workflow_dispatch:
 permissions:
   contents: read

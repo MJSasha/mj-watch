@@ -8,12 +8,16 @@ data class TorrentFile(val serverFileId: Int, val path: String, val size: Long) 
     val video get() = path.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
     val sample get() = Regex("(?i)(^|[/_. -])sample([/_. -]|$)").containsMatchIn(path)
 }
+sealed interface TorrentInput {
+    data class Magnet(val link:String):TorrentInput
+    data class File(val bytes:ByteArray):TorrentInput
+}
 data class TorrentHandle(val hash: String, val files: List<TorrentFile>)
 data class StreamRequest(val uri: String, val headers: Map<String, String> = emptyMap())
 data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
 data class Config(val schemaVersion: Int = 1, val jackett: String = "", val indexers: String = "",
     val torrServer: String = "", val localHttp: Boolean = false, val demo: Boolean = false,
-    val theme: String = "system", val metadataProvider: String = "none")
+    val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap())
 interface ReleaseRepository {
     suspend fun search(query: String): SearchResult
     suspend fun check(): String

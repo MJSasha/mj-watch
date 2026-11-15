@@ -22,6 +22,10 @@ fun endpoint(raw: String): HttpUrl {
     require(u.username.isEmpty() && u.password.isEmpty() && u.query == null && u.fragment == null) { "URL: без логина, query и fragment" }
     return u
 }
+fun validateTorznabPath(path:String) {
+    require(path.startsWith('/')&&!path.startsWith("//")&&path.none {it in "?\\#%"}&&path.split('/').none {it==".."||it=="."}) {"Некорректный относительный Torznab path"}
+}
+
 fun HttpUrl.child(path: String): HttpUrl = newBuilder().addPathSegments(path.trimStart('/')).build()
 fun HttpUrl.origin() = "$scheme://$host:$port"
 private fun localAddress(a: InetAddress) = a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress
@@ -43,12 +47,17 @@ fun guardedClient(config: Config): OkHttpClient {
             chain.proceed(r)
         }.build()
 }
-suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024): ByteArray = suspendCancellableCoroutine { c ->
+suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) { if(c.isActive) c.resumeWithException(IOException(when(e) { is java.net.UnknownHostException -> "Имя сервера не найдено. Для .local попробуйте IP-адрес"; is javax.net.ssl.SSLException -> "Не удалось проверить TLS-сертификат сервера"; is java.net.SocketTimeoutException -> "Время ожидания сервера истекло"; else -> "Сеть недоступна или соединение прервано" })) }
         override fun onResponse(call: Call, response: Response) {
             try { response.use { r ->
+                val location=r.header("Location")
+                if(allowMagnetRedirect&&r.code in 300..399&&location?.startsWith("magnet:?")==true) {
+                    require(location.length<=65536);validateMagnet(location)
+                    if(c.isActive) c.resume(location.toByteArray());return
+                }
                 if(!r.isSuccessful) throw IOException(when(r.code) { 401,403 -> "Доступ отклонён: проверьте ключ или пароль"; in 300..399 -> "Перенаправление запрещено; укажите конечный адрес"; else -> "Сервер ответил HTTP ${r.code}" })
                 val b=r.body ?: throw IOException("Пустой ответ")
                 require(b.contentLength() <= limit) { "Ответ превышает лимит" }
@@ -91,7 +100,9 @@ object TorznabXml {
             if(p.eventType==XmlPullParser.END_TAG && p.name=="item") {
                 val m=item!!; val title=m["title"] ?: "Без названия"; val hash=m["infohash"]?.lowercase()
                 val link=m["download"] ?: m["link"]
-                result+=Release("$source:${m["guid"] ?: hash ?: link ?: title}", title,source,hash,
+                val identity=m["guid"] ?: hash ?: link ?: m.toSortedMap().toString()
+                val id=java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") {"%02x".format(it)}
+                result+=Release("$source:$id", title,source,hash,
                     m["magneturl"] ?: link?.takeIf { it.startsWith("magnet:?") },link?.takeUnless { it.startsWith("magnet:") }, m["size"]?.toLongOrNull(),m["seeders"]?.toIntOrNull())
                 item=null
             }; p.next()
@@ -104,7 +115,8 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     private val sources get()=config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }
     private fun url(source: String, type: String, query: String? = null): HttpUrl {
         require(Regex("[A-Za-z0-9_-]+").matches(source)) { "Некорректный ID индексатора" }
-        return endpoint(config.jackett).child("api/v2.0/indexers/$source/results/torznab/api").newBuilder()
+        val path=config.torznabPaths[source] ?: "/api/v2.0/indexers/$source/results/torznab/api";validateTorznabPath(path)
+        return endpoint(config.jackett).child(path).newBuilder()
             .addQueryParameter("t",type).addQueryParameter("apikey",apiKey).apply { if(query!=null) addQueryParameter("q",query) }.build()
     }
     private suspend fun capabilities(source: String): Caps {
@@ -113,51 +125,95 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     }
     override suspend fun check(): String { require(sources.isNotEmpty()) { "Укажите ID индексаторов через запятую" }; sources.forEach { capabilities(it) }; return "Проверено источников: ${sources.size}" }
     override suspend fun search(query: String): SearchResult = searchPage(query)
-    suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null):SearchResult = withTimeout(25_000) { supervisorScope {
-        require(sources.isNotEmpty()) { "Добавьте индексаторы в настройках" }
+    suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null):SearchResult = supervisorScope {
+        val selected=sources.filter {onlySources==null||it in onlySources}
+        require(selected.isNotEmpty()) {"Добавьте индексаторы в настройках"}
         val more=java.util.concurrent.atomic.AtomicBoolean(false)
-        val results=sources.filter {onlySources==null||it in onlySources}.map { source -> async { permits.withPermit {
-            try { withTimeout(20_000) { val cap=capabilities(source); if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null); val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString()).apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
-                val items=TorznabXml.releases(String(client.bytes(Request.Builder().url(u).build())),source); if(cap.offset&&items.size>=cap.max) more.set(true); Pair(items,null) }
-            } catch(e: TimeoutCancellationException) { Pair(emptyList<Release>(), "$source: Время ожидания истекло") } catch(e: CancellationException) { throw e } catch(e: Exception) { Pair(emptyList<Release>(), "$source: ${safeError(e)}") }
-        } } }.awaitAll()
-        SearchResult(results.flatMap { it.first }.distinctBy { it.hash ?: it.id },results.mapNotNull { it.second },more.get())
-    } }
-    suspend fun torrent(release: Release): ByteArray {
+        val responses=java.util.concurrent.ConcurrentHashMap<String,Pair<List<Release>,String?>>()
+        val jobs=selected.map {source -> async {permits.withPermit {
+            val result=try {withTimeout(20_000) {
+                val cap=capabilities(source)
+                if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null)
+                val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString())
+                    .apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
+                val items=TorznabXml.releases(String(client.bytes(Request.Builder().url(u).build())),source)
+                if(cap.offset&&items.size>=cap.max) more.set(true)
+                Pair(items,null)
+            }} catch(e:TimeoutCancellationException) {Pair(emptyList<Release>(),"$source: Время ожидания истекло")}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {Pair(emptyList<Release>(),"$source: ${safeError(e)}")}
+            responses[source]=result
+        }}}
+        val complete=withTimeoutOrNull(25_000) {jobs.awaitAll();true}==true
+        if(!complete) jobs.forEach {it.cancel()}
+        jobs.forEach {it.join()}
+        val results=selected.map {responses[it] ?: Pair(emptyList<Release>(),"$it: Общий срок поиска истёк")}
+        SearchResult(results.flatMap {it.first}.distinctBy {it.hash ?: it.id},results.mapNotNull {it.second},more.get())
+    }
+    suspend fun resolve(release: Release): TorrentInput {
         val raw=release.download ?: error("Нет magnet или torrent")
         val u=raw.toHttpUrl(); require(u.origin()==endpoint(config.jackett).origin()) { "Torrent должен загружаться с настроенного Jackett" }
-        val body=client.bytes(Request.Builder().url(u).build())
-        validateTorrent(body); return body
+        val body=client.bytes(Request.Builder().url(u).build(),allowMagnetRedirect=true)
+        if(body.firstOrNull()?.toInt()==109) {val magnet=String(body);validateMagnet(magnet);return TorrentInput.Magnet(magnet)}
+        validateTorrent(body); return TorrentInput.File(body)
     }
 }
+fun validateMagnet(raw:String) {
+    require(raw.startsWith("magnet:?")) {"Некорректный magnet"}
+    val hashes=raw.substringAfter('?').split('&').map {java.net.URLDecoder.decode(it,"UTF-8")}.filter {it.startsWith("xt=urn:btih:")}.map {it.substringAfterLast(':')}
+    require(hashes.any {it.matches(Regex("(?i)([0-9a-f]{40}|[a-z2-7]{32})"))}) {"Некорректный infoHash"}
+}
 fun validateTorrent(bytes: ByteArray) {
-    require(bytes.size<=10*1024*1024 && bytes.firstOrNull()?.toInt()==100) { "Ответ не является .torrent" }
-    var i=0
-    fun parse(depth: Int) {
-        require(depth<64 && i<bytes.size) { "Некорректный bencode" }
-        when(bytes[i++].toInt().toChar()) {
-            'd','l' -> { while(i<bytes.size && bytes[i].toInt()!=101) parse(depth+1); require(i<bytes.size); i++ }
-            'i' -> { val start=i; while(i<bytes.size && bytes[i].toInt()!=101) i++; require(i<bytes.size && String(bytes,start,i-start).toLongOrNull()!=null); i++ }
-            in '0'..'9' -> { val start=i-1; while(i<bytes.size&&bytes[i].toInt()!=58) i++; require(i<bytes.size); val n=String(bytes,start,i-start).toInt(); i++; require(n>=0&&n<=bytes.size-i); i+=n }
+    require(bytes.size<=10*1024*1024&&bytes.firstOrNull()?.toInt()==100) {"Ответ не является .torrent"}
+    var i=0;var info=false
+    fun string():ByteArray {
+        val start=i
+        while(i<bytes.size&&bytes[i].toInt() in 48..57) i++
+        require(i<bytes.size&&bytes[i].toInt()==58&&i>start) {"Некорректный bencode"}
+        val length=String(bytes,start,i-start);require(length=="0"||!length.startsWith('0'))
+        val n=length.toInt();i++;require(n>=0&&n<=bytes.size-i)
+        return bytes.copyOfRange(i,i+n).also {i+=n}
+    }
+    fun parse(depth:Int) {
+        require(depth<64&&i<bytes.size) {"Некорректный bencode"}
+        when(bytes[i].toInt().toChar()) {
+            'd' -> {
+                i++;val keys=mutableSetOf<String>()
+                while(i<bytes.size&&bytes[i].toInt()!=101) {
+                    val key=string();require(key.size<=1024&&keys.add(String(key)))
+                    if(depth==0&&String(key)=="info") {require(i<bytes.size&&bytes[i].toInt()==100);info=true}
+                    parse(depth+1)
+                }
+                require(i<bytes.size);i++
+            }
+            'l' -> {i++;while(i<bytes.size&&bytes[i].toInt()!=101) parse(depth+1);require(i<bytes.size);i++}
+            'i' -> {
+                i++;val start=i;while(i<bytes.size&&bytes[i].toInt()!=101) i++
+                require(i<bytes.size);val value=String(bytes,start,i-start)
+                require(value.matches(Regex("0|-?[1-9][0-9]*"))&&value.toLongOrNull()!=null);i++
+            }
+            in '0'..'9' -> string()
             else -> error("Некорректный bencode")
         }
     }
-    parse(0); require(i==bytes.size) { "Лишние данные в torrent" }
+    parse(0);require(info&&i==bytes.size) {"В torrent нет info или есть лишние данные"}
 }
-class TorrServerGateway(private val config: Config, private val auth: String, private val client: OkHttpClient,
+
+class TorrServerGateway(private val config: Config, private val auth: String, client: OkHttpClient,
     private val torrents: TorznabRepository) : StreamGateway {
+    private val client=client.newBuilder().readTimeout(15,TimeUnit.SECONDS).callTimeout(15,TimeUnit.SECONDS).build()
     private fun request(path: String) = Request.Builder().url(endpoint(config.torrServer).child(path)).apply { if(auth.isNotEmpty()) header("Authorization",auth) }
     override suspend fun check() = String(client.bytes(request("echo").build(),1024)).also { require(it.startsWith("MatriX.")) { "Неизвестная версия TorrServer" } }
     private suspend fun action(json: JSONObject): TorrentHandle = parse(String(client.bytes(request("torrents").post(json.toString().toRequestBody("application/json".toMediaType())).build())))
     override suspend fun add(release: Release): TorrentHandle {
         try {
-            return if(release.magnet!=null) {
-                require(release.magnet.startsWith("magnet:?xt=urn:btih:")) { "Некорректный magnet" }
-                action(JSONObject().put("action","add").put("link",release.magnet).put("title",release.title).put("save_to_db",false))
-            } else {
-                val bytes=torrents.torrent(release)
-                val body=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file","input.torrent",bytes.toRequestBody("application/x-bittorrent".toMediaType())).build()
-                parse(String(client.bytes(request("torrent/upload").post(body).build())))
+            val input=release.magnet?.let {validateMagnet(it);TorrentInput.Magnet(it)} ?: torrents.resolve(release)
+            return when(input) {
+                is TorrentInput.Magnet -> action(JSONObject().put("action","add").put("link",input.link).put("title",release.title).put("save_to_db",false))
+                is TorrentInput.File -> {
+                    val body=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("file","input.torrent",input.bytes.toRequestBody("application/x-bittorrent".toMediaType())).build()
+                    parse(String(client.bytes(request("torrent/upload").post(body).build())))
+                }
             }
         } catch(e: CancellationException) { throw e } catch(e: Exception) {
             // An uncertain POST is never blindly retried. Resolve only a known hash.

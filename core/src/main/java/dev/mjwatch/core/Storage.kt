@@ -25,26 +25,53 @@ data class Progress(@PrimaryKey val key: String, val releaseId: String, val file
     @Query("SELECT * FROM library ORDER BY openedAt DESC") fun library(): Flow<List<LibraryEntry>>
     @Query("SELECT * FROM progress ORDER BY updatedAt DESC") fun progress(): Flow<List<Progress>>
     @Query("SELECT * FROM library WHERE id=:id") suspend fun entry(id: String): LibraryEntry?
+    @Transaction suspend fun opened(value:LibraryEntry) {val old=entry(value.id);put(value.copy(bookmarked=old?.bookmarked ?: false))}
+    @Transaction suspend fun toggleBookmark(value:LibraryEntry) {val old=entry(value.id) ?: value;put(old.copy(bookmarked=!old.bookmarked))}
     @Upsert suspend fun put(entry: LibraryEntry)
     @Upsert suspend fun put(progress: Progress)
     @Query("DELETE FROM library WHERE id=:id") suspend fun delete(id: String)
 }
 @Database(entities = [LibraryEntry::class, Progress::class], version = 1, exportSchema = false)
 abstract class WatchDatabase : RoomDatabase() { abstract fun dao(): WatchDao }
-private val Context.configStore by preferencesDataStore("config")
+private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
 class Settings(private val context: Context) {
+    val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}
+    suspend fun destination(value:String) {require(value in setOf("home","search","library","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
     val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }
     suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
 }
-fun encodeConfig(c: Config): String { listOf(c.jackett,c.torrServer).filter {it.isNotBlank()}.forEach {endpoint(it)}; return JSONObject().put("schemaVersion", c.schemaVersion).put("jackett", c.jackett)
-    .put("indexers", c.indexers).put("torrServer", c.torrServer).put("localHttp", c.localHttp)
-    .put("demo", c.demo).put("theme", c.theme).put("metadataProvider", c.metadataProvider).toString(2)
+fun encodeConfig(c: Config): String {
+    listOf(c.jackett,c.torrServer).filter {it.isNotBlank()}.forEach {endpoint(it)}
+    val indexers=org.json.JSONArray()
+    c.indexers.split(',').map {it.trim()}.filter {it.isNotBlank()}.forEach {id ->
+        val path=c.torznabPaths[id] ?: "/api/v2.0/indexers/$id/results/torznab/api"
+        validateTorznabPath(path)
+        indexers.put(JSONObject().put("id",id).put("torznabPath",path).put("enabled",true))
+    }
+    return JSONObject().put("schemaVersion",1).put("demo",c.demo)
+        .put("jackett",JSONObject().put("baseUrl",c.jackett).put("credentialRef","jackett-api-key").put("indexers",indexers))
+        .put("torrServer",JSONObject().put("baseUrl",c.torrServer).put("credentialRef","torrserver-auth").put("saveToDatabase",false))
+        .put("metadata",JSONObject().put("provider",c.metadataProvider).put("language","ru-RU").put("credentialRef","metadata-api-token"))
+        .put("network",JSONObject().put("localHttpOptIn",c.localHttp).put("allowedLocalHttpOrigins",org.json.JSONArray(listOf(c.jackett,c.torrServer).filter {it.startsWith("http://")}.map {endpoint(it).origin()})))
+        .put("appearance",JSONObject().put("theme",c.theme).put("motion","system")).toString(2)
 }
 fun decodeConfig(raw: String): Config {
-    val j = JSONObject(raw); require(j.optInt("schemaVersion", 1) == 1) { "Неизвестная версия конфигурации" }
-    return Config(j.optInt("schemaVersion", 1), j.optString("jackett"), j.optString("indexers"),
-        j.optString("torrServer"), j.optBoolean("localHttp"), j.optBoolean("demo"), j.optString("theme", "system"), j.optString("metadataProvider", "none"))
+    val j=JSONObject(raw);require(j.optInt("schemaVersion",1)==1) {"Неизвестная версия конфигурации"}
+    val jackett=j.optJSONObject("jackett");val server=j.optJSONObject("torrServer")
+    val sources=jackett?.optJSONArray("indexers") ?: org.json.JSONArray();val paths=mutableMapOf<String,String>()
+    for(i in 0 until sources.length()) {val source=sources.getJSONObject(i);if(source.optBoolean("enabled",true)) {
+        val id=source.getString("id");val path=source.optString("torznabPath","/api/v2.0/indexers/$id/results/torznab/api")
+        require(Regex("[A-Za-z0-9_-]+").matches(id));validateTorznabPath(path);paths[id]=path
+    }}
+    // Read the early local flat schema too; all new exports follow the handoff's nested schema.
+    return Config(schemaVersion=1,jackett=jackett?.optString("baseUrl") ?: j.optString("jackett"),
+        indexers=if(jackett!=null) paths.keys.joinToString(",") else j.optString("indexers"),
+        torrServer=server?.optString("baseUrl") ?: j.optString("torrServer"),
+        localHttp=j.optJSONObject("network")?.optBoolean("localHttpOptIn") ?: j.optBoolean("localHttp"),
+        demo=j.optBoolean("demo"),theme=j.optJSONObject("appearance")?.optString("theme","system") ?: j.optString("theme","system"),
+        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths)
 }
+
 fun Release.json(): String = JSONObject().put("id", id).put("title", title).put("source", source)
     .put("hash", hash).put("magnet", magnet).put("download", download).put("size", size).put("seeds", seeds).toString()
 fun releaseFromJson(raw: String): Release { val j=JSONObject(raw)
@@ -64,11 +91,11 @@ class SecretStore(context: Context) {
     }
     fun put(name: String, value: String) {
         val c=Cipher.getInstance("AES/GCM/NoPadding"); c.init(Cipher.ENCRYPT_MODE, key())
-        prefs.edit().putString(name, Base64.encodeToString(c.iv + c.doFinal(value.toByteArray()), Base64.NO_WRAP)).commit()
+        check(prefs.edit().putString(name, Base64.encodeToString(c.iv + c.doFinal(value.toByteArray()), Base64.NO_WRAP)).commit()) {"Не удалось сохранить секрет"}
     }
-    fun get(name: String): String = prefs.getString(name, null)?.let {
+    fun get(name: String): String = runCatching {prefs.getString(name, null)?.let {
         val bytes=Base64.decode(it, Base64.NO_WRAP); val c=Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0,12)))
         String(c.doFinal(bytes.copyOfRange(12, bytes.size)))
-    } ?: ""
+    } ?: ""}.getOrElse {prefs.edit().remove(name).apply();""}
 }
