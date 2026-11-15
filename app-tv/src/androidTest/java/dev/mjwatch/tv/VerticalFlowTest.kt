@@ -35,6 +35,9 @@ class VerticalFlowTest {
     remoteClick("Сохранить и продолжить")
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
+    compose.mainClock.advanceTimeBy(500)
+    compose.onNodeWithTag("hero-open").assertIsFocused()
+    compose.onNodeWithText("Для вас").assertIsDisplayed()
     capture("home")
     compose.onNodeWithTag("hero-open").performSemanticsAction(SemanticsActions.RequestFocus)
     compose.onNodeWithTag("hero-open").performKeyInput {pressKey(Key.DirectionCenter)}

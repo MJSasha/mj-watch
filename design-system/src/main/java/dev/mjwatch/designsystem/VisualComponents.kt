@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package dev.mjwatch.designsystem
 
 import androidx.compose.foundation.*
@@ -86,4 +87,14 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
     return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,RoundedCornerShape(24.dp))
+}
+
+/** Keep an already visible TV control in place; the platform pivot otherwise scrolls the hero offscreen. */
+internal object TVBringIntoView:androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float=when {
+        size>containerSize->offset
+        offset<0f->offset
+        offset+size>containerSize->offset+size-containerSize
+        else->0f
+    }
 }

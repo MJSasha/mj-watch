@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class,androidx.compose.foundation.ExperimentalFoundationApi::class)
 package dev.mjwatch.designsystem
 
 import android.content.Intent
@@ -60,7 +60,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     val context=LocalContext.current.applicationContext
     val images=remember(state.config) {ImageLoader.Builder(context).okHttpClient(guardedClient(state.config)).build()}
     DisposableEffect(images) {onDispose {images.shutdown()}}
-    CompositionLocalProvider(LocalImages provides images) {WatchTheme(state.config.theme) {
+    CompositionLocalProvider(LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) TVBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
         val colors=MaterialTheme.colorScheme
         val activity=LocalContext.current as? android.app.Activity
         SideEffect {activity?.let {a->WindowCompat.getInsetsController(a.window,a.window.decorView).apply {isAppearanceLightStatusBars=colors.background.luminance()>.5;isAppearanceLightNavigationBars=colors.background.luminance()>.5};if(android.os.Build.VERSION.SDK_INT>=29) a.window.isNavigationBarContrastEnforced=false}}
@@ -616,11 +616,11 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     var elapsed by remember {mutableIntStateOf(0)}
     LaunchedEffect(s.busy) {while(s.busy) {delay(1000);elapsed++}}
     val artwork:@Composable ()->Unit={Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(if(tv) 1.4f else 2f).clip(RoundedCornerShape(20.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)}
-    val content:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {
+    val content:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(if(tv) 12.dp else 20.dp)) {
         Text(s.selectedMetadata?.title ?: s.selected?.displayTitle().orEmpty(),fontSize=12.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Heading(if(s.busy) "Готовим к просмотру" else "Не удалось подготовить поток")
         if(s.busy) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(18.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(18.dp)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 PreparationStep(Icons.Outlined.CheckCircle,"Раздача выбрана",s.selected?.resolution.orEmpty(),true)
                 HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.15f))
                 Row(horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp);Column {Text("Получаем информацию о файлах",fontWeight=FontWeight.Medium);Text("Ожидаем ответ TorrServer",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
@@ -629,7 +629,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
             }
             Text("Прошло $elapsed с. Подготовку можно отменить.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if(s.message.isNotBlank()) Text(s.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+        if(!s.busy&&s.message.isNotBlank()) Text(s.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
         if(!s.busy) {Icon(Icons.Outlined.CloudOff,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.error);Action("Повторить",tv,icon=Icons.Outlined.Refresh) {model.prepare()};Action("Подключения",tv,secondary=true,icon=Icons.Outlined.Settings) {model.page("connections")}}
         Action(if(s.busy) "Отменить" else "К раздачам",tv,if(tv) Modifier else Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Close) {model.back()}
     }}
@@ -640,6 +640,6 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 @Composable private fun PreparationStep(icon:ImageVector,title:String,subtitle:String,complete:Boolean) {
     Row(horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
         Icon(icon,null,tint=if(complete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-        Column {Text(title,fontWeight=FontWeight.Medium,color=if(complete) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant);Text(subtitle,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        Column {Text(title,fontWeight=FontWeight.Medium,lineHeight=22.sp,color=if(complete) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant);Text(subtitle,fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
