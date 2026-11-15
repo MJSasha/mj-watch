@@ -27,7 +27,7 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 
-@UnstableApi
+@androidx.annotation.OptIn(UnstableApi::class)
 class PlaybackActivity : ComponentActivity() {
     companion object {
         private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null
@@ -50,6 +50,10 @@ class PlaybackActivity : ComponentActivity() {
     private var retries=0
     private var panel: android.app.AlertDialog?=null
     private var startedAt=0L
+    private var playbackConfig:Config?=null
+    private val playbackSession=java.util.UUID.randomUUID().toString()
+    private var playbackSequence=0L
+    private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
     private lateinit var dao: WatchDao
     private lateinit var status: TextView
@@ -59,29 +63,35 @@ class PlaybackActivity : ComponentActivity() {
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        contentIdentity=intent.getStringExtra("contentKey") ?: ""
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
-        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).enableMultiInstanceInvalidation().build(); dao=db.dao()
+        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
         root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.CENTER))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==0) 4 else 0},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
         androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if(panel!=null) { panel?.dismiss(); panel=null } else finish() } })
         scope.launch {
-            val config=Settings(applicationContext).config.first()
+            val config=Settings(applicationContext).config.first();playbackConfig=config
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
-            if(!uri.startsWith("asset:")&&runCatching {uri.toHttpUrl().origin()==endpoint(config.torrServer).origin()}.getOrDefault(false)!=true) {
+            if(!uri.startsWith("asset:")&&runCatching {uri.toHttpUrl().origin()==endpoint(if(config.managed) config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true) {
                 status.text="Адрес сервера изменён. Вернитесь к карточке и выберите раздачу заново.";return@launch
             }
+            if(config.managed&&!uri.startsWith("asset:")) {
+                val checked=runCatching {withContext(Dispatchers.IO){ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}
+                if(checked.isFailure){status.text="Сессия недоступна. Вернитесь в аккаунт и проверьте подключение.";return@launch}
+                scope.launch(Dispatchers.IO) {while(isActive){delay(60_000);runCatching {ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}}
+            }
             val headers=mutableMapOf<String,String>()
-            val auth=SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
-            val http=OkHttpDataSource.Factory(guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap())).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
+            val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
+            val http=OkHttpDataSource.Factory((if(config.managed) managedClient(config,SecretStore(applicationContext)) else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
             player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(0)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
@@ -104,28 +114,28 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPlayerError(error: PlaybackException) {
                     save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
                     if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L; handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
-                    else { terminalError=true;status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Позиция сохранена. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
+                    else { terminalError=true;status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
                 }
             })
-            val progress=dao.progress().first().firstOrNull { it.key=="$releaseId|$path" }
+            val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
             player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState==null
             view.requestFocus()
-            while(isActive) { delay(5000); save()
+            while(isActive) { delay(10000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
                     if(elapsed>180_000) {terminalError=true;player.stop();status.text="Подготовка остановлена. Выберите другую раздачу."}
-                    else if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача. Позиция сохранена." }
+                    else if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача." }
                     else if(elapsed>30_000) status.text="Подготовка занимает больше времени · Назад — отменить"
                 }
             }
         }
     }
     private fun save(ended:Boolean=false): Job? {
-        if(!::player.isInitialized||released) return null
+        if(!::player.isInitialized||released||!firstFrame||playbackConfig?.historyEnabled!=true) return null
         val duration=player.duration.takeIf { it>0 }; val position=player.currentPosition.coerceAtLeast(0)
-        val p=Progress("$releaseId|$path",releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
-        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {dao.put(p)} } finally {saveMutex.unlock()} }
+        val p=Progress(contentIdentity.ifBlank {"$releaseId|$path"},releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
+        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {val config=playbackConfig!!;if(Settings(applicationContext).config.first().profileKey!=config.profileKey)return@withContext;val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao());engine.enqueue("progress",p.key,p.syncJson(),playSession=playbackSession,sequence=++playbackSequence);runCatching {engine.sync()}} } finally {saveMutex.unlock()} }
     }
     private fun tracks(anchor:android.view.View) {
         if(!::player.isInitialized) return
@@ -144,9 +154,15 @@ class PlaybackActivity : ComponentActivity() {
                 else preferences.edit().putString("subtitle-language",language).putBoolean("subtitles-off",false).apply()
                 builder.setTrackTypeDisabled(selected.first.type,false).setOverrideForType(TrackSelectionOverride(selected.first.mediaTrackGroup, selected.second))
             }; player.trackSelectionParameters=builder.build(); panel=null
+            val c=playbackConfig
+            if(c?.historyEnabled==true)scope.launch(Dispatchers.IO){
+                if(Settings(applicationContext).config.first().profileKey!=c.profileKey)return@launch
+                val value=org.json.JSONObject().put("quality",preferences.getString("quality","Все")).put("audioLanguage",preferences.getString("audio-language",null)).put("subtitleLanguage",if(preferences.getBoolean("subtitles-off",false))"off" else preferences.getString("subtitle-language",null))
+                runCatching {val engine=SyncEngine(ManagedApi(c,SecretStore(applicationContext)),db.syncDao());engine.enqueue("preferences","profile",value);engine.sync()}
+            }
         }.setOnDismissListener { panel=null; anchor.requestFocus() }.show()
     }
-    override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
+    override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&playbackConfig?.historyEnabled==true) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
     private fun releasePlayer() {if(!released) {released=true;session?.release();if(::player.isInitialized) player.release()}}
@@ -157,6 +173,8 @@ class PlaybackActivity : ComponentActivity() {
         scope.launch { pending?.join(); db.close(); scope.cancel() }
         super.onDestroy()
     }
+    // AndroidX exposes the platform Activity override through a restricted bridge.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event:KeyEvent):Boolean {
         if(::player.isInitialized&&event.action==KeyEvent.ACTION_DOWN&&(!controlsVisible||event.keyCode==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) when(event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> { player.seekBack(); controlsVisible=true; return true }

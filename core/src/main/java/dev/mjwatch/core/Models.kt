@@ -12,12 +12,12 @@ sealed interface TorrentInput {
     data class Magnet(val link:String):TorrentInput
     data class File(val bytes:ByteArray):TorrentInput
 }
-data class TorrentHandle(val hash: String, val files: List<TorrentFile>)
+data class TorrentHandle(val hash: String, val files: List<TorrentFile>,val contentHash:String?=null)
 data class StreamRequest(val uri: String, val headers: Map<String, String> = emptyMap())
 data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
 data class Config(val schemaVersion: Int = 1, val jackett: String = "", val indexers: String = "",
     val torrServer: String = "", val localHttp: Boolean = false, val demo: Boolean = false,
-    val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap(), val releaseApi:String="auto")
+    val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap(), val releaseApi:String="auto", val connectionMode:String="direct", val managedUrl:String="", val serverId:String="", val userId:String="")
 interface ReleaseRepository {
     suspend fun search(query: String): SearchResult
     suspend fun check(): String
@@ -48,3 +48,13 @@ object DemoGateway : StreamGateway {
         TorrentFile(3, "Сезон 1/Серия 01.mp4", 2_400_000), TorrentFile(9, "sample.mp4", 2_400_000)))
     override fun stream(handle: TorrentHandle, file: TorrentFile) = StreamRequest("asset:///demo.mp4")
 }
+
+val Config.managed get()=connectionMode=="managed"
+val Config.scope get()=if(managed&&serverId.isNotBlank()&&userId.isNotBlank()) "$serverId:$userId" else ""
+val Config.historyEnabled get()=managed&&scope.isNotBlank()
+
+fun contentKey(hash:String,path:String,size:Long):String {require(hash.matches(Regex("[a-fA-F0-9]{40}")));val normalized=path.replace('\\','/').split('/').filter {it.isNotEmpty()&&it!="."}.joinToString("/");require(normalized.split('/').none {it==".."});return "${hash.lowercase()}|$normalized|$size"}
+
+fun normalizeDirectAddress(raw:String):String {val value=raw.trim();if(value.isEmpty()||value.contains("://"))return value;require(value.none {it in "/?#@ \t\r\n"});val host=if(value.count {it==':'}>1&&!value.startsWith("[")) "[$value]" else value;val url=endpoint("http://$host");val port=if(url.port==80&&!Regex(":([0-9]+)$").containsMatchIn(host))8090 else url.port;val address=if(url.host.contains(':'))"[${url.host}]" else url.host;return "http://$address:$port"}
+
+val Config.profileKey get()="$connectionMode:$scope"

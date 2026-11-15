@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 class VerticalFlowTest {
  @get:Rule(order=0) val reset=object: org.junit.rules.ExternalResource() { override fun before() { kotlinx.coroutines.runBlocking { dev.mjwatch.core.Settings(InstrumentationRegistry.getInstrumentation().targetContext).save(dev.mjwatch.core.Config()) } } }
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
- @Test fun localVideoFirstFrameAndProgress() {
+ @Test fun localVideoFirstFrameWithoutHistory() {
     fun remoteClick(text:String) {
       val node=compose.onNodeWithText(text,substring=text=="Смотреть")
       node.performSemanticsAction(SemanticsActions.RequestFocus)
@@ -29,6 +29,9 @@ class VerticalFlowTest {
       UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(dir,"tv-$label.png"))
     }
     compose.waitForIdle()
+    compose.waitUntil(10000){compose.onAllNodesWithText("Демонстрация, импорт и экспорт").fetchSemanticsNodes().isNotEmpty()}
+    remoteClick("Демонстрация, импорт и экспорт")
+    compose.waitUntil(10000){compose.onAllNodesWithTag("settings-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Демонстрация с локальным видео"))
     compose.onNodeWithContentDescription("Демонстрация с локальным видео").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
@@ -64,12 +67,9 @@ class VerticalFlowTest {
     Thread.sleep(6000)
     UiDevice.getInstance(instrumentation).pressBack()
     compose.waitForIdle()
-    compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithText("Сохранено",substring=true).assertExists()
-    capture("saved-progress")
-    UiDevice.getInstance(instrumentation).pressBack()
-    compose.waitUntil(5000) {compose.onAllNodesWithTag("hero-open").fetchSemanticsNodes().isNotEmpty()}
-    compose.waitUntil(5000) {compose.onAllNodesWithTag("hero-open").fetchSemanticsNodes().any {it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) {false}}}
-    compose.onNodeWithTag("hero-open").assertIsFocused()
+    compose.runOnIdle {val model=androidx.lifecycle.ViewModelProvider(compose.activity)[dev.mjwatch.designsystem.WatchModel::class.java];Assert.assertTrue("Direct does not expose saved positions",model.progress.value.isEmpty());Assert.assertTrue(model.library.value.all {it.openedAt==0L})}
+    compose.onNodeWithTag("detail-resume").assertDoesNotExist()
+    capture("direct-no-history")
+
  }
 }

@@ -26,9 +26,9 @@ data class CachedMetadata(@PrimaryKey val id:String,val json:String,val updatedA
 @Dao interface WatchDao {
     @Query("SELECT * FROM metadataCache WHERE id=:id") suspend fun metadata(id:String):CachedMetadata?
     @Upsert suspend fun put(entry:CachedMetadata)
-    @Transaction suspend fun cacheMetadata(query:String,items:List<Metadata>,now:Long) {
-        items.forEach {put(CachedMetadata(it.id,it.json(),now))}
-        put(CachedMetadata("query:$query",org.json.JSONArray(items.map {it.id}).toString(),now))
+    @Transaction suspend fun cacheMetadata(query:String,items:List<Metadata>,now:Long,namespace:String="") {
+        items.forEach {put(CachedMetadata(if(namespace.isBlank())it.id else "$namespace:${it.id}",it.json(),now))}
+        put(CachedMetadata("query:$query",org.json.JSONArray(items.map {if(namespace.isBlank())it.id else "$namespace:${it.id}"}).toString(),now))
     }
     @Transaction suspend fun cachedMetadata(query:String):List<Metadata> {
         val row=metadata("query:$query") ?: return emptyList()
@@ -42,12 +42,24 @@ data class CachedMetadata(@PrimaryKey val id:String,val json:String,val updatedA
     @Transaction suspend fun toggleBookmark(value:LibraryEntry) {val old=entry(value.id) ?: value;put(old.copy(bookmarked=!old.bookmarked))}
     @Upsert suspend fun put(entry: LibraryEntry)
     @Upsert suspend fun put(progress: Progress)
+    @Query("DELETE FROM progress") suspend fun clearLegacyProgress()
+    @Query("UPDATE library SET openedAt=0 WHERE bookmarked=1") suspend fun preserveLegacyFavorites()
+    @Query("DELETE FROM library WHERE bookmarked=0") suspend fun clearLegacyOpenings()
+    @Transaction suspend fun clearLegacyHistory() {clearLegacyProgress();preserveLegacyFavorites();clearLegacyOpenings()}
     @Query("DELETE FROM library WHERE id=:id") suspend fun delete(id: String)
 }
-@Database(entities = [LibraryEntry::class, Progress::class,CachedMetadata::class], version = 2, exportSchema = false)
+@Database(entities = [LibraryEntry::class, Progress::class,CachedMetadata::class,SyncEntity::class,OutboxEntry::class,SyncCursor::class], version = 3, exportSchema = false)
 abstract class WatchDatabase : RoomDatabase() {
     abstract fun dao(): WatchDao
+    abstract fun syncDao(): SyncDao
     companion object {
+        val MIGRATION_2_3=object:androidx.room.migration.Migration(2,3) {
+            override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS syncEntity (scope TEXT NOT NULL, kind TEXT NOT NULL, entityKey TEXT NOT NULL, json TEXT NOT NULL, revision INTEGER NOT NULL, deleted INTEGER NOT NULL, PRIMARY KEY(scope,kind,entityKey))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS outbox (id TEXT NOT NULL PRIMARY KEY, scope TEXT NOT NULL, kind TEXT NOT NULL, entityKey TEXT NOT NULL, json TEXT NOT NULL, baseRevision INTEGER NOT NULL, operation TEXT NOT NULL, serverEpoch TEXT NOT NULL, historyEpoch INTEGER NOT NULL, playSession TEXT NOT NULL, sequence INTEGER NOT NULL, created INTEGER NOT NULL, conflict TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS syncCursor (scope TEXT NOT NULL PRIMARY KEY, serverEpoch TEXT NOT NULL, historyEpoch INTEGER NOT NULL, cursor INTEGER NOT NULL)")
+            }
+        }
         val MIGRATION_1_2=object:androidx.room.migration.Migration(1,2) {
             override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE library ADD COLUMN metadataId TEXT")
@@ -58,12 +70,14 @@ abstract class WatchDatabase : RoomDatabase() {
 }
 private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
 class Settings(private val context: Context) {
+    val legacyHistoryHandled=context.configStore.data.map {it[booleanPreferencesKey("legacy-history-handled")] ?: false}
+    suspend fun handleLegacyHistory(){context.configStore.edit {it[booleanPreferencesKey("legacy-history-handled")]=true}}
     val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()
     suspend fun destination(value:String) {require(value in setOf("home","search","library","history","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
     val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }.distinctUntilChanged()
     suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
 }
-fun encodeConfig(c: Config): String {
+fun encodeConfig(c: Config,includeAccount:Boolean=true): String {
     require(c.releaseApi in setOf("auto","torznab","jacred")) {"Неизвестный API поиска"}
     listOf(c.jackett,c.torrServer).filter {it.isNotBlank()}.forEach {endpoint(it)}
     val indexers=org.json.JSONArray()
@@ -72,7 +86,9 @@ fun encodeConfig(c: Config): String {
         validateTorznabPath(path)
         indexers.put(JSONObject().put("id",id).put("torznabPath",path).put("enabled",true))
     }
-    return JSONObject().put("schemaVersion",1).put("demo",c.demo)
+    require(c.connectionMode in setOf("direct","managed"))
+    if(c.managedUrl.isNotBlank()) require(endpoint(c.managedUrl).scheme=="https") {"MJWatch требует HTTPS"}
+    return JSONObject().put("schemaVersion",2).put("connectionMode",c.connectionMode).put("managedUrl",c.managedUrl).put("serverId",if(includeAccount)c.serverId else "").put("userId",if(includeAccount)c.userId else "").put("demo",c.demo)
         .put("jackett",JSONObject().put("baseUrl",c.jackett).put("api",c.releaseApi).put("credentialRef","jackett-api-key").put("indexers",indexers))
         .put("torrServer",JSONObject().put("baseUrl",c.torrServer).put("credentialRef","torrserver-auth").put("saveToDatabase",false))
         .put("metadata",JSONObject().put("provider",c.metadataProvider).put("language","ru-RU").put("credentialRef","metadata-api-token"))
@@ -80,7 +96,7 @@ fun encodeConfig(c: Config): String {
         .put("appearance",JSONObject().put("theme",c.theme).put("motion","system")).toString(2)
 }
 fun decodeConfig(raw: String): Config {
-    val j=JSONObject(raw);require(j.optInt("schemaVersion",1)==1) {"Неизвестная версия конфигурации"}
+    val j=JSONObject(raw);require(j.optInt("schemaVersion",1) in 1..2) {"Неизвестная версия конфигурации"}
     val jackett=j.optJSONObject("jackett");val server=j.optJSONObject("torrServer")
     val api=jackett?.optString("api","auto") ?: j.optString("releaseApi","auto")
     require(api in setOf("auto","torznab","jacred")) {"Неизвестный API поиска"}
@@ -95,7 +111,7 @@ fun decodeConfig(raw: String): Config {
         torrServer=server?.optString("baseUrl") ?: j.optString("torrServer"),
         localHttp=j.optJSONObject("network")?.optBoolean("localHttpOptIn") ?: j.optBoolean("localHttp"),
         demo=j.optBoolean("demo"),theme=j.optJSONObject("appearance")?.optString("theme","system") ?: j.optString("theme","system"),
-        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths,releaseApi=api)
+        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths,releaseApi=api,connectionMode=j.optString("connectionMode","direct").also {require(it in setOf("direct","managed"))},managedUrl=j.optString("managedUrl"),serverId=j.optString("serverId"),userId=j.optString("userId"))
 }
 
 fun Release.json(): String = JSONObject().put("id", id).put("title", title).put("source", source)

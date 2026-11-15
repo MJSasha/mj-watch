@@ -1,5 +1,7 @@
 # Проверенные контракты
 
+[Managed v1: HTTPS API, версии и схема данных](MANAGED-V1.md). Настройки TorrServer идут по SSH; TMDB управляется через HTTPS admin API.
+
 Jackett: v0.24.3067, commit 1dcaecd45170ff28769a2bd0f1af4979f1328abb.
 TorrServer: MatriX.150 (reference), MatriX.145.2 (предоставленный live server).
 SHA-256 изученных Go API 145.2 сохранены рядом, исходник https://github.com/YouROK/TorrServer/tree/MatriX.145.2/server.

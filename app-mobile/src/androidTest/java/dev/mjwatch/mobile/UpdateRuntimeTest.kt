@@ -35,7 +35,7 @@ class UpdateRuntimeTest {
     Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("retained")=="true")
     val c=InstrumentationRegistry.getInstrumentation().targetContext
     Assert.assertEquals("sentinel-only-for-test",SecretStore(c).get("acceptance-sentinel"))
-    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).build()
+    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
     try {
         Assert.assertNotNull(db.dao().entry("demo:orbit"))
         Assert.assertTrue(db.dao().progress().first().any {it.releaseId=="demo:orbit"&&it.positionMs>0})

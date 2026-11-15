@@ -9,6 +9,7 @@ kotlin { jvmToolchain(21); compilerOptions { jvmTarget.set(org.jetbrains.kotlin.
 dependencies {
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
  api("com.squareup.okhttp3:okhttp:4.12.0")
+ implementation("com.github.mwiede:jsch:0.2.26")
  api("androidx.room:room-runtime:2.8.4")
  implementation("androidx.room:room-ktx:2.8.4")
  ksp("androidx.room:room-compiler:2.8.4")

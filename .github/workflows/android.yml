@@ -22,6 +22,11 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+      - run: sh server/prepare-ci.sh --local-test
+      - run: sh server/check.sh
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :core:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug :app-mobile:assembleRelease :app-tv:assembleRelease --stacktrace
       - uses: actions/upload-artifact@v4
@@ -54,6 +59,10 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+      - run: sh server/prepare-ci.sh --local-test
       - uses: gradle/actions/setup-gradle@v4
       - run: echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - id: runtime
@@ -105,6 +114,12 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+      - run: sh server/prepare-ci.sh
+        env:
+          MJWATCH_RELEASE_SIGNING_KEY: ${{ secrets.MJWATCH_RELEASE_SIGNING_KEY }}
       - uses: gradle/actions/setup-gradle@v4
       - name: Sign and publish immutable testing release
         env:

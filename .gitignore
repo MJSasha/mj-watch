@@ -10,3 +10,6 @@ tmp/
 dist/
 
 .codex-attachments/
+
+core/src/main/assets/server/
+**/__pycache__/

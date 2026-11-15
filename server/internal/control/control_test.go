@@ -1,0 +1,58 @@
+package control
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestSettingsRevisionMergeAndUnknownFields(t *testing.T) {
+	settings := map[string]any{"CacheSize": float64(64 << 20), "ReaderReadAHead": float64(95), "PreloadCache": float64(50), "UnknownFutureField": "keep"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/echo" {
+			w.Write([]byte("MatriX.145.2"))
+			return
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if r.URL.Path == "/torrents" {
+			json.NewEncoder(w).Encode([]any{})
+			return
+		}
+		if body["action"] == "set" {
+			settings = body["sets"].(map[string]any)
+		} else {
+			json.NewEncoder(w).Encode(settings)
+		}
+	}))
+	defer srv.Close()
+	ctl := TorrControl{URL: srv.URL, StateDir: t.TempDir()}
+	snapshot, e := ctl.Read()
+	if e != nil {
+		t.Fatal(e)
+	}
+	input := Apply{ID: "operation-123456789", Revision: snapshot["revision"].(string), Confirmed: true, Changes: map[string]any{"PreloadCache": float64(25)}}
+	got, e := ctl.Apply(input)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if settings["UnknownFutureField"] != "keep" || settings["PreloadCache"] != float64(25) {
+		t.Fatal(settings)
+	}
+	if _, e = ctl.Apply(input); e != nil {
+		t.Fatal("receipt retry", e)
+	}
+	input.ID = "another-123456789"
+	if _, e = ctl.Apply(input); e == nil {
+		t.Fatal("stale revision accepted")
+	}
+	if got["settings"] == nil {
+		t.Fatal(got)
+	}
+	for _, bad := range []map[string]any{{"PreloadCache": float64(101)}, {"ReaderReadAHead": float64(4)}, {"EnableDLNA": true}, {"CacheSize": "$(touch /tmp/exploit)"}, {"DisableTCP": "false"}} {
+		if Validate(bad) == nil {
+			t.Fatal("accepted invalid", bad)
+		}
+	}
+}

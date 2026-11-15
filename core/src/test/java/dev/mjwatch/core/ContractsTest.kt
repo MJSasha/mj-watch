@@ -149,7 +149,7 @@ class ContractsTest {
         old.execSQL("INSERT INTO library VALUES ('old','Old title','fixture',123,1,'')")
         old.execSQL("INSERT INTO progress VALUES ('old|file','old',17,'file',12345,90000,456,0)")
         old.version=1;old.close()
-        val db=androidx.room.Room.databaseBuilder(context,WatchDatabase::class.java,name).addMigrations(WatchDatabase.MIGRATION_1_2).build()
+        val db=androidx.room.Room.databaseBuilder(context,WatchDatabase::class.java,name).addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
         try {assertTrue(db.dao().entry("old")!!.bookmarked);assertEquals(12345L,db.dao().progress().first().single().positionMs);assertNull(db.dao().entry("old")!!.metadataId)
             db.dao().put(CachedMetadata("fixture","{}",1));assertNotNull(db.dao().metadata("fixture"))
         } finally {db.close();context.deleteDatabase(name)}

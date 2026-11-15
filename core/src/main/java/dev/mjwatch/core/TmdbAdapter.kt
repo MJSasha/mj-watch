@@ -35,13 +35,13 @@ fun metadataFromJson(raw:String):Metadata {val j=JSONObject(raw)
     return Metadata(j.getString("id"),j.getString("title"),optional("poster"),optional("overview"),j.optString("kind","movie"),if(j.isNull("year")) null else j.getInt("year"),optional("backdrop"),j.optBoolean("animation"),optional("originalLanguage"))
 }
 data class MetadataResult(val items:List<Metadata>,val cached:Boolean)
-class MetadataRepository(private val adapter:MetadataAdapter,private val dao:WatchDao) {
-    suspend fun search(query:String)=load("search:$query") {adapter.search(query)}
-    suspend fun home(force:Boolean=false)=load("home",force) {adapter.home()}
+class MetadataRepository(private val adapter:MetadataAdapter,private val dao:WatchDao,private val namespace:String="") {
+    suspend fun search(query:String)=load("${if(namespace.isBlank()) "" else "$namespace:"}search:$query") {adapter.search(query)}
+    suspend fun home(force:Boolean=false)=load("${if(namespace.isBlank()) "" else "$namespace:"}home",force) {adapter.home()}
     private suspend fun load(query:String,force:Boolean=false,request:suspend ()->List<Metadata>):MetadataResult {
         val row=dao.metadata("query:$query")
         if(!force&&row!=null&&System.currentTimeMillis()-row.updatedAt<86_400_000) return MetadataResult(dao.cachedMetadata(query),true)
-        return try {val items=request();dao.cacheMetadata(query,items,System.currentTimeMillis());MetadataResult(items,false)}
+        return try {val items=request();dao.cacheMetadata(query,items,System.currentTimeMillis(),namespace);MetadataResult(items,false)}
         catch(e:CancellationException) {throw e}
         catch(e:Exception) {val cached=dao.cachedMetadata(query);if(cached.isEmpty()) throw e else MetadataResult(cached,true)}
     }

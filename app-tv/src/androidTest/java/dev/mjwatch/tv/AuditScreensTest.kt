@@ -28,7 +28,7 @@ class AuditScreensTest {
     c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
     val art="android.resource://${c.packageName}/"+c.resources.getIdentifier("demo_orbit","drawable",c.packageName)
     item=Metadata("tmdb:movie:999999999","Тихая орбита",art,"Вымышленный фильм для проверки интерфейса. На далёкой станции исследовательница принимает неожиданный сигнал.",year=2026,backdrop=art)
-    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).build()
+    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
     try {
       val now=System.currentTimeMillis()
       db.dao().cacheMetadata("home",listOf(item,item.copy(id="tmdb:movie:999999998",title="Архив звёзд",year=2025)),now)

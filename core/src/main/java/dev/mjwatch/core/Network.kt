@@ -33,7 +33,7 @@ class NetworkPolicyFailure(message:String):IOException(message)
 fun Config.usesJacred():Boolean = releaseApi=="jacred" || (releaseApi=="auto" && runCatching {endpoint(jackett).host in setOf("jac.red","www.jac.red")}.getOrDefault(false))
 /** Applied to control requests, redirects and Media3 via the same OkHttp client. No cross-origin redirects. */
 fun guardedClient(config: Config): OkHttpClient {
-    val allowed = (listOf(config.jackett, config.torrServer) + if(config.metadataProvider=="tmdb") listOf("https://api.themoviedb.org", "https://image.tmdb.org") else emptyList()).filter { it.isNotBlank() }.map { endpoint(it).origin() }.toSet()
+    val allowed = (listOf(config.jackett, if(config.managed) config.managedUrl else config.torrServer) + if(!config.managed&&config.metadataProvider=="tmdb") listOf("https://api.themoviedb.org", "https://image.tmdb.org") else emptyList()).filter { it.isNotBlank() }.map { endpoint(it).origin() }.toSet()
     return OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false)
         .dns(object : Dns { override fun lookup(host: String): List<InetAddress> = Dns.SYSTEM.lookup(host).also { addresses ->
@@ -49,7 +49,7 @@ fun guardedClient(config: Config): OkHttpClient {
             chain.proceed(if(r.header("User-Agent")==null) r.newBuilder().header("User-Agent","MJWatch/0.2.1 (Android)").build() else r)
         }.build()
 }
-class HttpFailure(val status:Int,val retryAfterSeconds:Long?=null):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";429 -> "HTTP 429: слишком частые запросы. ${retryAfterSeconds?.let {"Повторите через $it с"} ?: "Подождите и повторите поиск"}";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
+class HttpFailure(val status:Int,val retryAfterSeconds:Long?=null,val responseBody:String?=null):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";429 -> "HTTP 429: слишком частые запросы. ${retryAfterSeconds?.let {"Повторите через $it с"} ?: "Подождите и повторите поиск"}";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
 suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
@@ -63,7 +63,7 @@ suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, al
                 }
                 if(!r.isSuccessful) {
                     val retry=r.header("Retry-After")?.let {value -> value.toLongOrNull() ?: runCatching {java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond()-java.time.Instant.now().epochSecond}.getOrNull()}?.coerceAtLeast(0)
-                    throw HttpFailure(r.code,retry)
+                    throw HttpFailure(r.code,retry,r.peekBody(65536).string())
                 }
                 val b=r.body ?: throw IOException("Пустой ответ")
                 require(b.contentLength() <= limit) { "Ответ превышает лимит" }
@@ -267,6 +267,22 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
     }
 }
 fun safeError(e: Throwable): String = when(e) {
+    is HttpFailure -> when(runCatching {JSONObject(e.responseBody ?: "{}").optString("code")}.getOrDefault("")) {
+        "provider_disabled"->"Каталог выключен владельцем. Поиск раздач и просмотр доступны."
+        "credential_missing"->"Владелец ещё не настроил TMDB"
+        "credential_rejected","provider_credential_rejected"->"TMDB отклонил ключ. Прежний ключ не заменён."
+        "provider_rate_limited"->"TMDB ограничил запросы. Повторите позже."
+        "provider_unavailable"->"TMDB временно недоступен. Поиск раздач работает."
+        "admin_required"->"Для этой операции нужны права администратора"
+        "revision_conflict","conflict"->"Данные изменились на другом устройстве. Перечитайте перед применением."
+        "resync_required","history_epoch_changed"->"Состояние сервера изменилось. Очередь требует проверки."
+        "last_owner"->"Последнего владельца нельзя удалить или заблокировать"
+        "database_quota"->"База достигла лимита. Данные остаются в очереди устройства."
+        "playback_outcome_unknown"->"Результат добавления не подтверждён. Проверьте сервер перед новым запросом."
+        "invalid_credentials"->"Неверное имя пользователя или пароль"
+        "invite_invalid"->"Приглашение истекло или уже использовано"
+        else->e.message ?: "Ошибка сервера"
+    }
     is java.net.SocketTimeoutException, is TimeoutCancellationException -> "Время ожидания истекло"
     is IllegalArgumentException -> "Проверьте адрес, параметры и разрешение локального HTTP"
     else -> e.message?.takeIf { !it.contains(Regex("(?i)(https?://|magnet:|apikey|authorization)")) }?.take(180) ?: "Не удалось выполнить запрос"

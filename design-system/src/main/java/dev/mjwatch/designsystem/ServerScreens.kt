@@ -1,0 +1,246 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+package dev.mjwatch.designsystem
+import android.app.Activity
+import android.app.KeyguardManager
+import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.mjwatch.core.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import org.json.JSONObject
+import java.util.UUID
+
+@Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,registerBack:((()->Unit)?)->Unit) {
+ val controller=model.managed;val account by controller.state.collectAsState();val managed=if(account.scope==s.config.scope)account else account.copy(me=null,data=null,pending=emptyList());val page=s.page
+ var confirm by remember {mutableStateOf<Pair<String,()->Unit>?>(null)}
+ var dirty by remember(page) {mutableStateOf(false)}
+ var leave by remember {mutableStateOf(false)}
+ val back:()->Unit={if(dirty)leave=true else model.back()}
+ DisposableEffect(page,dirty){registerBack(back);onDispose{registerBack(null)}}
+ BackHandler {back()}
+ if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
+ confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
+ LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
+ val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance"->"admin/status";"managed-account"->"devices";else->null}
+ LaunchedEffect(page,s.config.scope){if(load!=null&&s.config.historyEnabled)controller.load(load)}
+ val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+  if(managed.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+  when(page) {
+   "connection-choice"->{
+    Text("Как подключиться",fontSize=28.sp,fontWeight=FontWeight.Bold)
+    Text("Выберите способ просмотра. Источник раздач настраивается отдельно.")
+    SettingsGroup(tv) {
+     SettingsActionRow(Icons.Outlined.Dns,"Готовый TorrServer","По IP или URL. Без истории.",tv) {confirm="Сохранить прежнюю локальную историю отдельно? В direct она скрыта и не обновляется." to {controller.direct(false);model.page("settings-server")}}
+     SettingsDivider();SettingsActionRow(Icons.Outlined.Cloud,"Войти на сервер MJWatch","История и каталог на ваших устройствах",tv) {model.page("managed-login")}
+     SettingsDivider();SettingsActionRow(Icons.Outlined.Terminal,"Установить сервер","Нужны IP, root и SSH-пароль",tv) {model.page("server-install")}
+    }
+    Action("Демонстрация, импорт и экспорт",tv,secondary=true){model.page("connections")}
+    Action("Удалить прежнюю локальную историю",tv,secondary=true){confirm="Будут удалены прежние открытия и позиции. Избранное сохранится." to {controller.direct(true);model.page("settings-server")}}
+   }
+   "managed-login"->{
+    var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
+    Text("Войти на сервер MJWatch",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    ServerField(url,{url=it;dirty=true},"HTTPS-адрес MJWatch")
+    ServerField(name,{name=it;dirty=true},"Имя пользователя")
+    ServerSecret(password,{password=it;dirty=true},"Пароль")
+    Action("Войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&url.isNotBlank()&&name.isNotBlank()&&password.isNotBlank()){dirty=false;controller.login(url,name,password);password=""}
+    Action("Войти по коду TV",tv,secondary=true,enabled=!managed.busy&&url.isNotBlank()){controller.startPairing(url)}
+    managed.pairing?.let {pair->Text(pair.getString("code"),fontSize=48.sp,fontWeight=FontWeight.Bold);Text("Код действует 5 минут. На вошедшем устройстве откройте «Аккаунт и синхронизация → Добавить телевизор».");Action("Отменить вход по коду",tv,secondary=true){controller.cancelPairing()}}
+    TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Приглашение и CA сервера")}
+    if(advanced){ServerSecret(invite,{invite=it;dirty=true},"Одноразовое приглашение");Action("Принять приглашение",tv,enabled=!managed.busy&&invite.isNotBlank()&&password.length>=10){dirty=false;controller.login(url,name,password,invite);password="";invite=""};ServerField(ca,{ca=it},"Публичный CA из доверенного приглашения",singleLine=false)
+     if(ca.isNotBlank()){val fingerprint=runCatching {val cert=java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(ca.byteInputStream());java.security.MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString(":"){"%02X".format(it)}}.getOrNull();Text(fingerprint ?: "Некорректный CA");Action("Доверять этому CA для сервера",tv,secondary=true,enabled=fingerprint!=null){confirm="Сверьте отпечаток CA с владельцем через доверенный канал: $fingerprint" to {runCatching {model.secrets.put("ca:${endpoint(url).origin()}",ca)};ca=""}}}
+    }
+   }
+   "managed-account"->{
+    Text(managed.me?.optString("name") ?: "Аккаунт",fontSize=26.sp,fontWeight=FontWeight.Bold);Text(s.config.managedUrl)
+    Text(managed.message.ifBlank {"Проверяем синхронизацию"});Text("В очереди: ${managed.pending.size}")
+    Action("Синхронизировать",tv,enabled=!managed.busy){controller.syncNow()}
+    val history by model.scopedLibrary.collectAsStateWithLifecycle()
+    managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->
+     val local=JSONObject(pending.json);val remote=runCatching{JSONObject(pending.conflict).optJSONObject("entity")?.optJSONObject("value")}.getOrNull()
+     val title=history.entries.firstOrNull {it.id==local.optString("releaseId")}?.title ?: local.optString("title",local.optString("path",pending.entityKey))
+     SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+      Text("Конфликт · $title")
+      if(pending.kind=="progress"){
+       Text("${android.os.Build.MODEL}: ${local.optLong("positionMs")/1000} с")
+       Text("${remote?.optString("deviceName","Сервер") ?: "Сервер"}: ${remote?.optLong("positionMs")?.div(1000) ?: "нет позиции после очистки или восстановления"}")
+      }else Text("Изменения на этом устройстве отличаются от серверной версии.")
+      Action("Использовать серверную",tv,secondary=true){controller.resolve(pending,false)}
+      Action("Использовать эту",tv){confirm="Отправить изменения этого устройства против актуальной серверной ревизии?" to {controller.resolve(pending,true)}}
+     }}
+    }
+    managed.data?.optJSONArray("devices")?.let {rows->for(index in 0 until rows.length()){val device=rows.getJSONObject(index);SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Devices,device.getString("name"),if(device.optBoolean("revoked")) "Отозвано" else "Отозвать устройство",tv){confirm="Отозвать сессии ${device.getString("name")}?" to {controller.action("devices/${device.getString("id")}","DELETE",reload="devices")}}}}}
+    var code by remember {mutableStateOf("")};ServerField(code,{code=it},"Код телевизора");Action("Проверить телевизор",tv,secondary=true,enabled=code.matches(Regex("[0-9]{6}"))){controller.action("pairing/lookup","POST",JSONObject().put("code",code))}
+    managed.data?.optJSONObject("pairing")?.let {pair->Text("Устройство: ${pair.getString("device")} · Пользователь: ${managed.me?.optString("name")}");Action("Добавить телевизор",tv){confirm="Подтвердить ${pair.getString("device")} для ${managed.me?.optString("name")}?" to {controller.action("pairing/${pair.getString("code")}/approve","POST",JSONObject().put("code",pair.getString("code")),reload="devices");code=""}}}
+    var legacyCount by remember {mutableIntStateOf(0)};LaunchedEffect(Unit){legacyCount=model.dao.library().first().count {it.openedAt>0}}
+    Action("Импорт прежней истории · $legacyCount",tv,secondary=true,enabled=!managed.busy){confirm="Импортировать $legacyCount записей и прежние позиции на ${s.config.managedUrl} пользователю ${managed.me?.optString("name")}?" to {controller.importLegacy()}}
+    Action("Выйти и скрыть локальный кэш",tv,secondary=true){confirm="Выйти? Неотправленная очередь останется изолированной для этого аккаунта." to {controller.logout(false);model.page("connection-choice")}}
+    Action("Выйти и очистить кэш аккаунта",tv,secondary=true){confirm="Удалить локальный кэш и очередь этого аккаунта?" to {controller.logout(true);model.page("connection-choice")}}
+   }
+   "server-overview"->{
+    Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
+    Text(s.config.managedUrl);Text(if(managed.me?.optString("role")=="admin") "Администратор" else "Проверяем права")
+    managed.data?.let {data->Text("TorrServer: ${if(data.optBoolean("torrserverHealthy")) "работает" else "недоступен"}");Text("База: ${if(data.optBoolean("databaseHealthy")) "проверена" else "ошибка"} · Потоков: ${data.optInt("activeStreams")}")}
+    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,"Открыть",tv){model.page(destination)};SettingsDivider()}}
+   }
+   "server-users"->{
+    Text("У каждого своя история",fontSize=24.sp,fontWeight=FontWeight.Bold)
+    var selectedUser by remember {mutableStateOf("")}
+    managed.data?.optJSONArray("devices")?.let {devices->Text("Устройства пользователя");for(index in 0 until devices.length()){val device=devices.getJSONObject(index);SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Devices,device.getString("name"),"Последняя активность: ${java.time.Instant.ofEpochSecond(device.optLong("lastSeen"))}",tv){confirm="Отозвать это устройство?" to {controller.action("admin/users/$selectedUser/devices/${device.getString("id")}","DELETE",reload="admin/users/$selectedUser/devices")}}}}}
+    val rows=managed.data?.optJSONArray("users")
+    if(rows!=null)for(index in 0 until rows.length()){val user=rows.getJSONObject(index);val id=user.getString("id");SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text(user.getString("name"),fontSize=20.sp);Text(user.getString("role")+if(user.optBoolean("blocked")) " · Заблокирован" else "");Action("Устройства",tv,secondary=true){selectedUser=id;controller.load("admin/users/$id/devices")};Action("Отозвать приглашение",tv,secondary=true){confirm="Отозвать ещё не использованное приглашение?" to {controller.action("admin/users/$id/invite","DELETE",reload="admin/users")}};Action("Создать приглашение",tv,secondary=true,enabled=user.getString("role")=="user"){controller.action("admin/users/$id/invite","POST")};Action("Отозвать устройства",tv,secondary=true){confirm="Отозвать все устройства ${user.getString("name")}?" to {controller.action("admin/users/$id/devices","DELETE",reload="admin/users")}};Action(if(user.optBoolean("blocked")) "Разблокировать" else "Заблокировать",tv,secondary=true){confirm="Изменить доступ ${user.getString("name")}?" to {controller.action("admin/users/$id","PATCH",JSONObject().put("blocked",!user.optBoolean("blocked")),reload="admin/users")}};Action("Удалить пользователя",tv,secondary=true){confirm="Удалить пользователя, его историю и отозвать устройства? Уже сохранённые офлайн-данные удалённо стереть нельзя." to {controller.action("admin/users/$id","DELETE",reload="admin/users")}}}}}
+    managed.data?.optString("invite")?.takeIf {it.isNotBlank()}?.let {Text("Одноразовое приглашение, 24 часа");SelectionContainerCompat(it);val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager;Action("Скопировать приглашение",tv,secondary=true){val packet=JSONObject().put("url",s.config.managedUrl).put("invite",it).put("ca",model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"));clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Приглашение MJWatch",packet.toString()))}}
+    var name by remember {mutableStateOf("")};ServerField(name,{name=it;dirty=true},"Имя нового пользователя");Action("Добавить пользователя",tv,enabled=name.isNotBlank()&&!managed.busy){dirty=false;controller.action("admin/users","POST",JSONObject().put("name",name));name=""};Action("Обновить список",tv,secondary=true){controller.load("admin/users")}
+   }
+   "server-tmdb"->{
+    var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
+    LaunchedEffect(managed.data){managed.data?.optJSONObject("settings")?.let {data->enabled=data.optBoolean("enabled");language=data.optString("language","ru-RU");cache=data.optLong("cacheMiB",256).toString();revision=managed.data!!.optString("revision");dirty=false}}
+    Text("TMDB и каталог",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Ключ хранится на сервере. Сохранённый ключ не возвращается приложению.")
+    Text(if(managed.data?.optJSONObject("settings")?.optBoolean("credentialConfigured")==true) "Ключ настроен" else "Ключ не настроен");managed.data?.optString("lastCheckedAt")?.toLongOrNull()?.takeIf{it>0}?.let{Text("Последняя успешная проверка: ${java.time.Instant.ofEpochSecond(it)}")}
+    ServerToggle("Использовать TMDB",enabled){enabled=it;dirty=true};ServerField(language,{language=it;dirty=true},"Язык каталога, например ru-RU");ServerField(cache,{cache=it;dirty=true},"Лимит кэша, МиБ · 1–1024");ServerSecret(credential,{credential=it;dirty=true},"Новый Read Access Token или API key v3")
+    fun body()=JSONObject().put("enabled",enabled).put("language",language).put("cacheMiB",cache.toLongOrNull() ?: 0).put("credential",credential)
+    Action("Проверить и применить",tv,enabled=!managed.busy&&dirty&&revision.isNotBlank()&&(cache.toLongOrNull() ?: 0) in 1L..1024L){val input=body();credential="";controller.action("admin/tmdb","PATCH",input,revision,"admin/tmdb")}
+    Action("Проверить подключение",tv,secondary=true,enabled=!managed.busy){val input=body();credential="";controller.action("admin/tmdb/check","POST",input,reload="admin/tmdb")}
+    Action("Очистить кэш",tv,secondary=true){confirm="Очистить кэш метаданных и изображений?" to {controller.action("admin/tmdb/cache","DELETE",reload="admin/tmdb")}}
+    Action("Удалить ключ и отключить",tv,secondary=true){confirm="Удалить серверный ключ TMDB и отключить каталог?" to {credential="";controller.action("admin/tmdb/credential","DELETE",reload="admin/tmdb")}}
+   }
+   "server-retention"->{
+    var days by remember{mutableStateOf("0")};var limit by remember{mutableStateOf("1024")};var keep by remember{mutableStateOf("7")};var hour by remember{mutableStateOf("3")};var enabled by remember{mutableStateOf(false)};var phrase by remember{mutableStateOf("")};var revision by remember{mutableStateOf("")}
+    LaunchedEffect(managed.data){managed.data?.optJSONObject("settings")?.let {v->days=v.optInt("historyDays").toString();limit=v.optLong("databaseLimitMiB",1024).toString();keep=v.optInt("backupKeep",7).toString();hour=v.optInt("backupHourUTC",3).toString();enabled=v.optBoolean("backupEnabled");revision=managed.data!!.getString("revision");dirty=false}}
+    Text("Хранение и расписание копий",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    ServerField(days,{days=it;dirty=true},"Хранить историю, дней · 0 без ограничения");ServerField(limit,{limit=it;dirty=true},"Лимит базы, МиБ · от 32");ServerToggle("Ежедневная резервная копия",enabled){enabled=it;dirty=true};ServerField(hour,{hour=it;dirty=true},"Час запуска, UTC · 0–23");ServerField(keep,{keep=it;dirty=true},"Хранить последних плановых копий · 1–365");ServerSecret(phrase,{phrase=it;dirty=true},"Новая парольная фраза плановых копий")
+    Text("Парольная фраза не включается в архив. Сохраните её отдельно для восстановления.")
+    Action("Сохранить",tv,enabled=dirty&&!managed.busy&&revision.isNotBlank()){val body=JSONObject().put("historyDays",days.toIntOrNull() ?: -1).put("databaseLimitMiB",limit.toLongOrNull() ?: -1).put("backupKeep",keep.toIntOrNull() ?: -1).put("backupHourUTC",hour.toIntOrNull() ?: -1).put("backupEnabled",enabled).put("backupPassphrase",phrase);phrase="";controller.action("admin/settings","PATCH",body,revision,"admin/settings")}
+   }
+   "server-history"->{
+    Text("История и резервные копии",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    Action("Хранение и расписание копий",tv,secondary=true){model.page("server-retention")}
+    Text("Копия на сервере не защищает от потери диска. Архив шифруется отдельной парольной фразой восстановления.")
+    var downloadId by remember{mutableStateOf("")};var password by remember{mutableStateOf("")};val context=LocalContext.current
+    val downloader=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")){uri->if(uri!=null){val out=context.contentResolver.openOutputStream(uri);if(out!=null)controller.downloadBackup(downloadId,password,out)};password=""}
+    ServerSecret(password,{password=it},"Пароль владельца для скачивания · повторная проверка")
+    Text("Если пароль владельца ещё не задан, установите его по SSH в обслуживании.")
+    var passphrase by remember {mutableStateOf("")};ServerSecret(passphrase,{passphrase=it},"Парольная фраза архива · от 16 символов")
+    Action("Создать копию",tv,enabled=passphrase.length>=16&&!managed.busy){val pass=passphrase;passphrase="";controller.action("admin/backups","POST",JSONObject().put("passphrase",pass),reload="admin/backups")}
+    managed.data?.optJSONArray("backups")?.let {rows->for(index in 0 until rows.length()){val backup=rows.getJSONObject(index);Text("${backup.getString("id")} · ${backup.getLong("size")} байт");Action("Скачать зашифрованную копию",tv,secondary=true,enabled=password.isNotBlank()&&!managed.busy){downloadId=backup.getString("id");downloader.launch(downloadId)}}}
+    Action("Очистить мою историю",tv,secondary=true){confirm="Очистить открытия и позиции только текущего аккаунта? Избранное сохранится, старая очередь будет отклонена." to {controller.action("history","DELETE");controller.syncNow()}}
+   }
+   "server-maintenance"->{Text("Обслуживание",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Версия сервера: ${managed.data?.optString("version") ?: "не проверена"}");Text("Обновление, restart и восстановление выполняются только по SSH владельца.");SshPanel(s,model,tv,false)}
+   "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);Text("Дайте SSH-доступ. Установим TorrServer и MJWatch, настроим защиту и подключение.");SshPanel(s,model,tv,true)}
+   "server-torr"->{Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false,settings=true,onDirty={dirty=it})}
+  }
+  if(managed.message.isNotBlank()) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+ }
+ }
+ BoxWithConstraints(Modifier.fillMaxSize()) {
+  if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
+   Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    listOf("Обзор" to "server-overview","Пользователи" to "server-users","TorrServer" to "server-torr","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
+   }
+   Box(Modifier.weight(1f)){content()}
+  }else content()
+ }
+}
+@Composable private fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
+@Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
+ Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
+  Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  OutlinedTextField(value,onChange,singleLine=singleLine,modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=RoundedCornerShape(14.dp))
+ }
+}
+@Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String){
+ var visible by remember{mutableStateOf(false)}
+ Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
+  Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  OutlinedTextField(value,onChange,singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=RoundedCornerShape(14.dp),trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
+ }
+}
+@Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){Row(Modifier.fillMaxWidth().heightIn(min=48.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,Modifier.weight(1f).padding(end=12.dp));Switch(value,onChange,Modifier.semantics {contentDescription=label})}}
+
+@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,onDirty:(Boolean)->Unit={}) {
+ val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
+ val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
+ val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
+ var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
+ var ready by remember{mutableStateOf(false)}
+ var activeCount by remember{mutableStateOf<Int?>(null)};var restoreWarning by remember{mutableStateOf(false)}
+ var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
+ fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
+ fun perform(block:suspend (SshTarget)->Unit){if(busy)return;busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
+ fun askConfirmation(action:()->Unit){if(busy)return;busy=true;scope.launch{try{activeCount=if(install)null else withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams")};confirmation=action}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
+ fun operation(action:String,target:String=""):String {val key="maintenance:${s.config.scope}:$action:$target";return model.secrets.get(key).ifBlank{UUID.randomUUID().toString().also{model.secrets.put(key,it)}}}
+ val unlock=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){if(it.resultCode==Activity.RESULT_OK){password=if(install)runCatching{JSONObject(model.secrets.get(pendingKey)).getString("password")}.getOrDefault("") else model.secrets.get("sshPassword:${s.config.scope}");message="SSH-доступ разблокирован на этой странице"}}
+ if(install&&ready){Text("Сервер готов. Приложение уже подключено.",fontSize=28.sp,fontWeight=FontWeight.Bold);Text("TorrServer и MJWatch проверены. Вы вошли как владелец. Источник раздач настраивается отдельно.");Action("Открыть приложение",tv,Modifier.fillMaxWidth()){model.page("home")};Action("Настроить TMDB",tv,secondary=true){model.page("server-tmdb")};Action("Пригласить пользователей",tv,secondary=true){model.page("server-users")};return}
+ if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
+ ServerField(host,{host=it},"IP или домен сервера");ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
+ if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
+ TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
+ ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
+ if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+ if(install){
+  if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
+  if(advanced)Action("Восстановить запуск по SSH",tv,secondary=true,enabled=!busy){askConfirmation{perform{target->ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("recovery")).put("confirmed",true));connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
+  Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){perform{target->ssh.install(target);if(save)model.secrets.put(pendingKey,JSONObject().put("host",target.host).put("port",target.port).put("password",target.password).toString());message="Установка запущена. Можно закрыть приложение; job продолжится на сервере.";var result:JSONObject;do{delay(3000);result=ssh.status(target);message=installationLabel(result)}while(result.optString("state")=="running");require(result.optString("state")=="installed"){installationLabel(result)};connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}
+  Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){perform{target->var result:JSONObject;do{result=ssh.status(target);message=installationLabel(result);if(result.optString("state")=="running")delay(3000)}while(result.optString("state")=="running");require(result.optString("state")=="installed"){installationLabel(result)};connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}
+ }else if(settings){
+  if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));val result=ssh.apply(target,pending);data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён по фактическому состоянию"}}
+  Action("Прочитать по SSH",tv,enabled=!busy){perform{target->val read=ssh.read(target);read.put("activeStreams",ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());onDirty(false);message="Прочитано с сервера"}}
+  data?.let {snapshot->Text("Версия: ${snapshot.optString("version")} · Потоков: ${snapshot.optInt("activeStreams")}");val fields=snapshot.optJSONArray("fields")
+   if(fields!=null&&draft!=null)for(index in 0 until fields.length()){val field=fields.getJSONObject(index);val name=field.getString("name");val label=field.getString("label");if(!draft!!.has(name))continue
+    if(field.optString("unit")=="path"){ServerField(draft!!.optString(name),{draft=JSONObject(draft.toString()).put(name,it);onDirty(true)},label+" · /var/lib/torrserver-mjwatch/cache")}else if(field.optBoolean("boolean")){val negative=field.optBoolean("negative");ServerToggle(label,draft!!.optBoolean(name).let{if(negative)!it else it}){value->draft=JSONObject(draft.toString()).put(name,if(negative)!value else value);onDirty(true)}}else{var value by remember(draft?.opt(name)){mutableStateOf((if(name=="CacheSize")draft!!.optLong(name)/1048576 else draft!!.optLong(name)).toString())};ServerField(value,{value=it;draft=JSONObject(draft.toString()).put(name,it.toLongOrNull()?.let {number->if(name=="CacheSize")runCatching{Math.multiplyExact(number,1048576L)}.getOrNull() else number} ?: it);onDirty(true)},if(name=="CacheSize") "$label · МиБ (${field.optLong("min")/1048576}–${field.optLong("max")/1048576})" else "$label · ${field.optString("unit")} (${field.optLong("min")}–${field.optLong("max")})")}
+   }
+   Action("Заводские настройки",tv,secondary=true,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Defaults применены и перечитаны"}}}
+   Action("Сбросить изменения",tv,secondary=true){draft=JSONObject(snapshot.getJSONObject("settings").toString());onDirty(false)}
+   Action("Применить по SSH",tv,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val changes=JSONObject();val before=snapshot.getJSONObject("settings");draft!!.keys().forEach {key->if(draft!!.get(key)!=before.opt(key))changes.put(key,draft!!.get(key))};val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",changes).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Применено и перечитано"}}}
+  }
+ }else{
+  val bundles=remember {ServerBundles(context)}
+  var release by remember {mutableStateOf(runCatching {bundles.active().manifest()}.getOrNull())}
+  val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){busy=true;scope.launch {try{release=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use {bundles.import(it)}};message="Подпись и контрольные суммы поставки проверены"}catch(e:Exception){message=safeError(e)}finally{busy=false}}}}
+  Text("Поставка сервера: ${release?.optString("version") ?: "не найдена"} · ${release?.optString("channel") ?: ""}")
+  Text("Обновления сервера устанавливаются отдельно от APK. Перед сменой версии создаётся зашифрованная копия.")
+  Action("Импортировать подписанную поставку .zip",tv,secondary=true,enabled=!busy){importer.launch(arrayOf("application/zip","application/octet-stream"))}
+  Action("Использовать встроенную поставку",tv,secondary=true,enabled=!busy){bundles.useBundled();release=runCatching{bundles.active().manifest()}.getOrNull()}
+  var archive by remember{mutableStateOf("")};var passphrase by remember{mutableStateOf("")};var ownerPassword by remember{mutableStateOf("")}
+  Action("Перезапустить сервисы по SSH",tv,enabled=!busy){askConfirmation {perform{target->val result=ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("restart")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:restart:","");message=if(result.optBoolean("verified")) "Перезапуск и проверка подтверждены" else "Требуется проверка"}}}
+  Action("Очистить кэш TorrServer",tv,secondary=true,enabled=!busy){askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","clear-cache").put("operationId",operation("clear-cache")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:clear-cache:","");message="Кэш очищен, сервисы проверены"}}}
+  ServerSecret(ownerPassword,{ownerPassword=it},"Новый пароль владельца · от 10 символов")
+  Action("Установить пароль владельца по SSH",tv,secondary=true,enabled=ownerPassword.length>=10&&!busy){perform{target->ssh.ownerPassword(target,s.config.userId,ownerPassword);ownerPassword="";message="Пароль владельца установлен"}}
+  ServerSecret(passphrase,{passphrase=it},"Парольная фраза резервной копии")
+  Action("Установить версию ${release?.optString("version") ?: ""}",tv,enabled=!busy&&passphrase.length>=16){askConfirmation {perform{target->ssh.update(target,passphrase,operation("update",release?.optString("version").orEmpty()));model.secrets.put("maintenance:${s.config.scope}:update:${release?.optString("version").orEmpty()}","");passphrase="";message="Обновление и проверка подтверждены"}}}
+  ServerField(archive,{archive=it},"Имя архива на сервере, .mjwb")
+  Action("Восстановить по SSH",tv,secondary=true,enabled=!busy&&passphrase.length>=16&&archive.endsWith(".mjwb")){restoreWarning=true;askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","restore").put("operationId",operation("restore",archive)).put("confirmed",true).put("archive",archive).put("passphrase",passphrase));passphrase="";model.secrets.put("installOperation:${target.host}:${target.port}",UUID.randomUUID().toString());connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
+ }
+ if(message.isNotBlank())Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+ if(trust!=null)AlertDialog(onDismissRequest={trust=null},title={Text(if(trust!!.changed)"SSH host key изменился" else "Проверьте SSH host key")},text={Column{Text(trust!!.fingerprint);Text("Сверьте отпечаток с консолью провайдера. Изменение ключа может означать подмену сервера.");if(trust!!.changed)ServerField(verifiedFingerprint,{verifiedFingerprint=it},"Отпечаток из доверенной консоли")}},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),enabled=!trust!!.changed||verifiedFingerprint==trust!!.fingerprint,onClick={ssh.trust(target(),trust!!.fingerprint);trust=null;message="Доверие сохранено. Повторите операцию."}){Text("Доверять проверенному ключу")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={trust=null}){Text("Отмена")}})
+ if(confirmation!=null)AlertDialog(onDismissRequest={confirmation=null},title={Text("Влияние на просмотр")},text={Text((if(restoreWarning) "Восстановление заменит данные состоянием из архива и отзовёт все сессии и приглашения. Устройствам потребуется повторный вход. " else "")+"Активных потоков по последней проверке: ${activeCount ?: "неизвестно"}. Операция может прервать видео. Продолжить?")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={val action=confirmation;confirmation=null;restoreWarning=false;action?.invoke()}){Text("Продолжить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirmation=null;restoreWarning=false}){Text("Отмена")}})
+}
+private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchModel,save:Boolean,message:(String)->Unit){
+ val key="installOperation:${target.host}:${target.port}";var operation=model.secrets.get(key);if(operation.isBlank()){operation=UUID.randomUUID().toString();model.secrets.put(key,operation)}
+ val bootstrap=ssh.bootstrap(target,operation);val host=if(target.host.contains(':'))"[${target.host}]" else target.host;val url="https://$host${bootstrap.getString("listen")}";val c=model.state.value.config.copy(connectionMode="managed",managedUrl=url,serverId="",userId="",demo=false)
+ model.secrets.put("ca:${endpoint(url).origin()}",bootstrap.getString("ca"));val api=ManagedApi(c,model.secrets);api.saveTokens(bootstrap);val me=api.authorized("me");require(me.getString("role")=="admin");val status=api.authorized("admin/status");require(status.getBoolean("databaseHealthy")&&status.getBoolean("torrserverHealthy"));api.authorized("admin/probe","POST")
+ model.managed.connected(c,bootstrap)
+ if(save){val id=me.getString("serverId")+":"+me.getString("userId");model.secrets.put("ssh:$id",JSONObject().put("host",target.host).put("port",target.port).toString());model.secrets.put("sshPassword:$id",target.password)}
+ message("Сервер готов. Приложение уже подключено.")
+}
+
+private fun installationLabel(result:JSONObject):String {val stage=when(result.optString("stage")){"checking"->"Проверяем сервер";"installing_torrserver"->"Устанавливаем TorrServer";"installing_mjwatch"->"Устанавливаем MJWatch";"securing"->"Настраиваем защиту и автозапуск";"verifying","awaiting_app_verification"->"Проверяем и подключаем приложение";"failed"->"Установка прервана";else->"Проверяем состояние"};return stage+result.optString("code").takeIf{it.isNotBlank()}?.let{" · $it"}.orEmpty()}

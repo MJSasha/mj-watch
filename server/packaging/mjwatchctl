@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+[ "$(id -u)" = 0 ] || exit 1
+case "$*" in
+ 'torrserver operation') exec python3 /opt/mjwatch/operation.py torr-status ;;
+ 'start operation') exec python3 /opt/mjwatch/operation.py start ;;
+ 'maintenance operation') exec python3 /opt/mjwatch/operation.py maintenance-status ;;
+ 'torrserver settings read') exec /opt/mjwatch/current/mjwatch torrserver /etc/mjwatch/config.json read ;;
+ 'torrserver settings apply') exec /opt/mjwatch/current/mjwatch torrserver /etc/mjwatch/config.json apply ;;
+ 'identity') exec /opt/mjwatch/current/mjwatch identity /etc/mjwatch/config.json ;;
+ 'bootstrap') exec /opt/mjwatch/current/mjwatch bootstrap /etc/mjwatch/config.json ;;
+ 'owner password') exec /opt/mjwatch/current/mjwatch password /etc/mjwatch/config.json ;;
+ 'status') cat /var/lib/mjwatch-install/status.json ;;
+ 'cancel') touch /var/lib/mjwatch-install/cancel ;;
+ 'maintenance') exec python3 /opt/mjwatch/current/maintenance.py ;;
+ 'restart') exec systemctl restart mjwatch.service mjwatch-torrserver.service ;;
+ *) exit 64 ;;
+esac

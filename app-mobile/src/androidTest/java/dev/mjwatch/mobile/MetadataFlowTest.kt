@@ -16,8 +16,8 @@ class MetadataFlowTest {
  private val item=Metadata("tmdb:movie:999999999","Тихая орбита",null,"Вымышленный фильм для fixture-проверки.",year=2026)
  @get:Rule(order=0) val seed=object:org.junit.rules.ExternalResource() {override fun before()=runBlocking {
     val c=InstrumentationRegistry.getInstrumentation().targetContext
-    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).build()
-    try {db.dao().delete(item.id);db.dao().cacheMetadata("home",listOf(item),System.currentTimeMillis());db.dao().cacheMetadata("search:${item.title}",listOf(item),System.currentTimeMillis())} finally {db.close()}
+    val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
+    try {db.dao().delete(item.id);db.dao().cacheMetadata("direct:home",listOf(item),System.currentTimeMillis(),"direct");db.dao().cacheMetadata("direct:search:${item.title}",listOf(item),System.currentTimeMillis(),"direct")} finally {db.close()}
     Settings(c).save(Config(demo=true,metadataProvider="tmdb"));Settings(c).destination("home")
  }}
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
@@ -37,7 +37,7 @@ class MetadataFlowTest {
     compose.onNodeWithTag("source-continue").assertIsDisplayed()
     compose.onNodeWithTag("source-continue").performClick()
     compose.waitUntil(10000) {model.state.value.page=="files"}
-    compose.waitUntil(5000) {model.library.value.any {it.id==DemoReleases.items.first().id&&it.metadataId==item.id}}
+    compose.runOnIdle {Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse("Direct opening does not create history",model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
     Assert.assertEquals(3,model.state.value.handle!!.files.single {it.path.endsWith("01.mp4")}.serverFileId)
  }
 }
