@@ -31,19 +31,43 @@ for platform in mobile tv; do
   test "$ACTUAL_CERT" = "$(cat scripts/test-signing-cert.sha256)" || { echo 'Unexpected signing certificate'; exit 1; }
 done
 python3 scripts/build_update_manifest.py --dist dist --tag "$TAG" --version-code "$VERSION_CODE" --version-name "$VERSION_NAME"
+SERVER_VERSION=$(python3 -c 'import json; print(json.load(open("core/src/main/assets/server/manifest.json"))["version"])')
+SERVER_SUPPLY="dist/server/mjwatch-$SERVER_VERSION-supply.zip"
+test -f "$SERVER_SUPPLY"
+python3 - "$SERVER_SUPPLY" <<'PY'
+import hashlib, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+with pathlib.Path('dist/SHA256SUMS.txt').open('a') as out:
+    out.write(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n')
+PY
 cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-Тестовая сборка MJWatch $VERSION_NAME.
+MJWatch $VERSION_NAME — управляемый сервер и синхронизация.
 
 - Телефон/планшет: MJWatch-mobile.apk
 - Android TV: MJWatch-tv.apk
+- Подписанная серверная поставка: mjwatch-$SERVER_VERSION-supply.zip
 - Проверка обновлений: Настройки → Обновления.
-- Подпись совместима с локальной тестовой версией 0.2.1; данные сохраняются при обновлении.
+- Подпись APK совместима с предыдущими тестовыми выпусками; приложение обновляется с сохранением данных.
 - Android требует разрешение на установку из MJWatch и подтверждение установки.
+
+Что изменилось:
+- Два режима: direct к готовому TorrServer и managed с аккаунтами, историей и синхронизацией.
+- В direct новые открытия и позиции больше не сохраняются. Избранное остаётся. Старая история сохраняется до явного выбора; импорт в managed выполняется отдельно.
+- Нативная установка TorrServer и MJWatch по root SSH, настройки сервера, пользователи и вход TV по коду.
+- Каталог TMDB через HTTPS-сервис; общий ключ не передаётся клиентам.
+- Версия сервера $SERVER_VERSION не зависит от APK: подписанный ZIP импортируется из приложения, установка сопровождается encrypted backup и проверкой отката.
+- Существующие настройки источников, плеера, оформления и обновлений APK сохранены.
+
+Проверки: unit/lint/build, серверные race/vet, phone/TV runtime; локально также проверены реальный TorrServer, установка Debian 12 arm64, чистое восстановление, обновление и откат, планшет и шрифт 200%.
+
+Ограничения тестового канала: live-матрица Ubuntu/amd64, реальный TMDB-ключ и полный TalkBack не подтверждены. Сервер поддерживает схему БД 1; будущие схемы требуют миграций. Отдельная production signing identity не вводится.
+
+Подробный отчёт: https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/testing/SERVER-MANAGEMENT-V1.md
 
 Исходники: $GITHUB_SHA. Контрольные суммы: SHA256SUMS.txt.
 EOF
 if [[ "${MJWATCH_DRY_RUN:-false}" == "true" ]]; then
   echo 'Signed APKs and update manifest verified; publication skipped in local dry run.'
 else
-  gh release create "$TAG" dist/MJWatch-mobile.apk dist/MJWatch-tv.apk dist/update.json dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "MJWatch $VERSION_NAME" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
+  gh release create "$TAG" dist/MJWatch-mobile.apk dist/MJWatch-tv.apk dist/update.json dist/SHA256SUMS.txt "$SERVER_SUPPLY" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "MJWatch $VERSION_NAME" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
 fi
