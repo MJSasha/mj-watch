@@ -2,7 +2,7 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.and
 android {
  namespace = "dev.mjwatch.tv"
  compileSdk = 36
- defaultConfig { minSdk = 26; applicationId = "dev.mjwatch.tv"; targetSdk = 36; versionCode = 3; versionName = "0.2.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; }
+ defaultConfig { minSdk = 26; applicationId = "dev.mjwatch.tv"; targetSdk = 36; versionCode = providers.gradleProperty("mjwatchVersionCode").get().toInt(); versionName = providers.gradleProperty("mjwatchVersionName").get(); testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { compose = true }
  buildTypes { getByName("release") { isMinifyEnabled = false } }

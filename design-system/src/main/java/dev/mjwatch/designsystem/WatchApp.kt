@@ -51,6 +51,7 @@ private val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image load
 private val destinations=listOf(Destination("home","Главная",Icons.Outlined.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Outlined.Bookmarks),Destination("settings","Настройки",Icons.Outlined.Settings))
 
 @Composable fun WatchApp(model:WatchModel,tv:Boolean) {
+    AutomaticUpdates(model.updates)
     val state by model.state.collectAsStateWithLifecycle()
     val library by model.library.collectAsStateWithLifecycle()
     val progress by model.progress.collectAsStateWithLifecycle()
@@ -160,6 +161,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     var featured by remember {mutableStateOf<Metadata?>(null)}
     val catalogue=s.catalog.filter {m -> when(category) {"Фильмы" -> m.kind=="movie"&&!m.animation;"Аниме" -> m.animation&&m.originalLanguage=="ja";"Мультфильмы" -> m.animation&&m.originalLanguage!=null&&m.originalLanguage!="ja";else -> true}}
     LazyColumn(Modifier.testTag("home-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+        item {UpdateSection(model.updates,tv,compact=true)}
         if(s.config.demo) item {
             val heroFocus=remember {FocusRequester()}
             LaunchedEffect(s.focusKey) {if(tv&&s.focusKey.startsWith("hero:")) {delay(100);heroFocus.requestFocus()}}
@@ -437,7 +439,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         item { Action("Экспорт конфигурации",tv) {if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"} }
         item { Action("Импорт конфигурации",tv) {importer.launch(arrayOf("application/json"))} }
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
-        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch 0.2.1 · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {HorizontalDivider();UpdateSection(model.updates,tv)}
+        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch ${model.updates.versionName} · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported;key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
 }
