@@ -48,6 +48,14 @@ WantedBy=multi-user.target
  path=pathlib.Path('/etc/systemd/system')/name
  if path.exists() and not (ROOT/'owned').exists(): raise RuntimeError('existing_unit_conflict')
  path.write_text(text);path.chmod(0o644)
+def check_platform(os_release):
+ # Distribution versions alone do not describe the tools used by this installer.
+ if os_release.get('ID') not in ('debian','ubuntu'):raise RuntimeError('unsupported_os')
+ if sys.version_info<(3,9):raise RuntimeError('unsupported_python')
+ arch={'x86_64':'amd64','aarch64':'arm64'}.get(platform.machine())
+ if not arch or not pathlib.Path('/run/systemd/system').is_dir():raise RuntimeError('unsupported_system')
+ if any(shutil.which(command) is None for command in ('apt-get','systemctl','useradd','id','chown')):raise RuntimeError('missing_system_tools')
+ return arch
 def main():
  if os.geteuid()!=0:raise RuntimeError('root_required')
  ROOT.mkdir(mode=0o700,exist_ok=True)
@@ -57,16 +65,14 @@ def main():
   fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
   status('checking')
   os_release={k:v.strip('"') for k,v in (line.strip().split('=',1) for line in pathlib.Path('/etc/os-release').read_text().splitlines() if '=' in line)}
-  if (os_release.get('ID'),os_release.get('VERSION_ID')) not in [('debian','12'),('ubuntu','24.04')]:raise RuntimeError('unsupported_os')
-  arch={'x86_64':'amd64','aarch64':'arm64'}.get(platform.machine())
-  if not arch or not pathlib.Path('/run/systemd/system').is_dir():raise RuntimeError('unsupported_system')
+  arch=check_platform(os_release)
   if os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')<2_000_000_000 or shutil.disk_usage('/var/lib').free<2*1024**3:raise RuntimeError('insufficient_resources')
   request=json.loads((ROOT/'request.json').read_text());host=request['host']
   if len(host)>253 or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:-' for c in host):raise RuntimeError('invalid_host')
   run('apt-get','update');run('apt-get','install','-y','openssl','ca-certificates','curl')
   run('openssl','dgst','-sha256','-verify',str(UPLOAD/'release-public.pem'),'-signature',str(UPLOAD/'manifest.sig'),str(UPLOAD/'manifest.json'))
   manifest=json.loads((UPLOAD/'manifest.json').read_text())
-  if not __import__('re').fullmatch('[0-9]+\.[0-9]+\.[0-9]+',manifest['version']) or manifest.get('apiVersion',1)!=1 or manifest.get('schemaVersion')!=1 or manifest['torrserverVersion']!='MatriX.145.2':raise RuntimeError('manifest_version')
+  if not __import__('re').fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',manifest['version']) or manifest.get('apiVersion',1)!=1 or manifest.get('schemaVersion')!=1 or manifest['torrserverVersion']!='MatriX.145.2':raise RuntimeError('manifest_version')
   for entry in manifest['files']:
    path=UPLOAD/entry['path']
    if path.is_symlink() or not path.resolve().is_relative_to(UPLOAD.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest()!=entry['sha256']:raise RuntimeError('supply_integrity')

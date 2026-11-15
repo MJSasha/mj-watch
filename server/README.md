@@ -19,7 +19,7 @@ sh server/check.sh
 
 ## Install from the native app
 
-Choose connection → automatic installation. Enter host, root SSH password and optionally SSH port. Independently compare the SSH fingerprint with the provider console before trusting it. Supported installer targets are Debian 12 / Ubuntu 24.04, systemd, amd64/arm64, at least 2 GiB RAM/free disk; tested combinations are listed in the acceptance report.
+Choose connection → automatic installation. Enter host, root SSH password and optionally SSH port. Independently compare the SSH fingerprint with the provider console before trusting it. The installer accepts Debian and Ubuntu without a VERSION_ID allowlist, including Ubuntu 26.04. It checks actual prerequisites: Python 3.9+, active systemd, apt-get/systemctl/useradd/id/chown, amd64/arm64, at least 2 GB RAM and 2 GiB free disk. Package repositories must be usable. Other distributions and derivative IDs are not assumed compatible merely from ID_LIKE. Accepted OS versions are not a live-tested support matrix: actual full installation evidence remains Debian 12 arm64; newer Ubuntu/Debian admission is covered by fixtures. See the acceptance reports.
 
 The app uploads verified files and starts a detached systemd job. Reopening the installation page can resume/query actual state. No terminal is required for the user. Installer creates separate service accounts, loopback-only authenticated TorrServer, a private CA, scoped firewall rules, owner bootstrap, certificate renewal timer and autostart. Existing services/accounts/path conflicts stop installation. Repeating the same version preserves users/data. A version change uses the signed update workflow. Jackett/JacRed and optional TMDB are configured separately.
 

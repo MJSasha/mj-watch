@@ -28,7 +28,9 @@ fun installationError(error:Throwable):String=when(error) {
  else -> safeError(error)
 }
 fun installationFailure(code:String):String=when(code) {
- "unsupported_os" -> "Нужен Debian 12 или Ubuntu 24.04. Другие версии пока не поддерживаются."
+ "unsupported_os" -> "Автоустановка рассчитана на Debian и Ubuntu с apt и systemd."
+ "unsupported_python" -> "Для автоустановки нужен Python 3.9 или новее."
+ "missing_system_tools" -> "Не найдены необходимые системные команды: apt-get, systemctl, useradd, id или chown."
  "unsupported_system" -> "Нужен Linux amd64/arm64 с systemd."
  "insufficient_resources" -> "Недостаточно ресурсов: нужно 2 ГБ памяти и 2 ГиБ свободного места."
  "cancelled_at_safe_boundary" -> "Установка остановлена на безопасной границе. Её можно продолжить."
