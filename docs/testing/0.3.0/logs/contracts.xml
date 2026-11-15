@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.mjwatch.core.ContractsTest" tests="21" skipped="0" failures="0" errors="0" timestamp="2026-11-15T15:31:19.421Z" hostname="Mac" time="8.238">
+  <properties/>
+  <testcase name="jackettMagnetDownloadRedirectIsResolvedWithoutFollowing" classname="dev.mjwatch.core.ContractsTest" time="2.819"/>
+  <testcase name="jacredEmptyCredentialsAndSourcesUseJsonWithoutCaps" classname="dev.mjwatch.core.ContractsTest" time="0.035"/>
+  <testcase name="configExportHasNoSecrets" classname="dev.mjwatch.core.ContractsTest" time="0.011"/>
+  <testcase name="definitiveAuthFailureDoesNotRepeatAddOrProbe" classname="dev.mjwatch.core.ContractsTest" time="0.014"/>
+  <testcase name="baseUrlValidation" classname="dev.mjwatch.core.ContractsTest" time="0.005"/>
+  <testcase name="openingDoesNotOverwriteBookmarkOrProgress" classname="dev.mjwatch.core.ContractsTest" time="0.142"/>
+  <testcase name="localHttpPolicyReasonSurvivesAsyncFailureAndHtmlIsRejected" classname="dev.mjwatch.core.ContractsTest" time="0.015"/>
+  <testcase name="xmlUnicodeOptionalAndDedupe" classname="dev.mjwatch.core.ContractsTest" time="0.007"/>
+  <testcase name="serverFileIdsAndUrlEncoding" classname="dev.mjwatch.core.ContractsTest" time="0.008"/>
+  <testcase name="recorded145Upload" classname="dev.mjwatch.core.ContractsTest" time="0.004"/>
+  <testcase name="magnetParameterOrder" classname="dev.mjwatch.core.ContractsTest" time="0.004"/>
+  <testcase name="advertisedPaginationAndCapabilityCache" classname="dev.mjwatch.core.ContractsTest" time="0.014"/>
+  <testcase name="xmlErrorDtdMalformedAndLimits" classname="dev.mjwatch.core.ContractsTest" time="0.025"/>
+  <testcase name="jacredJsonContractAndConfigRoundTrip" classname="dev.mjwatch.core.ContractsTest" time="0.005"/>
+  <testcase name="rateLimitRetriesLookupOnceAndRespectsLongCooldown" classname="dev.mjwatch.core.ContractsTest" time="0.016"/>
+  <testcase name="partialSourcesAndCancellation" classname="dev.mjwatch.core.ContractsTest" time="5.025"/>
+  <testcase name="redirectIsRejectedAndCredentialsNotForwarded" classname="dev.mjwatch.core.ContractsTest" time="0.015"/>
+  <testcase name="schemaMigrationPreservesHistoryAndProgress" classname="dev.mjwatch.core.ContractsTest" time="0.041"/>
+  <testcase name="handoffConfigSchemaAndPaths" classname="dev.mjwatch.core.ContractsTest" time="0.006"/>
+  <testcase name="bencodeValidation" classname="dev.mjwatch.core.ContractsTest" time="0.007"/>
+  <testcase name="metadataParserAndOfflineCache" classname="dev.mjwatch.core.ContractsTest" time="0.018"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

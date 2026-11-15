@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.UpdateRuntimeTest:.
+
+Time: 0.015
+
+OK (1 test)
+
+

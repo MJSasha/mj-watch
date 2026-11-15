@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "channel": "testing",
+  "versionCode": 1012,
+  "versionName": "0.3.0-test.12",
+  "publishedAt": "2026-11-15T15:36:09.643789+00:00",
+  "releaseUrl": "https://github.com/MJSasha/mj-watch/releases/tag/test-12",
+  "packages": {
+    "mobile": {
+      "packageName": "dev.mjwatch.mobile",
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-12/MJWatch-mobile.apk",
+      "sha256": "51d0cc6d1d08433f4fab6ddb5cdc51fe6959eda79edc3131b10f45fca1a38cad",
+      "size": 22212093
+    },
+    "tv": {
+      "packageName": "dev.mjwatch.tv",
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-12/MJWatch-tv.apk",
+      "sha256": "6f2c09c976ce52890a0762ce51a3bcf3eb35d81995ac53aa4b9586df74db20b7",
+      "size": 22212093
+    }
+  }
+}

@@ -1,0 +1,9 @@
+11-15 16:22:22.100  2068  2082 I System.out: MJWatch upgrade proof: candidate package/version/hash/certificate verified; wrong certificate rejected
+11-15 16:22:22.143  2068  2082 I System.out: MJWatch upgrade proof: encrypted sentinel, history and progress retained
+11-15 16:34:24.127  2139  2153 I System.out: MJWatch upgrade proof: candidate package/version/hash/certificate verified; wrong certificate rejected
+11-15 16:34:24.172  2139  2153 I System.out: MJWatch upgrade proof: encrypted sentinel, history and progress retained
+11-15 16:37:15.006  2190  2204 I System.out: MJWatch published update proof: from=4, to=1012, bytes=22212093, verified=true
+11-15 16:37:16.354  2190  2204 I System.out: MJWatch published update proof: unknown-sources settings opened
+11-15 16:37:56.745  2309  2323 I System.out: MJWatch published update proof: from=4, to=1012, bytes=22212093, verified=true
+11-15 16:37:57.958  2309  2323 I System.out: MJWatch published update proof: native package installer opened
+11-15 16:38:49.663  2475  2488 I System.out: MJWatch upgrade proof: encrypted sentinel, history and progress retained

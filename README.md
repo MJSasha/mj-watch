@@ -1,6 +1,6 @@
 # MJWatch
 
-Нативный Kotlin-клиент для телефона/планшета и Android TV, версия 0.2.1. Два APK, общие данные и Media3. Дизайн и критерии: [design/HANDOFF.md](design/HANDOFF.md). Текущее состояние: [STATUS.md](STATUS.md), доказательства и ограничения: [отчёт приёмки](docs/testing/ACCEPTANCE-REPORT.md).
+Нативный Kotlin-клиент для телефона/планшета и Android TV, ветка 0.3.0. Два APK, общие данные и Media3. Дизайн и критерии: [design/HANDOFF.md](design/HANDOFF.md). Текущее состояние: [STATUS.md](STATUS.md), доказательства и ограничения: [отчёт приёмки](docs/testing/ACCEPTANCE-REPORT.md).
 
 ## Сборка
 
@@ -12,7 +12,7 @@ JDK 21, Android SDK 36, Gradle wrapper 8.13. Укажите `sdk.dir` в лок�
 ./gradlew :app-mobile:assembleRelease :app-tv:assembleRelease
 ```
 
-Debug APK: `app-mobile/build/outputs/apk/debug/app-mobile-debug.apk` и `app-tv/build/outputs/apk/debug/app-tv-debug.apk`. Release APK unsigned; production signing и публикация не настроены. Пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime. minSdk 26 — заявленный минимум сборки, конкретная runtime-матрица в отчёте.
+Debug APK: `app-mobile/build/outputs/apk/debug/app-mobile-debug.apk` и `app-tv/build/outputs/apk/debug/app-tv-debug.apk`. Локальный release APK unsigned. Подписанные тестовые APK публикуются автоматически в [GitHub Releases](https://github.com/MJSasha/mj-watch/releases); production signing не настроен. Пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime. minSdk 26 — заявленный минимум сборки, конкретная runtime-матрица в отчёте.
 
 ## Первый запуск
 
@@ -35,10 +35,14 @@ TMDB — отдельная необязательная настройка. В�
 adb -s emulator-PORT shell am instrument -w -e class dev.mjwatch.mobile.LiveTorrServerTest -e server http://TEST-HOST:PORT dev.mjwatch.mobile.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-GitHub Actions запускает unit/lint/debug/release сборки и phone/TV runtime tests. APK и отчёты сохраняются как workflow artifacts, GitHub Releases не публикуются. Секреты серверов CI не нужны.
+GitHub Actions запускает unit/lint/debug/release сборки и phone/TV runtime tests. APK и отчёты сохраняются как workflow artifacts; после зелёных проверок main подписанные APK публикуются в GitHub Releases. Секреты серверов CI не нужны.
 
 ## JacRed (начиная с 0.2.1)
 
 Для публичного сервиса: адрес `https://jac.red`, режим «Авто» или «JacRed JSON», API-ключ и индексаторы можно оставить пустыми, если сервис не требует авторизации. Для своего JacRed выберите «JacRed JSON» явно. В режиме Torznab пустые индексаторы также означают `all`.
 
 Для локального TorrServer введите его LAN URL с портом и включите «Разрешить HTTP». Если Android не разрешает имя `.local`, используйте LAN IP. HTTP403 означает отказ сервера: приложение показывает код; доступность jac.red зависит от самого сервиса/сети и не гарантируется тестами на fixtures.
+
+## Обновления
+
+Один раз установите APK своей платформы из [Releases](https://github.com/MJSasha/mj-watch/releases) поверх 0.2.1. Дальше: Настройки → Обновления. Проверка при запуске автоматическая (не чаще раза в 15 минут), скачивание по кнопке, установка с подтверждением Android. Подпись совместима с ранее выданными локальными APK. Подробности и процесс выпуска: [docs/UPDATES.md](docs/UPDATES.md).

@@ -61,3 +61,11 @@
 - Итоговая API36 регрессия: 4 tests OK — HTTP JacRed fixtures, cancel/secrets, fake progress/resume и live TorrServer с доступным Sintel MP4 (magnet/upload/first frame). Оба APK debug/release + lint + 21 core tests проходят локально.
 - Live Android API36: check JacRed OK, поиск Sintel дал 12 результатов без ключа. Выбранный небольшой torrent принят MatriX.145.2, но остался `Torrent getting info`, файлов 0; через 60 секунд получен metadata timeout. Первый кадр именно этой раздачи не подтверждён. [Отчёт 0.2.1](docs/testing/0.2.1/REPORT.md) отделяет этот результат от успешных fixture/MP4 проверок.
 - Финальный [CI 43727812428](https://github.com/MJSasha/mj-watch/actions/runs/43727812428), `9ee2120`: build, phone API35 и TV API36 — success. Предыдущий запуск выявил гонку нового UI-теста между async save и переходом в поиск; тест теперь ждёт главную страницу, затем поле поиска. Код APK остаётся `7f3496e`.
+
+## GitHub publication / updates — 0.3.0 testing
+
+- Реализован отдельный updater: auto check при старте/возврате (15-minute throttle), manual check, выбор mobile/TV, прогресс/отмена, проверка SHA256/size/package/version/certificate, узкий FileProvider, native permission + installer. Секреты серверов не передаются GitHub.
+- По явному подтверждению пользователя текущая совместимая тестовая подпись сохранена в Actions Secret. В source private key отсутствует; CI проверяет публичный fingerprint. Подпись production не заявляется.
+- [Первый релиз test-12](https://github.com/MJSasha/mj-watch/releases/tag/test-12), versionCode1012: оба подписанных APK, update.json, SHA256SUMS. [CI #12](https://github.com/MJSasha/mj-watch/actions/runs/43729640745) — build/phone/TV/publish success.
+- Android API36: real GitHub download → integrity/signature verification → permission settings → native UPDATE → code1012 installed. После обновления сохранены Room history/progress и зашифрованный sentinel. Неверная подпись отклоняется. Локальные unit tests: 27 OK.
+- [Отчёт и логи](docs/testing/0.3.0/REPORT.md), [инструкция выпуска](docs/UPDATES.md). В 0.2.1 updater отсутствует: первый новый APK ставится вручную поверх; затем обновления доступны из приложения. Подтверждение Android остаётся обязательным.

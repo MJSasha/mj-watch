@@ -1,6 +1,6 @@
 package dev.mjwatch.core
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -12,6 +12,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.security.MessageDigest
+import okio.buffer
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[35],manifest=Config.NONE)
@@ -70,6 +71,28 @@ class UpdatesTest {
             source.download(update,file) {progress=it};assertEquals(3L,progress)
             assertTrue(runCatching {source.download(update.copy(sha256="0".repeat(64)),file) {}}.isFailure)
             assertTrue(runCatching {source.download(update.copy(size=2),file) {}}.isFailure)
+        } finally {file.delete()}
+    }
+    @Test fun cancelledStreamClosesAndStopsWriting()=runBlocking {
+        val closed=java.util.concurrent.atomic.AtomicBoolean(false)
+        val body=object:ResponseBody() {
+            private val stream=object:okio.Source {
+                override fun read(sink:okio.Buffer,byteCount:Long):Long {Thread.sleep(10);val n=minOf(byteCount,32768).toInt();sink.write(ByteArray(n));return n.toLong()}
+                override fun timeout()=okio.Timeout.NONE
+                override fun close() {closed.set(true)}
+            }.buffer()
+            override fun contentType()="application/octet-stream".toMediaType()
+            override fun contentLength()=-1L
+            override fun source()=stream
+        }
+        val source=GitHubUpdates(client {request->Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("fixture").body(body).build()})
+        val file=File.createTempFile("mj-cancel",".apk")
+        try {
+            val update=parseUpdate(manifest(),"dev.mjwatch.mobile","test-42").copy(size=5*1024*1024)
+            val job=launch {source.download(update,file) {}}
+            delay(40);job.cancelAndJoin()
+            withTimeout(2000) {while(!closed.get()) delay(10)}
+            val length=file.length();delay(40);assertEquals(length,file.length());assertTrue(length<update.size)
         } finally {file.delete()}
     }
 }
