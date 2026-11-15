@@ -56,13 +56,35 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
       - run: echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
+      - id: runtime
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           target: ${{ matrix.target }}
           arch: x86_64
           profile: ${{ matrix.profile }}
           script: ./gradlew :${{ matrix.app }}:connectedDebugAndroidTest
+      - id: boot-check
+        if: steps.runtime.outcome == 'failure'
+        run: |
+          if [ -d "${{ matrix.app }}/build/outputs/androidTest-results/connected" ]; then
+            echo 'retry=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'retry=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Retry emulator boot before tests
+        if: steps.boot-check.outputs.retry == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          script: ./gradlew :${{ matrix.app }}:connectedDebugAndroidTest
+      - name: Preserve test failures
+        if: steps.runtime.outcome == 'failure' && steps.boot-check.outputs.retry != 'true'
+        run: exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
