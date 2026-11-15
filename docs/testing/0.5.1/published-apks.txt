@@ -1,0 +1,5 @@
+Published 0.5.1-test.20 / versionCode 1020
+CI: https://github.com/MJSasha/mj-watch/actions/runs/43763064500 (success)
+Certificate: c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad
+MJWatch-mobile.apk: 79700568 bytes, sha256 b1b5ecd1326b87cfec23bcc6ef1d06ae87cbb28523f5eaade3509e001c02177d
+MJWatch-tv.apk: 79700568 bytes, sha256 07f3e22cf9b5b28b4560dad52508c8817a7fee15014a3d9eb43173a4cc60c5ff
