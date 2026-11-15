@@ -24,6 +24,8 @@ class PublishedUpdateTest {
     lateinit var model:WatchModel
     compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
     compose.waitUntil(65000) {!model.updates.state.value.checking}
+    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Обновления"))
+    compose.onNodeWithText("Обновления").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить сейчас"))
     compose.onNodeWithText("Проверить сейчас").performClick()
     compose.waitUntil(65000) {!model.updates.state.value.checking}

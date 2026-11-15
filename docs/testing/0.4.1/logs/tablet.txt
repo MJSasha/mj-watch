@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.TabletTest:.
+
+Time: 3.45
+
+OK (1 test)
+
+

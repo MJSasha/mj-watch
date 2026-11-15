@@ -83,10 +83,10 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,RoundedCornerShape(8.dp)).background(if(focused) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,RoundedCornerShape(8.dp)).selectable(selected=selected,role=Role.Tab,onClick=onClick).padding(horizontal=4.dp)
 }
 
-@Composable internal fun Modifier.tvFocusRing(tv:Boolean):Modifier {
+@Composable internal fun Modifier.tvFocusRing(tv:Boolean,shape:Shape=RoundedCornerShape(24.dp)):Modifier {
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
-    return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,RoundedCornerShape(24.dp))
+    return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,shape)
 }
 
 /** Keep an already visible TV control in place; the platform pivot otherwise scrolls the hero offscreen. */

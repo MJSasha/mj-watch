@@ -47,11 +47,17 @@ class JacredFlowTest {
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить поиск"))
     compose.onNodeWithText("Проверить поиск").performClick()
     compose.waitUntil(10000) {compose.onAllNodesWithText("JacRed JSON: подключение проверено").fetchSemanticsNodes().isNotEmpty()}
+    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить"))
+    compose.onNodeWithText("Сохранить").performClick()
+    compose.waitUntil(10000) {compose.onAllNodesWithText("TorrServer").fetchSemanticsNodes().isNotEmpty()}
+    compose.onNodeWithText("TorrServer").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить TorrServer"))
     compose.onNodeWithText("Проверить TorrServer").performClick()
     compose.waitUntil(10000) {compose.onAllNodesWithText("MatriX.145.2").fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
-    compose.onNodeWithText("Сохранить и продолжить").performClick()
+    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить"))
+    compose.onNodeWithText("Сохранить").performClick()
+    compose.waitUntil(10000) {compose.onAllNodesWithText("Настройки").fetchSemanticsNodes().isNotEmpty()}
+    compose.onNodeWithText("Главная").performClick()
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Поиск").performClick()
     compose.waitUntil(10000) {compose.onAllNodesWithText("Название фильма или раздачи").fetchSemanticsNodes().isNotEmpty()}

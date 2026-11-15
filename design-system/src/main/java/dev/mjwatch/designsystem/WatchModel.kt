@@ -40,7 +40,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun page(page:String) { cancel(); update { it.copy(page=page,message="") };if(page in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(page)} }
     fun back() {
         val s=state.value;cancel()
-        val target=when(s.page) {"connections" -> "settings";"files","preparing" -> "releases";"releases" -> "detail";"detail" -> s.originPage;else -> "home"}
+        val target=when {s.page.startsWith("settings-")->"settings";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="")}
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
@@ -178,11 +178,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun validate(c:Config) { if(!c.demo) { if(c.jackett.isNotBlank()) endpoint(c.jackett); if(c.torrServer.isNotBlank()) endpoint(c.torrServer); require(c.torrServer.isNotBlank()) { "Укажите TorrServer" } } }
     fun save(c:Config,key:String,user:String,password:String,metadataToken:String="") {
         if(state.value.busy) return
+        val target=if(state.value.page.startsWith("settings-")) "settings" else "home"
         update {it.copy(busy=true,message="")}
         viewModelScope.launch { try {
             android.util.Log.i("MJWatch", "Saving configuration (demo=${c.demo})"); validate(c)
             withContext(Dispatchers.IO) { secrets.put("tmdb",metadataToken); secrets.put("jackett:${c.jackett}",key); secrets.put("torrAuth:${c.torrServer}",if(user.isBlank()) "" else Credentials.basic(user,password)); secrets.put("torrUser:${c.torrServer}",user); secrets.put("torrPassword:${c.torrServer}",password) }
-            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination("home");settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page="home",busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
+            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination(target);settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page=target,busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
         } catch(e:Exception) { update { it.copy(busy=false,message=safeError(e)) } } }
     }
     override fun onCleared() { db.close(); super.onCleared() }

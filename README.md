@@ -1,10 +1,77 @@
-# MJWatch
+<p align="center"><img src="docs/images/banner.svg" alt="MJWatch — ваше кино на любом экране" width="100%"></p>
 
-Нативный Kotlin-клиент для телефона/планшета и Android TV, ветка 0.3.0. Два APK, общие данные и Media3. Дизайн и критерии: [design/HANDOFF.md](design/HANDOFF.md). Текущее состояние: [STATUS.md](STATUS.md), доказательства и ограничения: [отчёт приёмки](docs/testing/ACCEPTANCE-REPORT.md).
+<p align="center">
+  <a href="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml"><img src="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml/badge.svg" alt="Android checks"></a>
+  <a href="https://github.com/MJSasha/mj-watch/releases"><img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?include_prereleases&amp;label=APK&amp;color=c7ff68" alt="Latest testing APK"></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-c7ff68?logo=android&amp;logoColor=c7ff68" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/Kotlin-Compose-8bd9ff?logo=kotlin" alt="Kotlin and Jetpack Compose">
+</p>
+
+<p align="center">
+  <a href="https://github.com/MJSasha/mj-watch/releases"><b>Скачать APK</b></a> ·
+  <a href="#возможности">Возможности</a> ·
+  <a href="#установка-и-обновления">Установка</a> ·
+  <a href="#сборка">Сборка</a> ·
+  <a href="docs/ui-audit/README.md">Проверки и дизайн</a>
+</p>
+
+**MJWatch** — нативное приложение для просмотра видео на Android-телефоне, планшете и TV.
+Находит раздачи через Jackett или JacRed, получает поток от вашего TorrServer и сохраняет место просмотра.
+Оформление — из одной семьи с [MJAnime](https://github.com/MJSasha/mj-anime) и [MJReader](https://github.com/MJSasha/mj-reader).
+
+*Native Android video client for phone, tablet and TV. Configurable Jackett/JacRed and TorrServer, optional TMDB metadata, Media3 playback. Kotlin and Jetpack Compose; two APKs with shared logic.*
+
+## Как выглядит
+
+<img src="docs/images/tv-home.png" width="100%" alt="Главная MJWatch на TV: кинематографичный фон и продолжение просмотра">
+
+<table>
+<tr><td align="center"><b>Телефон</b></td><td align="center"><b>Настройки</b></td><td align="center"><b>Обновления</b></td></tr>
+<tr><td><img src="docs/images/mobile-home.png" width="260" alt="Главная на телефоне"></td><td><img src="docs/images/settings.png" width="260" alt="Отдельные настройки поиска, сервера и каталога"></td><td><img src="docs/images/updates.png" width="260" alt="Обновление MJWatch через GitHub"></td></tr>
+</table>
+
+<details><summary><b>Планшет и плеер</b></summary>
+<img src="docs/images/tablet.png" width="100%" alt="Поиск и карточка фильма в двух панелях планшета">
+<img src="docs/images/player.png" width="100%" alt="Нативный Media3-плеер с перемоткой и выбором дорожек">
+</details>
+
+Снимки работающего приложения на собственных эмуляторах. Каталог и постеры демонстрационные, видео локальное; это не подтверждение работы реальных серверов.
+
+## Возможности
+
+| Область | Что умеет |
+| --- | --- |
+| **Поиск** | Jackett / Torznab и JacRed JSON, фильтры качества, источника, сидов и языка |
+| **Каталог** | Необязательный TMDB: обложки, описания и кеш; прямой поиск работает без него |
+| **Просмотр** | TorrServer, выбор видеофайла, Media3, пауза, перемотка, дорожки и субтитры |
+| **Библиотека** | История, избранное, сохранение позиции, продолжение и отмена удаления |
+| **Устройства** | Телефон, две панели на планшете, отдельная TV-оболочка для D-pad/OK/Back |
+| **Оформление** | Тёмная, светлая и системная темы, заметный фокус без увеличения карточек |
+| **Обновления** | GitHub Releases, автоматическая и ручная проверка, проверенный APK и системная установка |
+
+## Установка и обновления
+
+1. Откройте [Releases](https://github.com/MJSasha/mj-watch/releases), включая предварительные тестовые выпуски.
+2. Выберите **MJWatch-mobile.apk** для телефона/планшета или **MJWatch-tv.apk** для телевизора.
+3. Установите APK. Обновляйте **поверх установленного приложения**, чтобы сохранить подключения, историю и прогресс.
+
+**Настройки → Обновления** — отдельная страница с установленной версией, состоянием проверки и действиями загрузки/установки. Автопроверка выполняется при открытии приложения не чаще раза в 15 минут; её можно отключить. Она не запускает загрузку сама. Установка требует подтверждения Android.
+
+Перед установкой проверяются SHA-256, размер, имя пакета, возрастающая версия и совместимость подписи. Текущий канал тестовый; production signing не заявляется. [Процесс выпуска](docs/UPDATES.md).
+
+## Подключения
+
+- **Jackett / JacRed** — отдельная страница адреса, протокола, ключа и индексаторов. Для публичного `https://jac.red` обычно достаточно режима «Авто», без ключа и пароля; авторизация зависит от сервера.
+- **TorrServer** — отдельная страница LAN URL, необязательной Basic Auth и проверки соединения. Для локального HTTP включите разрешение; при проблемах с `.local` используйте LAN IP.
+- **Каталог** — отдельная настройка TMDB и Read Access Token. Без неё остаётся прямой поиск раздач.
+
+Для проверки без серверов включите демонстрацию с локальным видео в первоначальной настройке. Каждый сервер проверяется отдельно; offline-сохранение разрешено. Reverse proxy prefix сохраняется, redirect запрещён — указывайте конечный URL.
+
+Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей, импорт сначала показывает preview. Приложение не удаляет торренты на общем сервере и не содержит внешней аналитики.
 
 ## Сборка
 
-JDK 21, Android SDK 36, Gradle wrapper 8.13. Укажите `sdk.dir` в локальном `local.properties` либо `ANDROID_HOME`.
+JDK **21**, Android SDK **36**, Build Tools **36.0.0**, Gradle wrapper **8.13**. Укажите `sdk.dir` в локальном `local.properties` либо `ANDROID_HOME`.
 
 ```sh
 ./gradlew :core:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug
@@ -12,37 +79,12 @@ JDK 21, Android SDK 36, Gradle wrapper 8.13. Укажите `sdk.dir` в лок�
 ./gradlew :app-mobile:assembleRelease :app-tv:assembleRelease
 ```
 
-Debug APK: `app-mobile/build/outputs/apk/debug/app-mobile-debug.apk` и `app-tv/build/outputs/apk/debug/app-tv-debug.apk`. Локальный release APK unsigned. Подписанные тестовые APK публикуются автоматически в [GitHub Releases](https://github.com/MJSasha/mj-watch/releases); production signing не настроен. Пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime. minSdk 26 — заявленный минимум сборки, конкретная runtime-матрица в отчёте.
+Debug APK находятся в `app-mobile/build/outputs/apk/debug/` и `app-tv/build/outputs/apk/debug/`. Локальные release APK unsigned. Подписанные тестовые APK публикуются из `main` после зелёных unit/lint/build и Android runtime checks. Разные пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime.
 
-## Первый запуск
+## Документация
 
-В «Подключениях» включите «Демонстрация с локальным видео», сохраните. Тестовые раздачи → detail → выбор раздачи → файл → Media3. Видео включено в APK, сеть не нужна. Технические данные fixture не являются измерениями серверов. Прогресс сохраняется отдельно от истории открытий.
+- [Текущее состояние и ограничения](STATUS.md), [проверки](docs/testing/ACCEPTANCE-REPORT.md)
+- [Дизайн и сценарии](design/HANDOFF.md), [галерея сверки](docs/ui-audit/index.html)
+- [Интеграционные контракты](docs/contracts/README.md), [публикация и обновления](docs/UPDATES.md)
 
-Для реального поиска выключите демо, введите URL Jackett, API-ключ и ID выбранных индексаторов через запятую, URL TorrServer, optional Basic Auth. Каждый сервер проверяется отдельно; сохранение offline разрешено. Локальный HTTP требует отдельного разрешения, публичный HTTP блокируется общим guard. Для reverse proxy задавайте base URL с префиксом. Redirect запрещён: указывайте конечный адрес.
-
-TMDB — отдельная необязательная настройка. Включите адаптер и введите Read Access Token; доступны каталог, карточки и поиск, кеш на 24 часа и offline fallback. Прямой поиск доступен без него. Без метаданных нет чужих обложек или выдуманных описаний.
-
-«Продолжить» заново получает список файлов и выбирает прежний путь по актуальному server file ID. Если файл исчез, требуется ручной выбор. Обновление базы с версии 0.1 сохраняет историю и прогресс.
-
-Ключи, Basic Auth и ссылки раздач шифруются Android Keystore AES-GCM. Backup отключён. Экспорт настроек содержит только адреса и предпочтения, импорт сначала показывает preview. После смены URL ключи вводятся заново. Конфиги с секретами в query/userinfo запрещены. Нет внешней аналитики и автоматического удаления торрентов на общем сервере.
-
-## Проверки
-
-Контрактные тесты: XML/CDATA/Unicode, XXE, лимиты, ошибки, partial results, cancellation, file ID, encoding, proxy prefixes и redirect credential isolation. Инструментальные тесты проверяют полный fake flow, callback первого кадра и сохранение прогресса. Live тест выполняется только вручную с явным аргументом `server`; в CI он пропускается.
-
-```sh
-# Только на выбранном локальном AVD:
-adb -s emulator-PORT shell am instrument -w -e class dev.mjwatch.mobile.LiveTorrServerTest -e server http://TEST-HOST:PORT dev.mjwatch.mobile.test/androidx.test.runner.AndroidJUnitRunner
-```
-
-GitHub Actions запускает unit/lint/debug/release сборки и phone/TV runtime tests. APK и отчёты сохраняются как workflow artifacts; после зелёных проверок main подписанные APK публикуются в GitHub Releases. Секреты серверов CI не нужны.
-
-## JacRed (начиная с 0.2.1)
-
-Для публичного сервиса: адрес `https://jac.red`, режим «Авто» или «JacRed JSON», API-ключ и индексаторы можно оставить пустыми, если сервис не требует авторизации. Для своего JacRed выберите «JacRed JSON» явно. В режиме Torznab пустые индексаторы также означают `all`.
-
-Для локального TorrServer введите его LAN URL с портом и включите «Разрешить HTTP». Если Android не разрешает имя `.local`, используйте LAN IP. HTTP403 означает отказ сервера: приложение показывает код; доступность jac.red зависит от самого сервиса/сети и не гарантируется тестами на fixtures.
-
-## Обновления
-
-Один раз установите APK своей платформы из [Releases](https://github.com/MJSasha/mj-watch/releases) поверх 0.2.1. Дальше: Настройки → Обновления. Проверка при запуске автоматическая (не чаще раза в 15 минут), скачивание по кнопке, установка с подтверждением Android. Подпись совместима с ранее выданными локальными APK. Подробности и процесс выпуска: [docs/UPDATES.md](docs/UPDATES.md).
+Ключи подписи, токены, APK и кеши не хранятся в Git.

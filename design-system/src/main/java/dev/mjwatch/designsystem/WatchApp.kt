@@ -19,6 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,7 +48,7 @@ import kotlinx.coroutines.launch
 
 private data class Destination(val id:String,val title:String,val icon:ImageVector)
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
-private val destinations=listOf(Destination("home","Главная",Icons.Outlined.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Outlined.Bookmarks),Destination("settings","Настройки",Icons.Outlined.Settings))
+private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
 @Composable fun WatchApp(model:WatchModel,tv:Boolean) {
     AutomaticUpdates(model.updates)
@@ -56,6 +59,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     }}
     val library by model.library.collectAsStateWithLifecycle()
     val progress by model.progress.collectAsStateWithLifecycle()
+    var editorBack by remember {mutableStateOf<(() -> Unit)?>(null)}
     val saved=rememberSaveableStateHolder();val searchScroll=rememberLazyListState()
     val context=LocalContext.current.applicationContext
     val images=remember(state.config) {ImageLoader.Builder(context).okHttpClient(guardedClient(state.config)).build()}
@@ -82,24 +86,23 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                 }
             }}) {padding->
                 Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding()) {
-                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(88f) else 88.dp).fillMaxHeight().background(colors.background).padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(88f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
                         Spacer(Modifier.height(if(tv) 24.dp else 28.dp))
                         railItems.forEach {d->
                             if(d.id=="settings") Spacer(Modifier.weight(1f))
-                            val selected=state.page==d.id||(!top&&state.originPage==d.id)
-                            if(tv) androidx.tv.material3.IconButton(onClick={model.page(d.id)},modifier=Modifier.padding(vertical=6.dp).size(48.dp).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary)))) {Icon(d.icon,d.title,tint=androidx.tv.material3.LocalContentColor.current,modifier=Modifier.size(24.dp))}
-                            else NavigationRailItem(selected=selected,onClick={model.page(d.id)},icon={Icon(d.icon,d.title)},colors=NavigationRailItemDefaults.colors(selectedIconColor=colors.primary,indicatorColor=colors.primaryContainer,unselectedIconColor=colors.onSurfaceVariant))
+                            val selected=if(state.page.startsWith("settings-")||state.page=="connections") d.id=="settings" else state.page==d.id||(!top&&state.originPage==d.id)
+                            RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).size(48.dp).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
                         }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         if(!(tv&&(cinematic||state.page=="search"))&&state.page!="detail"&&!(state.page=="releases"&&!tv)&&!(tv&&state.page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                if(!top) IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                                val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
+                                if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
+                                val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(state.page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 if(state.page=="home") IconButton(onClick={model.page("settings")},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.Dns,"Подключения")}
-                                else if(state.config.demo) Badge("ДЕМО",accent=true)
+                                else if(state.config.demo&&state.page!="settings"&&state.page!="connections"&&!state.page.startsWith("settings-")) Badge("ДЕМО",accent=true)
                             }
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
@@ -109,7 +112,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                                 when(state.page) {
                                     "home"->HomeScreen(state,library,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv) else SettingsScreen(state,model,tv)
-                                    "connections"->SettingsScreen(state,model,tv)
+                                    "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
+                                    "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
+                                    "settings-server"->SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
+                                    "settings-catalog"->SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
+                                    "settings-updates"->LazyColumn(Modifier.testTag("settings-list"),contentPadding=PaddingValues(vertical=16.dp)) {item {UpdateSection(model.updates,tv)}}
                                     "search"->SearchScreen(state,model,tv,searchScroll)
                                     "library","history"->LibraryScreen(library,progress,model,tv)
                                     "detail"->if(!tv&&width>=840&&state.originPage=="search") Row(Modifier.fillMaxSize()) {
@@ -135,7 +142,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     }}
 }
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable private fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,onClick:()->Unit) {
+@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
     val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=if(secondary) colors.onSurface else colors.onPrimary);Text(text,fontSize=16.sp,fontWeight=FontWeight.Medium,color=if(secondary) colors.onSurface else colors.onPrimary)}}
     if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(26.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.primary else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary),inset=(-4).dp,shape=RoundedCornerShape(26.dp)))) {content()}
@@ -290,23 +297,29 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     val inset=if(tv) tvUnit(40f) else 20.dp
     val primaryFocus=remember {FocusRequester()}
     LaunchedEffect(id) {if(tv) {delay(100);primaryFocus.requestFocus()}}
+    var bottomHeight by remember {mutableIntStateOf(0)}
+    val bottomSpace=with(LocalDensity.current) {bottomHeight.toDp()}
+    val hasArt=(m!=null&&s.config.metadataProvider=="tmdb"&&(m.backdrop!=null||m.poster!=null))||r?.id?.startsWith("demo:")==true
     val choose:()->Unit={if(r==null) model.findReleases() else model.page("releases")}
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=if(tv||compact) 24.dp else 100.dp)) {
-            Box(Modifier.fillMaxWidth().heightIn(min=if(tv) tvUnit(420f) else if(compact) 330.dp else 390.dp)) {
-                Artwork(m,s.config,Modifier.matchParentSize(),backdrop=true,demo=r?.id?.startsWith("demo:")==true);ArtScrim(Modifier.matchParentSize());if(tv) ArtScrim(Modifier.matchParentSize(),true)
-                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().padding(inset),horizontalArrangement=Arrangement.SpaceBetween) {
-                    IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(MaterialTheme.colorScheme.background.copy(alpha=.7f),RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                    IconButton(onClick={model.bookmark()},modifier=Modifier.tvFocusRing(tv).background(MaterialTheme.colorScheme.background.copy(alpha=.7f),RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=if(tv||compact) 24.dp else bottomSpace+16.dp)) {
+            Box(Modifier.fillMaxWidth().heightIn(min=if(!hasArt) 0.dp else if(tv) tvUnit(420f) else if(compact) 330.dp else 390.dp)) {
+                if(hasArt) {Artwork(m,s.config,Modifier.matchParentSize(),backdrop=true,demo=r?.id?.startsWith("demo:")==true);ArtScrim(Modifier.matchParentSize());if(tv) ArtScrim(Modifier.matchParentSize(),true)}
+                Column(Modifier.fillMaxWidth().heightIn(min=if(!hasArt) 0.dp else if(tv) tvUnit(420f) else if(compact) 330.dp else 390.dp)) {
+                Row(Modifier.fillMaxWidth().padding(inset).testTag("detail-toolbar"),horizontalArrangement=Arrangement.SpaceBetween) {
+                    IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
+                    IconButton(onClick={model.bookmark()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
                 }
-                if(!compact) Column(Modifier.align(Alignment.BottomStart).padding(inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text(title,fontSize=if(tv) 40.sp else 32.sp,lineHeight=if(tv) 48.sp else 38.sp,fontWeight=FontWeight.Bold,color=androidx.compose.ui.graphics.Color.White)
-                    Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=androidx.compose.ui.graphics.Color(0xFFDCE1DD),fontSize=14.sp)
+                Spacer(Modifier.weight(1f))
+                if(!compact) Column(Modifier.padding(inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text(title,modifier=Modifier.testTag("detail-title"),fontSize=if(tv) 40.sp else if(m!=null) 32.sp else 24.sp,lineHeight=if(tv) 48.sp else if(m!=null) 38.sp else 30.sp,fontWeight=FontWeight.Bold,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=if(hasArt) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface)
+                    Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp)
                     if(tv) Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
                         if(saved!=null) Action("Раздачи",true,Modifier.testTag("detail-sources"),secondary=true,onClick=choose)
                     }
                 }
+            }
             }
             if(compact) Column(Modifier.padding(horizontal=32.dp,vertical=24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Text(title,fontSize=28.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold)
@@ -329,7 +342,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
                 }
             }
         }
-        if(!tv&&!compact) Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(20.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+        if(!tv&&!compact) Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {bottomHeight=it.height}.background(MaterialTheme.colorScheme.background).padding(20.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
             Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),enabled=!s.busy,icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
             if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources").background(MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
         }
@@ -466,7 +479,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         }
     }
 }
-@Composable private fun SettingsScreen(s:WatchState,model:WatchModel,tv:Boolean,showIntro:Boolean=true) {
+@Composable private fun SettingsScreen(s:WatchState,model:WatchModel,tv:Boolean,showIntro:Boolean=true,section:String?=null,registerBack: (((() -> Unit)?) -> Unit)?=null) {
     val context=LocalContext.current
     var c by remember { mutableStateOf(model.draftConfig ?: s.config) }
     var metadataToken by remember { mutableStateOf(model.draftMetadata) }; var key by remember { mutableStateOf(model.draftKey) }; var user by remember { mutableStateOf(model.draftUser) }; var password by remember { mutableStateOf(model.draftPassword) }
@@ -481,18 +494,22 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     var preview by remember { mutableStateOf<Config?>(null) }; var importError by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if(model.draftConfig==null) { metadataToken=model.secrets.get("tmdb"); key=model.secrets.get("jackett:${s.config.jackett}");user=model.secrets.get("torrUser:${s.config.torrServer}");password=model.secrets.get("torrPassword:${s.config.torrServer}") }; baseline=listOf(model.secrets.get("jackett:${s.config.jackett}"),model.secrets.get("torrUser:${s.config.torrServer}"),model.secrets.get("torrPassword:${s.config.torrServer}"),model.secrets.get("tmdb")) }
     LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
-    BackHandler(c!=s.config||listOf(key,user,password,metadataToken)!=baseline) {leave=true}
-    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.page("home")}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
+    val editorImeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
+    val dirty=c!=s.config||listOf(key,user,password,metadataToken)!=baseline
+    val requestBack=rememberUpdatedState<()->Unit>({if(dirty) leave=true else {model.discardDraft();model.back()}})
+    DisposableEffect(Unit) {registerBack?.invoke {requestBack.value()};onDispose {registerBack?.invoke(null)}}
+    BackHandler(dirty&&!editorImeVisible) {requestBack.value()}
+    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.back()}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if(uri!=null) context.contentResolver.openOutputStream(uri)?.use { it.write(encodeConfig(c).toByteArray()) } }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) try {
         val raw=context.contentResolver.openInputStream(uri)!!.use { String(it.readBytes().also { b -> require(b.size<65536) }) }; preview=decodeConfig(raw)
     } catch(_:Exception) {importError="Не удалось импортировать конфигурацию"} }
     fun urlError(raw:String)=raw.isNotBlank()&&runCatching {endpoint(raw)}.isFailure
     fun changed(new:Config) { c=new; model.invalidateChecks() }
-    var advanced by rememberSaveable {mutableStateOf(false)}
+    var advanced by rememberSaveable {mutableStateOf(section!=null)}
     var setupStep by rememberSaveable {mutableIntStateOf(1)}
     val setup=!tv&&!s.configured
-    BackHandler(setup&&setupStep==2) {setupStep=1}
+    BackHandler(setup&&setupStep==2&&!editorImeVisible) {setupStep=1}
     Row(Modifier.fillMaxSize().then(if(tv&&!s.configured) Modifier.padding(horizontal=tvUnit(80f)) else Modifier),horizontalArrangement=Arrangement.spacedBy(32.dp)) {
     if(tv&&showIntro) Column(Modifier.weight(.8f).padding(top=32.dp),verticalArrangement=Arrangement.spacedBy(24.dp)) {
         Wordmark();Spacer(Modifier.height(24.dp));Text(if(s.configured) "Настройте\nсвои источники." else "Ваше кино.\nВаши источники.",fontSize=36.sp,lineHeight=44.sp,fontWeight=FontWeight.Bold)
@@ -501,40 +518,43 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     }
     LazyColumn(Modifier.weight(1f).testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(horizontal=if(!tv&&!s.configured) 20.dp else 0.dp,vertical=24.dp)) {
         if(setup) item {Column(verticalArrangement=Arrangement.spacedBy(18.dp)) {Text("ШАГ $setupStep ИЗ 2",fontSize=12.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Heading(if(setupStep==1) "Добавьте\nисточник раздач" else "Подключите\nTorrServer");Text(if(setupStep==1) "Используйте адрес Jackett или JacRed. API-ключ нужен только если требует сервер." else "Укажите адрес сервера в вашей сети",color=MaterialTheme.colorScheme.onSurfaceVariant)}}
-        else item {Heading("Подключения")}
-        if(!setup||setupStep==1) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+        else if(section==null) item {Heading("Подключения")}
+        if((!setup||setupStep==1)&&(section==null||section=="search")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("Jackett / JacRed",fontSize=20.sp,fontWeight=FontWeight.Bold)
             OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
             Action("Проверить поиск",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(true,c,key,user,password)}
             if(s.checkJackett.isNotBlank()) Text(s.checkJackett,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
-        if(!setup||setupStep==2) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+        if((!setup||setupStep==2)&&(section==null||section=="server")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("TorrServer",fontSize=20.sp,fontWeight=FontWeight.Bold)
             OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=urlError(c.torrServer),supportingText={Text(if(urlError(c.torrServer)) "Введите http/https URL без логина, query и fragment" else "Адрес в вашей сети, не localhost")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))
             Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(modifier=Modifier.semantics {contentDescription="Разрешить локальный HTTP"},checked=c.localHttp,onCheckedChange={changed(c.copy(localHttp=it))});Text("Разрешить локальный HTTP",fontSize=14.sp)}
             Action("Проверить TorrServer",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(false,c,key,user,password)}
             if(s.checkTorr.isNotBlank()) Text(s.checkTorr,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
-        item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Демонстрация с локальным видео"},checked=c.demo,onCheckedChange={changed(c.copy(demo=it))});Text("Демонстрация с локальным видео",Modifier.padding(start=12.dp))}}
+        if(section=="search") item {Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(checked=c.localHttp,onCheckedChange={changed(c.copy(localHttp=it))});Text("Разрешить локальный HTTP")}}
+        if(section=="catalog") item {Text("Метаданные и обложки из TMDB. Поиск раздач работает и без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        if(section==null) item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Демонстрация с локальным видео"},checked=c.demo,onCheckedChange={changed(c.copy(demo=it))});Text("Демонстрация с локальным видео",Modifier.padding(start=12.dp))}}
         if(setup&&setupStep==1&&!c.demo) item {Action("Далее · TorrServer",false,Modifier.fillMaxWidth(),enabled=!urlError(c.jackett),icon=Icons.Outlined.ArrowForward) {setupStep=2}}
-        if(!setup||setupStep==2||c.demo) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
+        if(section==null&&(!setup||setupStep==2||c.demo)) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
         if(s.message.isNotBlank()) item {Text(s.message,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
-        item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
+        if(section==null) item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
         if(advanced) {
-            item {Text("Протокол поиска",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->Pill(label,c.releaseApi==id,tv) {changed(c.copy(releaseApi=id))}}}}
-            item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(14.dp))}
-            item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))}
-            item {SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")}
-            item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Каталог TMDB"},checked=c.metadataProvider=="tmdb",onCheckedChange={c=c.copy(metadataProvider=if(it) "tmdb" else "none")});Text("Каталог TMDB",Modifier.padding(start=12.dp))}}
-            if(c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
-            item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
+            if(section==null||section=="search") item {Text("Протокол поиска",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->Pill(label,c.releaseApi==id,tv) {changed(c.copy(releaseApi=id))}}}}
+            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(14.dp))}
+            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))}
+            if(section==null||section=="server") item {SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")}
+            if(section==null||section=="catalog") item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Каталог TMDB"},checked=c.metadataProvider=="tmdb",onCheckedChange={c=c.copy(metadataProvider=if(it) "tmdb" else "none")});Text("Каталог TMDB",Modifier.padding(start=12.dp))}}
+            if((section==null||section=="catalog")&&c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
+            if(section==null) item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
         }
-        item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {importer.launch(arrayOf("application/json"))}}
-        item {TextButton(onClick={if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
+        if(section!=null) item {Action(if(s.busy) "Сохранение…" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
+        if(section==null) item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {importer.launch(arrayOf("application/json"))}}
+        if(section==null) item {TextButton(onClick={if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
-        item {Text("Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        item {Text("MJWatch ${model.updates.versionName} · TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        if(section==null) item {Text("Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        if(section==null) item {Text("MJWatch ${model.updates.versionName} · TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported;key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
@@ -561,29 +581,28 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
                 listOf("Подключения","Воспроизведение","Оформление","О приложении").forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
             }
             Box(Modifier.weight(1f)) {when(section) {
-                "Подключения"->SettingsScreen(s,model,true,showIntro=false)
+                "Подключения"->ConnectionLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true)
                 "Оформление"->appearance()
-                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateSection(model.updates,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
+                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
             }}
         }
         return
     }
     LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         item {SettingsLabel("Подключения")}
-        item {NativeCard(false,Modifier.fillMaxWidth(),onClick={model.page("connections")}) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            SettingsRow(Icons.Outlined.Dns,"Jackett / JacRed",if(s.config.demo) "Демонстрационный режим" else s.config.jackett)
-            HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.2f))
-            SettingsRow(Icons.Outlined.Dns,"TorrServer",if(s.config.demo) "Локальное тестовое видео" else s.config.torrServer)
-            HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.2f))
-            SettingsRow(Icons.Outlined.Movie,"Каталог",if(s.config.metadataProvider=="tmdb") "TMDB" else "Метаданные и обложки")
-        }}}
+        item {ConnectionLinks(s,model,false)}
         item {SettingsLabel("Воспроизведение")}
         item {PlaybackPreferences(false)}
         item {SettingsLabel("Оформление")}
-        item {NativeCard(false,Modifier.fillMaxWidth(),onClick={themes=true}) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {SettingsRow(Icons.Outlined.Palette,"Тема",when(s.config.theme) {"dark"->"Тёмная";"light"->"Светлая";else->"Как в системе"});Text("Анимации · системные настройки",fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
-        item {UpdateSection(model.updates,false)}
-        item {Text("MJWatch ${model.updates.versionName}",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=13.sp)}
+        item {SettingsGroup(false) {
+            SettingsActionRow(Icons.Outlined.Palette,"Тема",when(s.config.theme) {"dark"->"Тёмная";"light"->"Светлая";else->"Как в системе"},false) {themes=true}
+            SettingsDivider()
+            SettingsRow(Icons.Outlined.Animation,"Анимации","Системные настройки",Modifier.padding(16.dp),chevron=false)
+        }}
+        item {SettingsLabel("Приложение")}
+        item {UpdateLink(model,false)}
+        item {Text("MJWatch ${model.updates.versionName}\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=12.sp)}
     }
 }
 @Composable private fun SettingsLabel(text:String) {Text(text.uppercase(),fontSize=12.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)}
@@ -597,19 +616,28 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     if(qualityDialog) AlertDialog(onDismissRequest={qualityDialog=false},title={Text("Качество раздач")},text={Column {listOf("Все","720p","1080p","2160p").forEach {label->Pill(label,quality==label,tv) {quality=label;prefs.edit().putString("quality",label).apply();qualityDialog=false}}}},confirmButton={TextButton(onClick={qualityDialog=false}) {Text("Закрыть")}})
     var dialog by remember {mutableStateOf(false)}
     if(dialog) AlertDialog(onDismissRequest={dialog=false},title={Text("Язык аудио")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {listOf(null to "Авто","ru" to "Русский","en" to "Английский","ja" to "Японский").forEach {(id,label)->Pill(label,audio==id,tv) {audio=id;prefs.edit().putString("audio-language",id).apply();dialog=false}}}},confirmButton={TextButton(onClick={dialog=false}) {Text("Закрыть")}})
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(16.dp)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        TextButton(onClick={qualityDialog=true},modifier=Modifier.fillMaxWidth()) {SettingsRow(Icons.Outlined.HighQuality,"Предпочтительное качество",if(quality=="Все") "Любое" else quality)}
-        HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.2f))
-        TextButton(onClick={dialog=true},modifier=Modifier.fillMaxWidth()) {SettingsRow(Icons.Outlined.Translate,"Язык аудио",when(audio) {"ru"->"Русский";"en"->"Английский";"ja"->"Японский";else->"Авто"})}
-        HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.2f))
-        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {Icon(Icons.Outlined.Subtitles,null);Column(Modifier.weight(1f)) {Text("Субтитры");Text(if(subtitlesOff) "Выключены" else "Автоматически",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(checked=!subtitlesOff,onCheckedChange={subtitlesOff=!it;prefs.edit().putBoolean("subtitles-off",!it).apply()},modifier=Modifier.semantics {contentDescription="Субтитры"})}
+    var subtitles by remember {mutableStateOf(prefs.getString("subtitle-language",null))}
+    var subtitleDialog by remember {mutableStateOf(false)}
+    val subtitleLabel=if(subtitlesOff) "Выключены" else when(subtitles) {"ru"->"Русский";"en"->"Английский";else->"Автоматически"}
+    if(subtitleDialog) AlertDialog(onDismissRequest={subtitleDialog=false},title={Text("Субтитры")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        listOf("auto" to "Автоматически","off" to "Выключены","ru" to "Русский","en" to "Английский").forEach {(id,label)->Pill(label,if(id=="off") subtitlesOff else !subtitlesOff&&(subtitles ?: "auto")==id,tv) {
+            subtitlesOff=id=="off";subtitles=id.takeIf {it!="auto"&&it!="off"};prefs.edit().putBoolean("subtitles-off",subtitlesOff).putString("subtitle-language",subtitles).apply();subtitleDialog=false
+        }}
+    }},confirmButton={TextButton(onClick={subtitleDialog=false}) {Text("Закрыть")}})
+    SettingsGroup(tv) {
+        SettingsActionRow(Icons.Outlined.HighQuality,"Предпочтительное качество",if(quality=="Все") "Любое" else quality,tv) {qualityDialog=true}
+        SettingsDivider()
+        SettingsActionRow(Icons.Outlined.Translate,"Язык аудио",when(audio) {"ru"->"Русский";"en"->"Английский";"ja"->"Японский";else->"Авто"},tv) {dialog=true}
+        SettingsDivider()
+        SettingsActionRow(Icons.Outlined.Subtitles,"Субтитры",subtitleLabel,tv) {subtitleDialog=true}
     }
 }
-@Composable private fun SettingsRow(icon:ImageVector,title:String,value:String) {
-    Row(horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
-        Icon(icon,null,tint=MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text(title,fontWeight=FontWeight.Medium,lineHeight=20.sp);Text(value.ifBlank {"Не настроен"},fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)}
-        Icon(Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
+
+@Composable internal fun SettingsRow(icon:ImageVector,title:String,value:String,modifier:Modifier=Modifier,chevron:Boolean=true) {
+    Row(modifier.fillMaxWidth().heightIn(min=42.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
+        Icon(icon,null,tint=MaterialTheme.colorScheme.onSurface)
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text(title,fontWeight=FontWeight.Medium,lineHeight=20.sp,color=MaterialTheme.colorScheme.onSurface);Text(value.ifBlank {"Не настроен"},fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)}
+        if(chevron) Icon(Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable private fun PreparingScreen(s:WatchState,model:WatchModel,tv:Boolean) {
@@ -642,4 +670,31 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         Icon(icon,null,tint=if(complete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         Column {Text(title,fontWeight=FontWeight.Medium,lineHeight=22.sp,color=if(complete) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant);Text(subtitle,fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
+}
+
+@Composable internal fun SettingsGroup(tv:Boolean,content:@Composable ColumnScope.()->Unit) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(16.dp)).then(if(tv) Modifier else Modifier.clip(RoundedCornerShape(16.dp))),content=content)
+}
+@Composable internal fun SettingsDivider() {HorizontalDivider(Modifier.padding(horizontal=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.18f))}
+@Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,onClick:()->Unit) {
+    if(tv) NativeCard(true,Modifier.fillMaxWidth(),onClick=onClick) {SettingsRow(icon,title,value,Modifier.padding(16.dp))}
+    else Surface(onClick=onClick,color=androidx.compose.ui.graphics.Color.Transparent,modifier=Modifier.fillMaxWidth()) {SettingsRow(icon,title,value,Modifier.padding(16.dp))}
+}
+@Composable private fun ConnectionLinks(s:WatchState,model:WatchModel,tv:Boolean) {
+    SettingsGroup(tv) {
+        SettingsActionRow(Icons.Outlined.Dns,"Jackett / JacRed",if(s.config.demo) "Демонстрационный режим" else s.config.jackett,tv) {model.page("settings-search")}
+        SettingsDivider()
+        SettingsActionRow(Icons.Outlined.Dns,"TorrServer",if(s.config.demo) "Локальное тестовое видео" else s.config.torrServer,tv) {model.page("settings-server")}
+        SettingsDivider()
+        SettingsActionRow(Icons.Outlined.Movie,"Каталог",if(s.config.metadataProvider=="tmdb") "TMDB" else "Метаданные и обложки",tv) {model.page("settings-catalog")}
+    }
+}
+@Composable private fun UpdateLink(model:WatchModel,tv:Boolean) {
+    val update by model.updates.state.collectAsStateWithLifecycle()
+    SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.SystemUpdate,"Обновления",update.available?.let {"Доступна ${it.versionName}"} ?: "Версия ${model.updates.versionName}",tv) {model.page("settings-updates")}}
+}
+@Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
+    val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)
+    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary)))) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current)}
+    else Surface(onClick=onClick,modifier=modifier.tvFocusRing(true,shape).semantics {this.selected=selected;role=Role.Tab},shape=shape,color=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Icon(icon,label,Modifier.size(24.dp))}}
 }

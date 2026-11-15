@@ -4,6 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,19 +33,28 @@ import kotlinx.coroutines.*
     var installing by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf("")}
     @Composable fun UpdateButton(text:String,enabled:Boolean=true,action:()->Unit) {
-        if(tv) androidx.tv.material3.Button(onClick=action,enabled=enabled) {Text(text)}
-        else Button(onClick=action,enabled=enabled) {Text(text)}
+        Action(text,tv,Modifier.fillMaxWidth(),enabled=enabled,secondary=text in setOf("GitHub Releases","Загрузить заново","Отменить загрузку"),onClick=action)
     }
     if(!compact||state.available!=null) Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text(if(compact) "Доступно обновление ${state.available?.versionName}" else "Обновления · ${manager.versionName}",style=MaterialTheme.typography.titleLarge)
+        SettingsGroup(tv) {Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer,RoundedCornerShape(16.dp)),contentAlignment=Alignment.Center) {Icon(Icons.Outlined.SystemUpdate,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(28.dp))}
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Text(if(compact) "Доступно обновление" else "MJWatch",fontSize=21.sp,fontWeight=FontWeight.Bold)
+                Text(if(compact) state.available?.versionName.orEmpty() else "Установлена версия ${manager.versionName}",fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }}
         if(!compact) {
-            Row {Switch(checked=state.automatic,onCheckedChange={manager.automatic(it)},modifier=Modifier.semantics {contentDescription="Автоматически проверять обновления"});Text("Проверять GitHub при запуске",Modifier.padding(start=12.dp,top=12.dp))}
-            Text("Тестовый канал. Установку подтверждает системное окно Android.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            SettingsGroup(tv) {Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                Icon(Icons.Outlined.Update,null,tint=MaterialTheme.colorScheme.onSurface)
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text("Автопроверка",fontWeight=FontWeight.Medium);Text("При открытии приложения",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                Switch(checked=state.automatic,onCheckedChange={manager.automatic(it)},modifier=Modifier.semantics {contentDescription="Автоматически проверять обновления"})
+            }}
+            Text("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.",fontSize=13.sp,lineHeight=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading) {manager.check()}
-            UpdateButton("GitHub Releases") {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}
+            SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}
         }
         state.available?.let {update->
-            if(!compact) Text("Доступна ${update.versionName} · ${update.size/1024/1024} МБ")
+            if(!compact) Text("Доступна ${update.versionName} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             if(state.downloading) {
                 LinearProgressIndicator(progress={ (state.downloaded.toFloat()/update.size).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth())
                 Text("Загружено ${state.downloaded/1024/1024} из ${update.size/1024/1024} МБ")
@@ -61,7 +77,7 @@ import kotlinx.coroutines.*
                 UpdateButton("Загрузить заново",!installing) {manager.download()}
             } else UpdateButton("Скачать обновление",!state.checking) {manager.download()}
         }
-        if(state.message.isNotBlank()) Text(state.message,Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+        if(state.message.isNotBlank()) Text(state.message,Modifier.semantics {liveRegion=LiveRegionMode.Polite},color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
     }
 }
