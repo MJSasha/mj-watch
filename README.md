@@ -1,6 +1,6 @@
 # MJWatch
 
-Нативный Kotlin-клиент для телефона/планшета и Android TV, версия 0.2.0. Два APK, общие данные и Media3. Дизайн и критерии: [design/HANDOFF.md](design/HANDOFF.md). Текущее состояние: [STATUS.md](STATUS.md), доказательства и ограничения: [отчёт приёмки](docs/testing/ACCEPTANCE-REPORT.md).
+Нативный Kotlin-клиент для телефона/планшета и Android TV, версия 0.2.1. Два APK, общие данные и Media3. Дизайн и критерии: [design/HANDOFF.md](design/HANDOFF.md). Текущее состояние: [STATUS.md](STATUS.md), доказательства и ограничения: [отчёт приёмки](docs/testing/ACCEPTANCE-REPORT.md).
 
 ## Сборка
 

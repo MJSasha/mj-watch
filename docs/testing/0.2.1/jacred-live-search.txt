@@ -1,0 +1,2 @@
+11-15 15:58:33.203  2541  2555 I System.out: MJWatch live JacRed search: count=12, failures=[]
+11-15 15:58:33.203  2541  2555 I System.out: MJWatch live JacRed: results=12, selectedBytes=60775464, seeds=1

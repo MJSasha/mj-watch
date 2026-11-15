@@ -1,5 +1,7 @@
 # MJWatch — состояние реализации
 
+Текущая версия 0.2.1 (3): исправления JacRed и результаты повторной проверки в конце файла. Данные 0.2.0 ниже сохранены как исторический отчёт.
+
 Обновлено 2026-11-15. Версия 0.2.0 (2), исходники приложения: `97a43a4`.
 
 ## Выполнено
@@ -56,3 +58,5 @@
 - Live локальный TorrServer по-прежнему отвечает MatriX.145.2.
 - Уточнена причина HTTP403: сервис отклоняет curl User-Agent. С явным `MJWatch/0.2.1 (Android)` запросы без ключа возвращают HTTP200, 12 результатов Sintel и успешную проверку с пустым Query. Идентификация добавлена в общий guarded HTTP client и покрыта тестом. Android live-проверка цепочки фиксируется ниже.
 - Финальные сборки и CI этой версии фиксируются отдельно ниже.
+- Итоговая API36 регрессия: 4 tests OK — HTTP JacRed fixtures, cancel/secrets, fake progress/resume и live TorrServer с доступным Sintel MP4 (magnet/upload/first frame). Оба APK debug/release + lint + 21 core tests проходят локально.
+- Live Android API36: check JacRed OK, поиск Sintel дал 12 результатов без ключа. Выбранный небольшой torrent принят MatriX.145.2, но остался `Torrent getting info`, файлов 0; через 60 секунд получен metadata timeout. Первый кадр именно этой раздачи не подтверждён. [Отчёт 0.2.1](docs/testing/0.2.1/REPORT.md) отделяет этот результат от успешных fixture/MP4 проверок.
