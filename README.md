@@ -36,3 +36,9 @@ adb -s emulator-PORT shell am instrument -w -e class dev.mjwatch.mobile.LiveTorr
 ```
 
 GitHub Actions запускает unit/lint/debug/release сборки и phone/TV runtime tests. APK и отчёты сохраняются как workflow artifacts, GitHub Releases не публикуются. Секреты серверов CI не нужны.
+
+## JacRed (начиная с 0.2.1)
+
+Для публичного сервиса: адрес `https://jac.red`, режим «Авто» или «JacRed JSON», API-ключ и индексаторы можно оставить пустыми, если сервис не требует авторизации. Для своего JacRed выберите «JacRed JSON» явно. В режиме Torznab пустые индексаторы также означают `all`.
+
+Для локального TorrServer введите его LAN URL с портом и включите «Разрешить HTTP». Если Android не разрешает имя `.local`, используйте LAN IP. HTTP403 означает отказ сервера: приложение показывает код; доступность jac.red зависит от самого сервиса/сети и не гарантируется тестами на fixtures.

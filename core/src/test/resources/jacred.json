@@ -1,0 +1,8 @@
+{
+  "Results": [
+    {"Tracker":"Fixture","Title":"Sintel • fixture 720p","Size":129241752,"Seeders":0,"MagnetUri":"magnet:?dn=Sintel&xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"},
+    {"Tracker":"Duplicate","Title":"Same hash","MagnetUri":"magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"},
+    {"Tracker":"Invalid","Title":"No usable torrent","MagnetUri":null}
+  ],
+  "jacred": true
+}

@@ -12,3 +12,11 @@ XML fixture синтетический, основан на Torznab RSS https://
 TMDB API v3: https://developer.themoviedb.org/reference/search-multi, ru-RU, read access token в Keystore. По умолчанию none. Логотип получен без изменений с официальной страницы https://www.themoviedb.org/about/logos-attribution, условия https://developer.themoviedb.org/docs/faq. Live TMDB не тестировался без токена.
 
 Jackett DownloadController v0.24.3067: https://github.com/Jackett/Jackett/blob/v0.24.3067/src/Jackett.Server/Controllers/DownloadController.cs . `GET /dl/{indexerId}` проверяет `jackett_apikey`, возвращает bencode body либо HTTP redirect с `Location: magnet:...`. Этот redirect обрабатывается как данные, без HTTP-follow. Только magnet передаётся TorrServer; исходный URL Jackett с ключом туда не отправляется. Отдельный mock HTTP test подтверждает контракт.
+
+## JacRed JSON (0.2.1)
+
+Поддержан `/api/v2.0/indexers/{source}/results?Query=...`, JSON `Results` (также camelCase): `Title`, `Tracker`, `MagnetUri`, `Size`, `Seeders`. Пустой source → `all`; пустой ключ не передаётся. Проверка — тот же read-only endpoint с пустым Query, без Torznab caps. Для jac.red режим auto выбирает JSON, для своего сервера есть явный выбор.
+
+Проверенный исходный контракт: [jacred-fdb/jacred @ 3235bc82](https://github.com/jacred-fdb/jacred/tree/3235bc82a9c1a484a8e8726803b39331a7ef0cca), `Controllers/JackettController.cs`, `Models/Api/RootObject.cs`, `Models/Api/Result.cs`. Это версия исходного reference, не установленная версия jac.red. `core/src/test/resources/jacred.json` — синтетический fixture.
+
+Live 2026-11-15: из среды разработки `https://jac.red` и оба API возвращают nginx HTTP403, поэтому успешный live поиск не подтверждён. Никакого обхода ограничений/отключения TLS не добавлялось. Причина 403 не определена; это не доказательство необходимости API-ключа.

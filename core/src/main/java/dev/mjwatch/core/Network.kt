@@ -29,29 +29,31 @@ fun validateTorznabPath(path:String) {
 fun HttpUrl.child(path: String): HttpUrl = newBuilder().addPathSegments(path.trimStart('/')).build()
 fun HttpUrl.origin() = "$scheme://$host:$port"
 private fun localAddress(a: InetAddress) = a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress
+class NetworkPolicyFailure(message:String):IOException(message)
+fun Config.usesJacred():Boolean = releaseApi=="jacred" || (releaseApi=="auto" && runCatching {endpoint(jackett).host in setOf("jac.red","www.jac.red")}.getOrDefault(false))
 /** Applied to control requests, redirects and Media3 via the same OkHttp client. No cross-origin redirects. */
 fun guardedClient(config: Config): OkHttpClient {
     val allowed = (listOf(config.jackett, config.torrServer) + if(config.metadataProvider=="tmdb") listOf("https://api.themoviedb.org", "https://image.tmdb.org") else emptyList()).filter { it.isNotBlank() }.map { endpoint(it).origin() }.toSet()
     return OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false)
         .dns(object : Dns { override fun lookup(host: String): List<InetAddress> = Dns.SYSTEM.lookup(host).also { addresses ->
-            if (allowed.any { it.startsWith("http://$host:") }) if(!config.localHttp || !addresses.all(::localAddress)) throw IOException("HTTP разрешён только в локальной сети")
+            if (allowed.any { it.startsWith("http://$host:") }) if(!config.localHttp || !addresses.all(::localAddress)) throw NetworkPolicyFailure("HTTP разрешён только в локальной сети")
         } })
         .addNetworkInterceptor { chain ->
-            if(chain.request().url.scheme=="http") if(chain.connection()?.route()?.socketAddress?.address?.let(::localAddress)!=true) throw IOException("Публичный HTTP запрещён")
+            if(chain.request().url.scheme=="http") if(chain.connection()?.route()?.socketAddress?.address?.let(::localAddress)!=true) throw NetworkPolicyFailure("Публичный HTTP запрещён. Укажите HTTPS-адрес")
             chain.proceed(chain.request())
         }
         .addInterceptor { chain ->
-            val r=chain.request(); if(r.url.origin() !in allowed) throw IOException("Не разрешённый адрес")
-            if(r.url.scheme != "https" && !config.localHttp) throw IOException("Разрешите локальный HTTP в настройках")
+            val r=chain.request(); if(r.url.origin() !in allowed) throw NetworkPolicyFailure("Не разрешённый адрес")
+            if(r.url.scheme != "https" && !config.localHttp) throw NetworkPolicyFailure("Включите «Разрешить HTTP» в настройках подключений")
             chain.proceed(r)
         }.build()
 }
-class HttpFailure(val status:Int):IOException(when(status) {401,403 -> "Доступ отклонён: проверьте ключ или пароль";in 300..399 -> "Перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
+class HttpFailure(val status:Int):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
 suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) { if(c.isActive) c.resumeWithException(IOException(when(e) { is java.net.UnknownHostException -> "Имя сервера не найдено. Для .local попробуйте IP-адрес"; is javax.net.ssl.SSLException -> "Не удалось проверить TLS-сертификат сервера"; is java.net.SocketTimeoutException -> "Время ожидания сервера истекло"; else -> "Сеть недоступна или соединение прервано" })) }
+        override fun onFailure(call: Call, e: IOException) { if(c.isActive) c.resumeWithException(if(e is NetworkPolicyFailure) e else IOException(when(e) { is java.net.UnknownHostException -> "Имя сервера не найдено. Для .local попробуйте IP-адрес"; is javax.net.ssl.SSLException -> "Не удалось проверить TLS-сертификат сервера"; is java.net.SocketTimeoutException -> "Время ожидания сервера истекло"; is java.net.ConnectException -> "Не удалось подключиться. Проверьте адрес, порт и доступ из сети устройства"; else -> "Сеть недоступна или соединение прервано" })) }
         override fun onResponse(call: Call, response: Response) {
             try { response.use { r ->
                 val location=r.header("Location")
@@ -79,6 +81,7 @@ object TorznabXml {
     }
     fun caps(xml: String): Caps {
         val p=parser(xml); var max=50; var offset=false; val categories=mutableListOf<String>()
+        p.nextTag();require(p.name in setOf("caps","error")) {"Ожидался Torznab caps XML. Для JacRed выберите JacRed JSON"}
         while(p.eventType!=XmlPullParser.END_DOCUMENT) {
             if(p.eventType==XmlPullParser.START_TAG) when(p.name) {
                 "error" -> error("Torznab: проверьте API-ключ")
@@ -90,6 +93,7 @@ object TorznabXml {
     }
     fun releases(xml: String, source: String): List<Release> {
         val p=parser(xml); val result=mutableListOf<Release>(); var item: MutableMap<String,String>?=null
+        p.nextTag();require(p.name in setOf("rss","error")) {"Ожидался Torznab RSS. Проверьте API поиска"}
         while(p.eventType!=XmlPullParser.END_DOCUMENT) {
             if(p.eventType==XmlPullParser.START_TAG) when(p.name) {
                 "error" -> error("Torznab: проверьте API-ключ или доступ к источнику")
@@ -113,18 +117,25 @@ object TorznabXml {
 class TorznabRepository(private val config: Config, private val apiKey: String, private val client: OkHttpClient) : ReleaseRepository {
     private val permits=Semaphore(3)
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
-    private val sources get()=config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    private val sources get()=config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
     private fun url(source: String, type: String, query: String? = null): HttpUrl {
         require(Regex("[A-Za-z0-9_-]+").matches(source)) { "Некорректный ID индексатора" }
-        val path=config.torznabPaths[source] ?: "/api/v2.0/indexers/$source/results/torznab/api";validateTorznabPath(path)
+        val path=if(config.usesJacred()) "/api/v2.0/indexers/$source/results" else config.torznabPaths[source] ?: "/api/v2.0/indexers/$source/results/torznab/api";validateTorznabPath(path)
         return endpoint(config.jackett).child(path).newBuilder()
-            .addQueryParameter("t",type).addQueryParameter("apikey",apiKey).apply { if(query!=null) addQueryParameter("q",query) }.build()
+            .apply {
+                if(!config.usesJacred()) addQueryParameter("t",type)
+                if(apiKey.isNotBlank()) addQueryParameter("apikey",apiKey)
+                if(query!=null) addQueryParameter(if(config.usesJacred()) "Query" else "q",query)
+            }.build()
     }
     private suspend fun capabilities(source: String): Caps {
         caps[source]?.takeIf { System.currentTimeMillis()-it.first < 86_400_000 }?.let { return it.second }
         return TorznabXml.caps(String(client.bytes(Request.Builder().url(url(source,"caps")).build()))).also { caps[source]=System.currentTimeMillis() to it }
     }
-    override suspend fun check(): String { require(sources.isNotEmpty()) { "Укажите ID индексаторов через запятую" }; sources.forEach { capabilities(it) }; return "Проверено источников: ${sources.size}" }
+    override suspend fun check(): String {
+        if(config.usesJacred()) {sources.forEach {JacredJson.releases(String(client.bytes(Request.Builder().url(url(it,"search", "")).build())),it)};return "JacRed JSON: подключение проверено"}
+        sources.forEach { capabilities(it) }; return "Torznab: проверено источников ${sources.size}"
+    }
     override suspend fun search(query: String): SearchResult = searchPage(query)
     suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null):SearchResult = supervisorScope {
         val selected=sources.filter {onlySources==null||it in onlySources}
@@ -133,6 +144,10 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         val responses=java.util.concurrent.ConcurrentHashMap<String,Pair<List<Release>,String?>>()
         val jobs=selected.map {source -> async {permits.withPermit {
             val result=try {withTimeout(20_000) {
+                if(config.usesJacred()) {
+                    if(page>0) return@withTimeout Pair(emptyList<Release>(),null)
+                    return@withTimeout Pair(JacredJson.releases(String(client.bytes(Request.Builder().url(url(source,"search",query)).build())),source),null)
+                }
                 val cap=capabilities(source)
                 if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null)
                 val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString())

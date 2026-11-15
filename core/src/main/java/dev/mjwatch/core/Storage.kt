@@ -64,6 +64,7 @@ class Settings(private val context: Context) {
     suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
 }
 fun encodeConfig(c: Config): String {
+    require(c.releaseApi in setOf("auto","torznab","jacred")) {"Неизвестный API поиска"}
     listOf(c.jackett,c.torrServer).filter {it.isNotBlank()}.forEach {endpoint(it)}
     val indexers=org.json.JSONArray()
     c.indexers.split(',').map {it.trim()}.filter {it.isNotBlank()}.forEach {id ->
@@ -72,7 +73,7 @@ fun encodeConfig(c: Config): String {
         indexers.put(JSONObject().put("id",id).put("torznabPath",path).put("enabled",true))
     }
     return JSONObject().put("schemaVersion",1).put("demo",c.demo)
-        .put("jackett",JSONObject().put("baseUrl",c.jackett).put("credentialRef","jackett-api-key").put("indexers",indexers))
+        .put("jackett",JSONObject().put("baseUrl",c.jackett).put("api",c.releaseApi).put("credentialRef","jackett-api-key").put("indexers",indexers))
         .put("torrServer",JSONObject().put("baseUrl",c.torrServer).put("credentialRef","torrserver-auth").put("saveToDatabase",false))
         .put("metadata",JSONObject().put("provider",c.metadataProvider).put("language","ru-RU").put("credentialRef","metadata-api-token"))
         .put("network",JSONObject().put("localHttpOptIn",c.localHttp).put("allowedLocalHttpOrigins",org.json.JSONArray(listOf(c.jackett,c.torrServer).filter {it.startsWith("http://")}.map {endpoint(it).origin()})))
@@ -81,6 +82,8 @@ fun encodeConfig(c: Config): String {
 fun decodeConfig(raw: String): Config {
     val j=JSONObject(raw);require(j.optInt("schemaVersion",1)==1) {"Неизвестная версия конфигурации"}
     val jackett=j.optJSONObject("jackett");val server=j.optJSONObject("torrServer")
+    val api=jackett?.optString("api","auto") ?: j.optString("releaseApi","auto")
+    require(api in setOf("auto","torznab","jacred")) {"Неизвестный API поиска"}
     val sources=jackett?.optJSONArray("indexers") ?: org.json.JSONArray();val paths=mutableMapOf<String,String>()
     for(i in 0 until sources.length()) {val source=sources.getJSONObject(i);if(source.optBoolean("enabled",true)) {
         val id=source.getString("id");val path=source.optString("torznabPath","/api/v2.0/indexers/$id/results/torznab/api")
@@ -92,7 +95,7 @@ fun decodeConfig(raw: String): Config {
         torrServer=server?.optString("baseUrl") ?: j.optString("torrServer"),
         localHttp=j.optJSONObject("network")?.optBoolean("localHttpOptIn") ?: j.optBoolean("localHttp"),
         demo=j.optBoolean("demo"),theme=j.optJSONObject("appearance")?.optString("theme","system") ?: j.optString("theme","system"),
-        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths)
+        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths,releaseApi=api)
 }
 
 fun Release.json(): String = JSONObject().put("id", id).put("title", title).put("source", source)

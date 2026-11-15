@@ -15,6 +15,53 @@ import org.robolectric.annotation.Config
 @Config(sdk=[35],manifest=Config.NONE)
 class ContractsTest {
     private fun fixture(name:String)=javaClass.classLoader!!.getResource(name)!!.readText()
+    @Test fun jacredJsonContractAndConfigRoundTrip() {
+        val items=JacredJson.releases(fixture("jacred.json"),"all")
+        assertEquals(1,items.size);val r=items.single()
+        assertEquals("Sintel • fixture 720p",r.title);assertEquals("Fixture",r.source)
+        assertEquals(0,r.seeds);assertEquals(129241752L,r.size)
+        assertEquals("08ada5a7a6183aae1e09d831df6748d566095a10",r.hash)
+        assertNull(r.download);assertFalse(r.id.contains("magnet"))
+        assertEquals(items,JacredJson.releases(fixture("jacred.json").replace("Results","results"),"all"))
+        assertTrue(runCatching {JacredJson.releases("<html>denied</html>","all")}.isFailure)
+        assertTrue(runCatching {JacredJson.releases("{}","all")}.isFailure)
+        assertTrue(dev.mjwatch.core.Config(jackett="https://jac.red").usesJacred())
+        assertFalse(dev.mjwatch.core.Config(jackett="https://jac.red",releaseApi="torznab").usesJacred())
+        val c=dev.mjwatch.core.Config(jackett="https://custom.invalid/proxy",releaseApi="jacred")
+        assertEquals(c,decodeConfig(encodeConfig(c)))
+    }
+    @Test fun jacredEmptyCredentialsAndSourcesUseJsonWithoutCaps()=runBlocking {
+        val server=MockWebServer();server.start()
+        try {
+            val c=dev.mjwatch.core.Config(jackett=server.url("/prefix").toString(),localHttp=true,releaseApi="jacred")
+            val repo=TorznabRepository(c,"",guardedClient(c))
+            server.enqueue(MockResponse().setBody("{\"Results\":[],\"jacred\":true}"));assertTrue(repo.check().contains("JacRed JSON"))
+            server.enqueue(MockResponse().setBody(fixture("jacred.json")));assertEquals(1,repo.search("Sintel тест").releases.size)
+            repeat(2) {index-> val request=server.takeRequest();val url=request.requestUrl!!
+                assertEquals("/prefix/api/v2.0/indexers/all/results",url.encodedPath)
+                assertNull(url.queryParameter("apikey"));assertNull(url.queryParameter("t"))
+                assertEquals(if(index==0) "" else "Sintel тест",url.queryParameter("Query"))
+            }
+            server.enqueue(MockResponse().setResponseCode(403))
+            val failure=runCatching {repo.check()}.exceptionOrNull()!!
+            assertTrue(safeError(failure).contains("HTTP 403"));assertEquals(3,server.requestCount)
+        } finally {server.shutdown()}
+    }
+    @Test fun localHttpPolicyReasonSurvivesAsyncFailureAndHtmlIsRejected()=runBlocking {
+        val server=MockWebServer();server.start()
+        try {
+            val c=dev.mjwatch.core.Config(torrServer=server.url("/").toString())
+            val client=guardedClient(c)
+            val failure=runCatching {client.bytes(Request.Builder().url(server.url("/echo")).build())}.exceptionOrNull()!!
+            assertTrue(failure is NetworkPolicyFailure);assertTrue(safeError(failure).contains("Разрешить HTTP"));assertEquals(0,server.requestCount)
+            assertTrue(runCatching {TorznabXml.caps("<html><body>Login</body></html>")}.isFailure)
+            assertTrue(runCatching {TorznabXml.releases("<html/>","all")}.isFailure)
+            val cfg=c.copy(jackett=server.url("/").toString(),localHttp=true)
+            server.enqueue(MockResponse().setBody("<caps/>"))
+            TorznabRepository(cfg,"",guardedClient(cfg)).check()
+            assertEquals("/api/v2.0/indexers/all/results/torznab/api",server.takeRequest().requestUrl!!.encodedPath)
+        } finally {server.shutdown()}
+    }
     @Test fun xmlUnicodeOptionalAndDedupe() {
         val r=TorznabXml.releases(fixture("torznab.xml"),"fixture")
         assertEquals(2,r.size); assertEquals("Тест & Film 1080p",r[0].title); assertEquals(0,r[0].seeds); assertNull(r[1].seeds)

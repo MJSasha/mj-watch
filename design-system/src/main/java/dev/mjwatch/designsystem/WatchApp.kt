@@ -411,17 +411,20 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     fun changed(new:Config) { c=new; model.invalidateChecks() }
     LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(vertical=24.dp)) {
         item { Heading("Подключения") }
-        item { Text("Jackett ищет раздачи. TorrServer готовит поток. Каталог необязателен.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Jackett / JacRed ищет раздачи. TorrServer готовит поток. Каталог необязателен.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(verticalAlignment=Alignment.CenterVertically) { Switch(modifier=Modifier.semantics {contentDescription="Демонстрация с локальным видео"},checked=c.demo,onCheckedChange={changed(c.copy(demo=it))}); Text("Демонстрация с локальным видео",Modifier.padding(start=12.dp)) } }
-        item { OutlinedTextField(c.jackett,{key=""; changed(c.copy(jackett=it))},label={Text("Адрес Jackett")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "https://host или локальный http://host:port")},modifier=Modifier.fillMaxWidth(),singleLine=true) }
-        item { SecretField(key,{key=it;model.invalidateChecks()},"API-ключ Jackett") }
-        item { OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("ID индексаторов через запятую")},modifier=Modifier.fillMaxWidth()) }
-        item { Action("Проверить Jackett",tv) {model.check(true,c,key,user,password)}; Text(s.checkJackett,Modifier.padding(top=8.dp)) }
+        item { OutlinedTextField(c.jackett,{key=""; changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red. API-ключ — только если требует сервер")},modifier=Modifier.fillMaxWidth(),singleLine=true) }
+        item { Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->FilterChip(selected=c.releaseApi==id,onClick={changed(c.copy(releaseApi=id))},label={Text(label)})}} }
+        item { Text(if(c.usesJacred()) "Выбран JacRed JSON. Для публичного сервера ключ можно оставить пустым." else "Torznab XML. Для своего JacRed выберите JacRed JSON.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)") }
+        item { OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники (all)")},modifier=Modifier.fillMaxWidth()) }
+        item { Action("Проверить поиск",tv) {model.check(true,c,key,user,password)}; Text(s.checkJackett,Modifier.padding(top=8.dp)) }
         item { HorizontalDivider(); Heading("TorrServer") }
         item { OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=urlError(c.torrServer),supportingText={if(urlError(c.torrServer)) Text("Введите http/https URL без логина, query и fragment")},modifier=Modifier.fillMaxWidth(),singleLine=true) }
         item { OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true) }
         item { SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer") }
         item { Row(verticalAlignment=Alignment.CenterVertically) { Checkbox(modifier=Modifier.semantics {contentDescription="Разрешить локальный HTTP"},checked=c.localHttp,onCheckedChange={changed(c.copy(localHttp=it))}); Text("Разрешить HTTP только для этих локальных серверов",Modifier.weight(1f)) } }
+        if(!c.localHttp&&c.torrServer.trim().startsWith("http://")) item {Text("Для локального TorrServer по HTTP включите разрешение выше. Если .local не находится на Android, укажите LAN IP компьютера.",color=MaterialTheme.colorScheme.error)}
         item { Action("Проверить TorrServer",tv) {model.check(false,c,key,user,password)}; Text(s.checkTorr,Modifier.padding(top=8.dp)) }
         item { Heading("Каталог · необязательно") }
         item { Row(verticalAlignment=Alignment.CenterVertically) { Switch(modifier=Modifier.semantics {contentDescription="Каталог TMDB"},checked=c.metadataProvider=="tmdb",onCheckedChange={c=c.copy(metadataProvider=if(it) "tmdb" else "none")}); Text("TMDB API v3",Modifier.padding(start=12.dp)) } }
@@ -434,7 +437,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
         item { Action("Экспорт конфигурации",tv) {if(!urlError(c.jackett)&&!urlError(c.torrServer)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"} }
         item { Action("Импорт конфигурации",tv) {importer.launch(arrayOf("application/json"))} }
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
-        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch 0.2.0 · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { AsyncImage(model=coil.request.ImageRequest.Builder(LocalContext.current).data("file:///android_asset/tmdb.svg").decoderFactory(coil.decode.SvgDecoder.Factory()).build(),contentDescription="TMDB",modifier=Modifier.width(120.dp).height(32.dp)); HorizontalDivider(); Text("MJWatch 0.2.1 · Native Kotlin / Media3\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0\nНет внешней аналитики",color=MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported;key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
 }

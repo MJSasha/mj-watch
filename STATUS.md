@@ -45,3 +45,13 @@
 - Production signing и публикация не входят в выполненную поставку.
 
 Подробности: [docs/testing/ACCEPTANCE-REPORT.md](docs/testing/ACCEPTANCE-REPORT.md).
+
+## Исправление подключения JacRed — 0.2.1 (3)
+
+После пользовательского отчёта обнаружены и исправлены блокировка запросов при пустых индексаторах и отсутствие отдельного JacRed JSON adapter. Для `https://jac.red` он выбирается автоматически, доступны явные Auto/Torznab/JacRed режимы. Пустой ключ не отправляется; пустые индексаторы означают `all`. API сохраняется в конфигурации. HTML вместо Torznab XML теперь отклоняется, а HTTP403 больше не выдаётся за однозначную ошибку ключа. Причины local HTTP denial / DNS / connect не скрываются общей ошибкой сети.
+
+- 20 core tests: OK, включая новые JSON/case/dedupe/empty key/all/prefix/error-policy regressions.
+- Android API36 JacredFlowTest: реальные HTTP adapters, synthetic JacRed JSON + mock TorrServer + local MP4 over HTTP, проверки обоих подключений без ключей/индексаторов → поиск → выбор → stream с file ID17 → фактический first frame: OK.
+- Live локальный TorrServer по-прежнему отвечает MatriX.145.2.
+- Сам jac.red из среды разработки отвечает HTTP403 на root и API. Успешный live JacRed поиск пока НЕ подтверждён. Исправления клиента не обходят запрет сервиса.
+- Финальные сборки и CI этой версии фиксируются отдельно ниже.
