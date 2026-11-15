@@ -1,0 +1,25 @@
+
+dev.mjwatch.mobile.AuditScreensTest:
+dev.mjwatch.mobile.AuditScreensTest:
+dev.mjwatch.mobile.JacredFlowTest:.
+dev.mjwatch.mobile.LiveJacredTest:
+dev.mjwatch.mobile.LiveJacredTest:
+dev.mjwatch.mobile.LiveTorrServerTest:
+dev.mjwatch.mobile.LiveTorrServerTest:
+dev.mjwatch.mobile.MetadataFlowTest:.
+dev.mjwatch.mobile.PipTest:
+dev.mjwatch.mobile.PipTest:
+dev.mjwatch.mobile.PublishedUpdateTest:
+dev.mjwatch.mobile.PublishedUpdateTest:
+dev.mjwatch.mobile.SessionTest:.
+dev.mjwatch.mobile.TabletTest:
+dev.mjwatch.mobile.TabletTest:
+dev.mjwatch.mobile.UpdateRuntimeTest:
+dev.mjwatch.mobile.UpdateRuntimeTest:
+dev.mjwatch.mobile.VerticalFlowTest:.
+
+Time: 25.572
+
+OK (12 tests)
+
+

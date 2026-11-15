@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.mjwatch.core.UpdatesTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-15T16:30:32.400Z" hostname="Mac" time="0.149">
+  <properties/>
+  <testcase name="redirectDowngradeAndOtherHostsAreRejectedBeforeRequest" classname="dev.mjwatch.core.UpdatesTest" time="0.007"/>
+  <testcase name="streamedDownloadChecksHashAndSize" classname="dev.mjwatch.core.UpdatesTest" time="0.009"/>
+  <testcase name="descriptorBindsChannelPlatformVersionAndRepository" classname="dev.mjwatch.core.UpdatesTest" time="0.004"/>
+  <testcase name="githubReleaseSelectionRedirectsAndCredentialIsolation" classname="dev.mjwatch.core.UpdatesTest" time="0.004"/>
+  <testcase name="cancelledStreamClosesAndStopsWriting" classname="dev.mjwatch.core.UpdatesTest" time="0.118"/>
+  <testcase name="downloadBytesRejectTamperingAndTruncation" classname="dev.mjwatch.core.UpdatesTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

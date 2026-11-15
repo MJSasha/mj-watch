@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.VerticalFlowTest:.
+
+Time: 11.433
+
+OK (1 test)
+
+
