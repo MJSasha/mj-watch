@@ -149,7 +149,7 @@ import java.util.UUID
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false,settings=true,onDirty={dirty=it})}
   }
-  if(managed.message.isNotBlank()) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+  if(managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
  }
  }
  BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -240,7 +240,7 @@ import java.util.UUID
    }
    Action("Заводские настройки",tv,secondary=true,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Defaults применены и перечитаны"}}}
    Action("Сбросить изменения",tv,secondary=true){draft=JSONObject(snapshot.getJSONObject("settings").toString());onDirty(false)}
-   Action("Применить по SSH",tv,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val changes=JSONObject();val before=snapshot.getJSONObject("settings");draft!!.keys().forEach {key->if(draft!!.get(key)!=before.opt(key))changes.put(key,draft!!.get(key))};val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",changes).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Применено и перечитано"}}}
+   Action("Применить по SSH",tv,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val changes=torrSettingsChanges(snapshot,draft!!);val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",changes).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Применено и перечитано"}}}
   }
  }else{
   val bundles=remember {ServerBundles(context)}

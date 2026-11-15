@@ -46,7 +46,7 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   val previous=result();if(previous.optString("state")=="complete"){secrets.put(key,"");return@session previous.getJSONObject("result")}
   startOperation(session,"torr",body)
   val deadline=System.currentTimeMillis()+90000;var state:JSONObject
-  do{Thread.sleep(500);state=result();if(state.optString("state")=="failed")error("Настройки не применены: ${state.optString("code")}");check(System.currentTimeMillis()<deadline){"Результат пока неизвестен. Проверьте состояние операции."}}while(state.optString("state")!="complete")
+  do{Thread.sleep(500);state=result();if(state.optString("state")=="failed"){secrets.put(key,"");error(if(state.optString("code")=="unsupported_field")"Сервер отклонил неподдерживаемое поле. Прочитайте настройки заново и повторите применение." else "Настройки не применены: ${state.optString("code")}")};check(System.currentTimeMillis()<deadline){"Результат пока неизвестен. Проверьте состояние операции."}}while(state.optString("state")!="complete")
   secrets.put(key,"");state.getJSONObject("result")
  }
  private fun startOperation(session:Session,kind:String,body:JSONObject){

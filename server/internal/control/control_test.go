@@ -8,7 +8,7 @@ import (
 )
 
 func TestSettingsRevisionMergeAndUnknownFields(t *testing.T) {
-	settings := map[string]any{"CacheSize": float64(64 << 20), "ReaderReadAHead": float64(95), "PreloadCache": float64(50), "UnknownFutureField": "keep"}
+	settings := map[string]any{"CacheSize": float64(64 << 20), "ReaderReadAHead": float64(95), "PreloadCache": float64(50), "UnknownFutureField": "keep", "UnknownFutureObject": map[string]any{"enabled": true}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/echo" {
 			w.Write([]byte("MatriX.145.2"))
@@ -37,7 +37,7 @@ func TestSettingsRevisionMergeAndUnknownFields(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if settings["UnknownFutureField"] != "keep" || settings["PreloadCache"] != float64(25) {
+	if settings["UnknownFutureField"] != "keep" || settings["UnknownFutureObject"].(map[string]any)["enabled"] != true || settings["PreloadCache"] != float64(25) {
 		t.Fatal(settings)
 	}
 	if _, e = ctl.Apply(input); e != nil {
@@ -50,7 +50,7 @@ func TestSettingsRevisionMergeAndUnknownFields(t *testing.T) {
 	if got["settings"] == nil {
 		t.Fatal(got)
 	}
-	for _, bad := range []map[string]any{{"PreloadCache": float64(101)}, {"ReaderReadAHead": float64(4)}, {"EnableDLNA": true}, {"CacheSize": "$(touch /tmp/exploit)"}, {"DisableTCP": "false"}} {
+	for _, bad := range []map[string]any{{"UnknownFutureObject": map[string]any{"enabled": false}}, {"PreloadCache": float64(101)}, {"ReaderReadAHead": float64(4)}, {"EnableDLNA": true}, {"CacheSize": "$(touch /tmp/exploit)"}, {"DisableTCP": "false"}} {
 		if Validate(bad) == nil {
 			t.Fatal("accepted invalid", bad)
 		}
