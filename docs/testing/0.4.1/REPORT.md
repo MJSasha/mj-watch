@@ -27,4 +27,6 @@
 
 По последнему решению пользователя работа с TMDB оставлена прежней: прямой API и личный токен из настроек. Общий токен в APK не добавлен, Actions Secret не используется. Серверное размещение отложено. Live-серверы в этой UI-итерации не проверялись; fixtures не являются доказательством live playback или полной accessibility-матрицы.
 
-CI и подписанный выпуск будут указаны после завершения workflow.
+[CI #17](https://github.com/MJSasha/mj-watch/actions/runs/43742632904), исходник `57b567c884717350dedf601a133a9838dd0c0fe0`: build, phone API35, TV API36, publish-testing — success.
+
+Опубликована [0.4.1-test.17](https://github.com/MJSasha/mj-watch/releases/tag/test-17), versionCode1017. [Телефон/планшет](https://github.com/MJSasha/mj-watch/releases/download/test-17/MJWatch-mobile.apk) · [TV](https://github.com/MJSasha/mj-watch/releases/download/test-17/MJWatch-tv.apk). Подписи совместимы с прежними тестовыми сборками; SHA256/size/package/version сверены с update.json, [результат](logs/published-apks.txt). Локальные подписанные копии находятся в `dist/test-17/`.

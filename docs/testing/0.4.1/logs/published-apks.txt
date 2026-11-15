@@ -1,0 +1,9 @@
+MJWatch-mobile.apk
+package: name='dev.mjwatch.mobile' versionCode='1017' versionName='0.4.1-test.17' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+SHA256/size match update.json: e00cfd374a000451c8fc06963f65fabc7b37b9af9ca0c370069ed99a5623b1bf
+Pinned compatible signing certificate: OK
+
+MJWatch-tv.apk
+package: name='dev.mjwatch.tv' versionCode='1017' versionName='0.4.1-test.17' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+SHA256/size match update.json: ece4354c2962c314959368dc4fa4ee18f8cefa5ad42d5488920e3bceefcf07fa
+Pinned compatible signing certificate: OK

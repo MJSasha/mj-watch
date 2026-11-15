@@ -1,6 +1,6 @@
 # MJWatch — состояние реализации
 
-Текущая публикация: 0.4.0-test.16 (1016), GitHub Releases и встроенные обновления работают. Последние результаты — в конце файла. Данные 0.2.x ниже сохранены как исторический отчёт.
+Текущая публикация: 0.4.1-test.17 (1017), GitHub Releases и встроенные обновления работают. Последние результаты — в конце файла. Данные 0.2.x ниже сохранены как исторический отчёт.
 
 Обновлено 2026-11-15. Версия 0.2.0 (2), исходники приложения: `97a43a4`.
 
@@ -91,4 +91,4 @@
 - Обновления вынесены на отдельную страницу по образцу MJReader/MJAnime. README, баннер, badges и скриншоты оформлены в стиле семейства MJ.
 - Проверено: 27 unit tests, debug/release и lint; phone API36 стандартный suite 14 tests (6 passed / 8 skipped), новые UI-регрессии при 200%, tablet split и TV D-pad/playback/focus. [Отчёт](docs/testing/0.4.1/REPORT.md).
 - По решению пользователя TMDB оставлен без изменений: личный ключ и прямой API; общий Actions Secret не используется. Серверная часть отложена.
-- Публикация 0.4.1 ожидает CI.
+- [CI #17](https://github.com/MJSasha/mj-watch/actions/runs/43742632904), исходник `57b567c`: build, phone API35, TV API36 и publish-testing — success. [0.4.1-test.17](https://github.com/MJSasha/mj-watch/releases/tag/test-17), code1017, опубликована. Оба APK скачаны и проверены по SHA256/size, package/version и совместимой подписи; копии в `dist/test-17/`.
