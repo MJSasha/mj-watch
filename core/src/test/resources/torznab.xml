@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>
+<item><title><![CDATA[Тест & Film 1080p]]></title><guid>a</guid><enclosure url="https://jackett.invalid/download?a=1&amp;b=2"/><torznab:attr name="infohash" value="ABC"/><torznab:attr name="seeders" value="0"/></item>
+<item><title>Другой &amp; фильм</title><guid>b</guid><torznab:attr name="infohash" value="DEF"/></item>
+<item><title>Duplicate</title><guid>c</guid><torznab:attr name="infohash" value="abc"/></item>
+</channel></rss>

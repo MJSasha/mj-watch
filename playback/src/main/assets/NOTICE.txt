@@ -1,0 +1,4 @@
+demo.mp4 is default360.mp4 from Android Emulator SDK resources, a controlled virtual-scene test clip.
+Android Emulator: Copyright The Android Open Source Project, Apache License 2.0.
+Source: https://android.googlesource.com/platform/external/qemu/
+Demo orbit illustration: generated for MJWatch design handoff, 2026-11-15. Not real metadata.

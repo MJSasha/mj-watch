@@ -1,0 +1,149 @@
+package dev.mjwatch.playback
+
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Rational
+import android.view.KeyEvent
+import android.view.ViewGroup
+import android.widget.*
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.media3.common.*
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
+import androidx.media3.ui.PlayerView
+import androidx.room.Room
+import dev.mjwatch.core.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+
+@UnstableApi
+class PlaybackActivity : ComponentActivity() {
+    private lateinit var player: ExoPlayer
+    private lateinit var view: PlayerView
+    private var session: MediaSession?=null
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+    private val saveMutex=kotlinx.coroutines.sync.Mutex()
+    private val handler=Handler(Looper.getMainLooper())
+    var firstFrameSeen=false; private set
+    private var firstFrame=false
+    private var retries=0
+    private var panel: android.app.AlertDialog?=null
+    private var startedAt=0L
+    private var releaseId=""; private var path=""; private var fileId=0
+    private lateinit var dao: WatchDao
+    private lateinit var status: TextView
+    private lateinit var db: WatchDatabase
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
+        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").build(); dao=db.dao()
+        val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=4000 }
+        root.addView(view,FrameLayout.LayoutParams(-1,-1))
+        status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
+        root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
+        val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        fun action(label: String, run: ()->Unit) { actions.addView(Button(this).apply { text=label; setOnClickListener { run() } }) }
+        action("Назад") { finish() }
+        action("Дорожки") { tracks() }
+        action("Масштаб") { view.resizeMode=if(view.resizeMode==0) 4 else 0 }
+        if(intent.getBooleanExtra("mobile",true)) action("PiP") { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build()) }
+        action("Другая раздача") { finish() }
+        root.addView(actions,FrameLayout.LayoutParams(-2,-2,android.view.Gravity.TOP or android.view.Gravity.END))
+        view.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility -> actions.visibility=visibility })
+        setContentView(root)
+        onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if(panel!=null) { panel?.dismiss(); panel=null } else finish() } })
+        scope.launch {
+            val config=Settings(applicationContext).config.first()
+            val uri=intent.getStringExtra("uri") ?: return@launch finish()
+            val headers=mutableMapOf<String,String>()
+            val auth=SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
+            val http=OkHttpDataSource.Factory(guardedClient(config)).setDefaultRequestProperties(headers)
+            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)))
+                .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
+            player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
+            player.setHandleAudioBecomingNoisy(true)
+            val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
+            player.trackSelectionParameters=player.trackSelectionParameters.buildUpon()
+                .setPreferredAudioLanguage(preferences.getString("audio-language",null))
+                .setPreferredTextLanguage(preferences.getString("subtitle-language",null))
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT,preferences.getBoolean("subtitles-off",false)).build()
+            view.player=player; session=MediaSession.Builder(this@PlaybackActivity,player).build()
+            player.addListener(object: Player.Listener {
+                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; status.visibility=android.view.View.GONE }
+                override fun onPlaybackStateChanged(state: Int) {
+                    if(state==Player.STATE_BUFFERING) { status.text="Буферизация… · Назад — отменить"; status.visibility=android.view.View.VISIBLE; startedAt=System.currentTimeMillis() }
+                    if(state==Player.STATE_READY&&firstFrame) status.visibility=android.view.View.GONE
+                    if(state==Player.STATE_ENDED) { save(true); status.text="Просмотр завершён"; status.visibility=android.view.View.VISIBLE }
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) { if(!isPlaying) save() }
+                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
+                override fun onPlayerError(error: PlaybackException) {
+                    save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L; handler.postDelayed({ if(!isFinishing) { player.prepare(); player.play() } },delay) }
+                    else { status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Позиция сохранена. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
+                }
+            })
+            val progress=dao.progress().first().firstOrNull { it.key=="$releaseId|$path" }
+            player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: progress?.takeUnless { it.completed }?.positionMs ?: 0)
+            startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState==null || savedInstanceState.getBoolean("playing")
+            view.requestFocus()
+            while(isActive) { delay(5000); save()
+                if(player.playbackState==Player.STATE_BUFFERING || !firstFrame) {
+                    val elapsed=System.currentTimeMillis()-startedAt
+                    if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача. Позиция сохранена." }
+                    else if(elapsed>30_000) status.text="Подготовка занимает больше времени · Назад — отменить"
+                }
+            }
+        }
+    }
+    private fun save(ended:Boolean=false): Job? {
+        if(!::player.isInitialized) return null
+        val duration=player.duration.takeIf { it>0 }; val position=player.currentPosition.coerceAtLeast(0)
+        val p=Progress("$releaseId|$path",releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
+        return scope.launch(Dispatchers.IO) { saveMutex.lock(); try { dao.put(p) } finally {saveMutex.unlock()} }
+    }
+    private fun tracks() {
+        if(!::player.isInitialized) return
+        val names=mutableListOf("Субтитры выключены"); val choices=mutableListOf<Pair<Tracks.Group,Int>?>(null)
+        player.currentTracks.groups.filter { it.type==C.TRACK_TYPE_AUDIO || it.type==C.TRACK_TYPE_TEXT }.forEach { group ->
+            for(i in 0 until group.length) if(group.isTrackSupported(i)) {
+                val f=group.getTrackFormat(i); names+="${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${f.label ?: f.language ?: "Не указано"}${if(group.isTrackSelected(i)) " ✓" else ""}"; choices+=group to i
+            }
+        }
+        panel=android.app.AlertDialog.Builder(this).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
+            val builder=player.trackSelectionParameters.buildUpon(); val selected=choices[which]
+            val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
+            if(selected==null) {builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true);preferences.edit().putBoolean("subtitles-off",true).apply()} else {
+                val language=selected.first.getTrackFormat(selected.second).language
+                if(selected.first.type==C.TRACK_TYPE_AUDIO) preferences.edit().putString("audio-language",language).apply()
+                else preferences.edit().putString("subtitle-language",language).putBoolean("subtitles-off",false).apply()
+                builder.setTrackTypeDisabled(selected.first.type,false).setOverrideForType(TrackSelectionOverride(selected.first.mediaTrackGroup, selected.second))
+            }; player.trackSelectionParameters=builder.build(); panel=null
+        }.setOnDismissListener { panel=null; view.requestFocus() }.show()
+    }
+    override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
+    override fun onStop() { if(::player.isInitialized&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
+    override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); view.useController=!inPictureInPictureMode }
+    override fun onDestroy() {
+        val pending=save(); handler.removeCallbacksAndMessages(null); session?.release(); if(::player.isInitialized) player.release()
+        // Finish the final atomic Room write before closing the database.
+        scope.launch { pending?.join(); db.close(); scope.cancel() }
+        super.onDestroy()
+    }
+    override fun dispatchKeyEvent(event:KeyEvent):Boolean {
+        if(::player.isInitialized&&event.action==KeyEvent.ACTION_DOWN&&!view.isControllerFullyVisible) when(event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> { player.seekBack(); view.showController(); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { player.seekForward(); view.showController(); return true }
+            KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if(player.isPlaying) player.pause() else player.play(); view.showController(); return true }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+}
