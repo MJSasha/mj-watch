@@ -15,6 +15,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.mjwatch.core.UpdateManager
+import dev.mjwatch.playback.PlaybackActivity
 import kotlinx.coroutines.*
 
 @Composable internal fun UpdateSection(manager:UpdateManager,tv:Boolean,compact:Boolean=false) {
@@ -52,6 +53,7 @@ import kotlinx.coroutines.*
                         scope.launch {try {
                             val apk=withContext(Dispatchers.IO) {manager.readyFile()} ?: throw IllegalStateException("APK не прошёл проверку")
                             val uri=FileProvider.getUriForFile(context,"${context.packageName}.updates",apk)
+                            PlaybackActivity.stopActivePlayback()
                             context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                         } catch(_:Exception) {error="Не удалось открыть установщик. Загрузите APK снова или откройте GitHub Releases"} finally {installing=false}}
                     }
