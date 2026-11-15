@@ -1,6 +1,6 @@
 # MJWatch — состояние реализации
 
-Текущая публикация: 0.3.0-test.14 (1014), GitHub Releases и встроенные обновления работают. Последние результаты — в конце файла. Данные 0.2.x ниже сохранены как исторический отчёт.
+Текущая публикация: 0.4.0-test.16 (1016), GitHub Releases и встроенные обновления работают. Последние результаты — в конце файла. Данные 0.2.x ниже сохранены как исторический отчёт.
 
 Обновлено 2026-11-15. Версия 0.2.0 (2), исходники приложения: `97a43a4`.
 
@@ -80,4 +80,5 @@
 - Проверено на fixtures: 27 core tests; mock HTTP JacRed/TorrServer; synthetic metadata. Debug и unsigned release обоих APK, Android lint проходят.
 - Проверено в Android runtime: phone API26/36 и TV API36 — первый кадр локального MP4, пауза кнопкой нового UI, seek, Back, сохранение/resume; TV D-pad/focus. Tablet 1200x800dp — две панели; узкий phone 360dp/fontScale 2.0 — полный сценарий. Системная fullscreen-подсказка Android учтена отдельно в тестах.
 - Live JacRed и пользовательский TorrServer в этой визуальной итерации не проверялись. Пользовательские устройства не подключались; MJAnime не изменялся.
-- Сравнения и точные результаты завершаются в `docs/ui-audit/`; финальная публикация и CI будут записаны после окончания workflow.
+- [Сравнительная галерея 24 экранов](docs/ui-audit/index.html), [отчёт и ограничения](docs/ui-audit/README.md), исходные PNG и логи сохранены в репозитории. Боковая панель «После» подтверждена пользователем; панель «До» остаётся только baseline.
+- [CI #16](https://github.com/MJSasha/mj-watch/actions/runs/43738788214), исходник `5770049`: build, phone API35, TV API36 и publish-testing — success. [Релиз 0.4.0-test.16](https://github.com/MJSasha/mj-watch/releases/tag/test-16), code1016: оба APK, update.json, SHA256SUMS. Скачанные APK проверены по SHA256/size/package/version и закреплённой совместимой тестовой подписи. Локальные копии: `dist/test-16/MJWatch-mobile.apk`, `dist/test-16/MJWatch-tv.apk`.

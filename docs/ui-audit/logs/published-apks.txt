@@ -1,0 +1,9 @@
+MJWatch-mobile.apk
+package: name='dev.mjwatch.mobile' versionCode='1016' versionName='0.4.0-test.16' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+SHA256/size match update.json: 399abf21642e9ae477888e09b980db61775875b92dcea1e4dc9e8fb37c440f46
+Signing certificate matches pinned testing key
+
+MJWatch-tv.apk
+package: name='dev.mjwatch.tv' versionCode='1016' versionName='0.4.0-test.16' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+SHA256/size match update.json: de7c920c8a725dd629ed153ae7858f4bf8d9143d8b02d2a89c247a6bc7be6975
+Signing certificate matches pinned testing key

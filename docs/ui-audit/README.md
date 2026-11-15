@@ -46,11 +46,11 @@
 
 Системная подсказка fullscreen при первом запуске учитывается в тестах отдельно (включая регистр текста Android 8). В visual suite Compose clock продвигается перед снимками, чтобы успевали обновиться UI и асинхронные постеры.
 
-Не подтверждались в этой итерации: live JacRed/TorrServer, физический телевизор/проектор, полная TalkBack/switch-access матрица и производительность по profiler. Скриншоты не используются как доказательство этих свойств. Реальные сетевые/track/codec ограничения из прежних отчётов сохраняются. HTML-галерея служит отчётом и не входит в APK. Публикация CI фиксируется ниже после завершения.
+Не подтверждались в этой итерации: live JacRed/TorrServer, физический телевизор/проектор, полная TalkBack/switch-access матрица и производительность по profiler. Скриншоты не используются как доказательство этих свойств. Реальные сетевые/track/codec ограничения из прежних отчётов сохраняются. HTML-галерея служит отчётом и не входит в APK. Результаты CI и публикация приведены ниже.
 
 ## Компактные сравнения
 
 - [Главная телефона](comparisons/mobile-home.jpg), [detail](comparisons/mobile-detail.jpg), [раздачи](comparisons/mobile-sources.jpg), [плеер](comparisons/mobile-player.jpg).
 - [Главная TV](comparisons/tv-home.jpg), [detail](comparisons/tv-detail.jpg), [раздачи](comparisons/tv-sources.jpg), [плеер](comparisons/tv-player.jpg).
 
-CI [run 43738788214](https://github.com/MJSasha/mj-watch/actions/runs/43738788214), исходник `57700491aa0fa8ccf5f71d5b0917f964ff488feb`: build, phone API35 и TV API36 — success. Публикация тестовых APK выполняется следующим job этого workflow.
+CI [run 43738788214](https://github.com/MJSasha/mj-watch/actions/runs/43738788214), исходник `57700491aa0fa8ccf5f71d5b0917f964ff488feb`: build, phone API35 и TV API36 — success. `publish-testing` также завершился success. Опубликована [0.4.0-test.16](https://github.com/MJSasha/mj-watch/releases/tag/test-16), code1016: [mobile APK](https://github.com/MJSasha/mj-watch/releases/download/test-16/MJWatch-mobile.apk), [TV APK](https://github.com/MJSasha/mj-watch/releases/download/test-16/MJWatch-tv.apk). Скачанные артефакты проверены по manifest SHA256/size, package ID, версии и закреплённой тестовой подписи; [доказательство](logs/published-apks.txt). Локальные подписанные копии находятся в `dist/test-16/`. Боковая панель «После» оставлена согласно подтверждению пользователя.

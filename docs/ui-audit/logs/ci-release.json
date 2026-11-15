@@ -1,0 +1,36 @@
+{
+  "runId": 43738788214,
+  "sourceSha": "57700491aa0fa8ccf5f71d5b0917f964ff488feb",
+  "status": "completed",
+  "conclusion": "success",
+  "runUrl": "https://github.com/MJSasha/mj-watch/actions/runs/43738788214",
+  "releaseUrl": "https://github.com/MJSasha/mj-watch/releases/tag/test-16",
+  "versionName": "0.4.0-test.16",
+  "versionCode": 1016,
+  "assets": [
+    {
+      "name": "MJWatch-mobile.apk",
+      "size": 22294013,
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-16/MJWatch-mobile.apk",
+      "digest": "sha256:399abf21642e9ae477888e09b980db61775875b92dcea1e4dc9e8fb37c440f46"
+    },
+    {
+      "name": "MJWatch-tv.apk",
+      "size": 22294013,
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-16/MJWatch-tv.apk",
+      "digest": "sha256:de7c920c8a725dd629ed153ae7858f4bf8d9143d8b02d2a89c247a6bc7be6975"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 166,
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-16/SHA256SUMS.txt",
+      "digest": "sha256:3a253a7d4ae766defdbe0c962527dcbc7e9962e42089f6984a2b0150941516f0"
+    },
+    {
+      "name": "update.json",
+      "size": 783,
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-16/update.json",
+      "digest": "sha256:1a494fbb1bb7df5a9ee36c4f0c9617d7142bec80254f8f092ded4f09196ef632"
+    }
+  ]
+}
