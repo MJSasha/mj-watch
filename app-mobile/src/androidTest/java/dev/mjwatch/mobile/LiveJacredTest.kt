@@ -24,7 +24,8 @@ class LiveJacredTest {
     val client=guardedClient(config);val repository=TorznabRepository(config,"",client)
     Assert.assertTrue(repository.check().contains("JacRed JSON"))
     val result=repository.search("Sintel")
-    Assert.assertTrue(result.failures.isEmpty());Assert.assertTrue(result.releases.isNotEmpty())
+    println("MJWatch live JacRed search: count=${result.releases.size}, failures=${result.failures}")
+    Assert.assertTrue(result.failures.joinToString(),result.failures.isEmpty());Assert.assertTrue("JacRed returned no playable releases",result.releases.isNotEmpty())
     // Public CC BY 3.0 short film; avoid multi-GB variants and releases without seeds.
     val release=result.releases.filter {it.title.contains("Sintel",ignoreCase=true)&&(it.seeds ?: 0)>0&&(it.size ?: Long.MAX_VALUE)<100_000_000}.minByOrNull {it.size!!}
     Assert.assertNotNull("Small seeded Sintel release",release)

@@ -49,7 +49,7 @@ fun guardedClient(config: Config): OkHttpClient {
             chain.proceed(if(r.header("User-Agent")==null) r.newBuilder().header("User-Agent","MJWatch/0.2.1 (Android)").build() else r)
         }.build()
 }
-class HttpFailure(val status:Int):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
+class HttpFailure(val status:Int,val retryAfterSeconds:Long?=null):IOException(when(status) {401 -> "HTTP 401: сервер требует авторизацию";403 -> "HTTP 403: сервер запрещает доступ. Проверьте доступность API из вашей сети и требования сервиса";429 -> "HTTP 429: слишком частые запросы. ${retryAfterSeconds?.let {"Повторите через $it с"} ?: "Подождите и повторите поиск"}";in 300..399 -> "HTTP $status: перенаправление запрещено; укажите конечный адрес";else -> "Сервер ответил HTTP $status"})
 suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
@@ -61,7 +61,10 @@ suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, al
                     require(location.length<=65536);validateMagnet(location)
                     if(c.isActive) c.resume(location.toByteArray());return
                 }
-                if(!r.isSuccessful) throw HttpFailure(r.code)
+                if(!r.isSuccessful) {
+                    val retry=r.header("Retry-After")?.let {value -> value.toLongOrNull() ?: runCatching {java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond()-java.time.Instant.now().epochSecond}.getOrNull()}?.coerceAtLeast(0)
+                    throw HttpFailure(r.code,retry)
+                }
                 val b=r.body ?: throw IOException("Пустой ответ")
                 require(b.contentLength() <= limit) { "Ответ превышает лимит" }
                 val output=java.io.ByteArrayOutputStream(); b.byteStream().use { input ->
@@ -118,6 +121,15 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     private val permits=Semaphore(3)
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
     private val sources get()=config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
+    private suspend fun read(url:HttpUrl):ByteArray {
+        val request=Request.Builder().url(url).build()
+        return try {client.bytes(request)} catch(e:HttpFailure) {
+            // Read-only lookup only. Respect long server cooldowns by returning an actionable error.
+            if(e.status!=429||(e.retryAfterSeconds ?: 2)>5) throw e
+            delay((e.retryAfterSeconds ?: 2)*1000)
+            client.bytes(request)
+        }
+    }
     private fun url(source: String, type: String, query: String? = null): HttpUrl {
         require(Regex("[A-Za-z0-9_-]+").matches(source)) { "Некорректный ID индексатора" }
         val path=if(config.usesJacred()) "/api/v2.0/indexers/$source/results" else config.torznabPaths[source] ?: "/api/v2.0/indexers/$source/results/torznab/api";validateTorznabPath(path)
@@ -130,10 +142,10 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     }
     private suspend fun capabilities(source: String): Caps {
         caps[source]?.takeIf { System.currentTimeMillis()-it.first < 86_400_000 }?.let { return it.second }
-        return TorznabXml.caps(String(client.bytes(Request.Builder().url(url(source,"caps")).build()))).also { caps[source]=System.currentTimeMillis() to it }
+        return TorznabXml.caps(String(read(url(source,"caps")))).also { caps[source]=System.currentTimeMillis() to it }
     }
     override suspend fun check(): String {
-        if(config.usesJacred()) {sources.forEach {JacredJson.releases(String(client.bytes(Request.Builder().url(url(it,"search", "")).build())),it)};return "JacRed JSON: подключение проверено"}
+        if(config.usesJacred()) {sources.forEach {JacredJson.releases(String(read(url(it,"search", ""))),it)};return "JacRed JSON: подключение проверено"}
         sources.forEach { capabilities(it) }; return "Torznab: проверено источников ${sources.size}"
     }
     override suspend fun search(query: String): SearchResult = searchPage(query)
@@ -146,13 +158,13 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
             val result=try {withTimeout(20_000) {
                 if(config.usesJacred()) {
                     if(page>0) return@withTimeout Pair(emptyList<Release>(),null)
-                    return@withTimeout Pair(JacredJson.releases(String(client.bytes(Request.Builder().url(url(source,"search",query)).build())),source),null)
+                    return@withTimeout Pair(JacredJson.releases(String(read(url(source,"search",query))),source),null)
                 }
                 val cap=capabilities(source)
                 if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null)
                 val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString())
                     .apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
-                val items=TorznabXml.releases(String(client.bytes(Request.Builder().url(u).build())),source)
+                val items=TorznabXml.releases(String(read(u)),source)
                 if(cap.offset&&items.size>=cap.max) more.set(true)
                 Pair(items,null)
             }} catch(e:TimeoutCancellationException) {Pair(emptyList<Release>(),"$source: Время ожидания истекло")}

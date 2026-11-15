@@ -50,7 +50,8 @@
 
 После пользовательского отчёта обнаружены и исправлены блокировка запросов при пустых индексаторах и отсутствие отдельного JacRed JSON adapter. Для `https://jac.red` он выбирается автоматически, доступны явные Auto/Torznab/JacRed режимы. Пустой ключ не отправляется; пустые индексаторы означают `all`. API сохраняется в конфигурации. HTML вместо Torznab XML теперь отклоняется, а HTTP403 больше не выдаётся за однозначную ошибку ключа. Причины local HTTP denial / DNS / connect не скрываются общей ошибкой сети.
 
-- 20 core tests: OK, включая новые JSON/case/dedupe/empty key/all/prefix/error-policy regressions.
+- 21 core tests: OK, включая новые JSON/case/dedupe/empty key/all/prefix/error-policy и HTTP429 regressions.
+- При HTTP429 GET-поиск/проверка повторяется не более одного раза с короткой задержкой; длинный Retry-After возвращается пользователю. POST add/upload не повторяется этим механизмом; отмена прерывает ожидание.
 - Android API36 JacredFlowTest: реальные HTTP adapters, synthetic JacRed JSON + mock TorrServer + local MP4 over HTTP, проверки обоих подключений без ключей/индексаторов → поиск → выбор → stream с file ID17 → фактический first frame: OK.
 - Live локальный TorrServer по-прежнему отвечает MatriX.145.2.
 - Уточнена причина HTTP403: сервис отклоняет curl User-Agent. С явным `MJWatch/0.2.1 (Android)` запросы без ключа возвращают HTTP200, 12 результатов Sintel и успешную проверку с пустым Query. Идентификация добавлена в общий guarded HTTP client и покрыта тестом. Android live-проверка цепочки фиксируется ниже.

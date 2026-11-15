@@ -30,6 +30,20 @@ class ContractsTest {
         val c=dev.mjwatch.core.Config(jackett="https://custom.invalid/proxy",releaseApi="jacred")
         assertEquals(c,decodeConfig(encodeConfig(c)))
     }
+    @Test fun rateLimitRetriesLookupOnceAndRespectsLongCooldown()=runBlocking {
+        val server=MockWebServer();server.start()
+        try {
+            val config=dev.mjwatch.core.Config(jackett=server.url("/").toString(),localHttp=true,releaseApi="jacred")
+            val repo=TorznabRepository(config,"",guardedClient(config))
+            server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After","0"))
+            server.enqueue(MockResponse().setBody(fixture("jacred.json")))
+            assertEquals(1,repo.search("Sintel").releases.size);assertEquals(2,server.requestCount)
+            repeat(2) {server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After","0"))}
+            assertTrue(repo.search("Sintel").failures.single().contains("HTTP 429"));assertEquals(4,server.requestCount)
+            server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After","60"))
+            assertTrue(repo.search("Sintel").failures.single().contains("60"));assertEquals(5,server.requestCount)
+        } finally {server.shutdown()}
+    }
     @Test fun jacredEmptyCredentialsAndSourcesUseJsonWithoutCaps()=runBlocking {
         val server=MockWebServer();server.start()
         try {
