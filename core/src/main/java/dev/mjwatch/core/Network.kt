@@ -68,14 +68,15 @@ object TorznabXml {
         return XmlPullParserFactory.newInstance().apply { isNamespaceAware=true }.newPullParser().apply { setInput(StringReader(xml)) }
     }
     fun caps(xml: String): Caps {
-        val p=parser(xml); var max=50; val categories=mutableListOf<String>()
+        val p=parser(xml); var max=50; var offset=false; val categories=mutableListOf<String>()
         while(p.eventType!=XmlPullParser.END_DOCUMENT) {
             if(p.eventType==XmlPullParser.START_TAG) when(p.name) {
                 "error" -> error("Torznab: проверьте API-ключ")
+                "search" -> offset=p.getAttributeValue(null,"supportedParams")?.split(',')?.contains("offset")==true
                 "limits" -> max=p.getAttributeValue(null,"max")?.toIntOrNull()?.coerceIn(1,50) ?: 50
                 "category", "subcat" -> p.getAttributeValue(null,"name")?.let(categories::add)
             }; p.next()
-        }; return Caps(max, false, categories) // offset is not advertised by standard caps; never guess support.
+        }; return Caps(max, offset, categories) // Only explicitly advertised pagination is used.
     }
     fun releases(xml: String, source: String): List<Release> {
         val p=parser(xml); val result=mutableListOf<Release>(); var item: MutableMap<String,String>?=null
@@ -111,14 +112,16 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         return TorznabXml.caps(String(client.bytes(Request.Builder().url(url(source,"caps")).build()))).also { caps[source]=System.currentTimeMillis() to it }
     }
     override suspend fun check(): String { require(sources.isNotEmpty()) { "Укажите ID индексаторов через запятую" }; sources.forEach { capabilities(it) }; return "Проверено источников: ${sources.size}" }
-    override suspend fun search(query: String): SearchResult = withTimeout(25_000) { supervisorScope {
+    override suspend fun search(query: String): SearchResult = searchPage(query)
+    suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null):SearchResult = withTimeout(25_000) { supervisorScope {
         require(sources.isNotEmpty()) { "Добавьте индексаторы в настройках" }
-        val results=sources.map { source -> async { permits.withPermit {
-            try { withTimeout(20_000) { val cap=capabilities(source); val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString()).build()
-                Pair(TorznabXml.releases(String(client.bytes(Request.Builder().url(u).build())),source),null) }
+        val more=java.util.concurrent.atomic.AtomicBoolean(false)
+        val results=sources.filter {onlySources==null||it in onlySources}.map { source -> async { permits.withPermit {
+            try { withTimeout(20_000) { val cap=capabilities(source); if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null); val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString()).apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
+                val items=TorznabXml.releases(String(client.bytes(Request.Builder().url(u).build())),source); if(cap.offset&&items.size>=cap.max) more.set(true); Pair(items,null) }
             } catch(e: TimeoutCancellationException) { Pair(emptyList<Release>(), "$source: Время ожидания истекло") } catch(e: CancellationException) { throw e } catch(e: Exception) { Pair(emptyList<Release>(), "$source: ${safeError(e)}") }
         } } }.awaitAll()
-        SearchResult(results.flatMap { it.first }.distinctBy { it.hash ?: it.id },results.mapNotNull { it.second })
+        SearchResult(results.flatMap { it.first }.distinctBy { it.hash ?: it.id },results.mapNotNull { it.second },more.get())
     } }
     suspend fun torrent(release: Release): ByteArray {
         val raw=release.download ?: error("Нет magnet или torrent")

@@ -65,6 +65,19 @@ class ContractsTest {
             assertEquals(0,other.requestCount)
         } finally {server.shutdown();other.shutdown()}
     }
+    @Test fun advertisedPaginationAndCapabilityCache()=runBlocking {
+        val server=MockWebServer();server.start();var capRequests=0
+        try {
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {override fun dispatch(request:RecordedRequest):MockResponse {
+                if(request.path!!.contains("t=caps")) {capRequests++;return MockResponse().setBody("<caps><limits max='2'/><searching><search available='yes' supportedParams='q,offset,limit'/></searching></caps>")}
+                val ids=if(request.requestUrl!!.queryParameter("offset")=="2") listOf("b","c") else listOf("a","b")
+                return MockResponse().setBody("<rss><channel>"+ids.joinToString(""){"<item><title>$it</title><guid>$it</guid></item>"}+"</channel></rss>")
+            }}
+            val c=dev.mjwatch.core.Config(jackett=server.url("/").toString(),indexers="fixture",localHttp=true)
+            val repo=TorznabRepository(c,"",guardedClient(c));val first=repo.searchPage("test");val second=repo.searchPage("test",1)
+            assertTrue(first.more);assertEquals(1,capRequests);assertEquals(3,(first.releases+second.releases).distinctBy {it.id}.size)
+        } finally {server.shutdown()}
+    }
     @Test fun partialSourcesAndCancellation()=runBlocking {
         val server=MockWebServer(); server.start()
         try {

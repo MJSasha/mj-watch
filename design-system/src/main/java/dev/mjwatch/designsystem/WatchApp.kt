@@ -152,7 +152,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
     Spacer(Modifier.height(16.dp))
     if(s.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     LazyColumn(verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
-        if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error) }
+        if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(s.message.isNotEmpty()) item { Text(s.message,modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }) }
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(s.metadata.isNotEmpty()) item { Heading("Каталог TMDB · выберите произведение") }
@@ -167,6 +167,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Outlin
             }
         }
         items(s.results,key={it.id}) { r -> ReleaseCard(r,tv,s.focusKey==r.id) { keyboard?.hide(); model.open(r) } }
+        if(s.more&&!s.busy) item {Action("Загрузить ещё",tv) {model.loadMore()} }
     }
 }
 @Composable private fun DetailScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean) {

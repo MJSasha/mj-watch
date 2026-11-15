@@ -26,7 +26,7 @@ class VerticalFlowTest {
 
     compose.waitUntil(10000) {compose.onAllNodesWithText("Выберите файл").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Сезон 1/Серия 01.mp4").performClick()
-    compose.onNodeWithText("Смотреть").performClick()
+    compose.onNodeWithText("Смотреть",substring=true).performClick()
     val instrumentation=InstrumentationRegistry.getInstrumentation()
     var seen=false; val deadline=System.currentTimeMillis()+20000
     while(!seen&&System.currentTimeMillis()<deadline) {

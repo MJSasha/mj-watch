@@ -10,7 +10,7 @@ data class TorrentFile(val serverFileId: Int, val path: String, val size: Long) 
 }
 data class TorrentHandle(val hash: String, val files: List<TorrentFile>)
 data class StreamRequest(val uri: String, val headers: Map<String, String> = emptyMap())
-data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList())
+data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
 data class Config(val schemaVersion: Int = 1, val jackett: String = "", val indexers: String = "",
     val torrServer: String = "", val localHttp: Boolean = false, val demo: Boolean = false,
     val theme: String = "system", val metadataProvider: String = "none")

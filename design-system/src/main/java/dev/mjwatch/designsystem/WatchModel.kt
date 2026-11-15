@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.*
 import okhttp3.Credentials
 
 data class WatchState(val page:String="home", val query:String="", val results:List<Release> = emptyList(),
-    val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
+    val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
     val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     private val settings=Settings(app)
@@ -23,7 +23,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     val state=mutable.asStateFlow()
     var draftConfig:Config?=null; var draftKey="";var draftUser="";var draftPassword="";var draftMetadata=""
     private var cachedConfig:Config?=null;private var cachedRepositories:Pair<ReleaseRepository,StreamGateway>?=null
-    private var work:Job?=null; private var generation=0
+    private var work:Job?=null; private var generation=0;private var pageIndex=0
     private fun update(block:(WatchState)->WatchState) { mutable.update(block) }
     init { viewModelScope.launch { settings.config.collect { c -> update { it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank(),page=if(!c.demo&&c.torrServer.isBlank()) "settings" else it.page) } } } }
     fun discardDraft() {draftConfig=null;draftKey="";draftUser="";draftPassword="";draftMetadata=""}
@@ -38,7 +38,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         return (r to TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
     fun search(query:String) {
-        cancel(); val token=generation; update { it.copy(query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
+        cancel(); pageIndex=0; val token=generation; update { it.copy(more=false,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
         if(query.trim().length<2) { update { it.copy(results=emptyList()) }; return }
         work=viewModelScope.launch {
             delay(400)
@@ -46,8 +46,20 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                 if(state.value.config.metadataProvider=="tmdb") {
                     try { val items=withContext(Dispatchers.IO) { TmdbAdapter(secrets.get("tmdb"),guardedClient(state.value.config)).search(query.trim()) }; if(token==generation) update { it.copy(metadata=items) } } catch(e:CancellationException) { throw e } catch(_:Exception) { if(token==generation) update {it.copy(metadata=emptyList())} }
                 }
-                if(token==generation) update { it.copy(results=result.releases,failures=result.failures,busy=false,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "") }
+                if(token==generation) update { it.copy(results=result.releases,more=result.more,failures=result.failures,busy=false,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "") }
             } catch(e:CancellationException) { throw e } catch(e:Exception) { if(token==generation) update { it.copy(busy=false,message=safeError(e)) } }
+        }
+    }
+    fun loadMore(retryFailed:Boolean=false) {
+        val previous=state.value; if(previous.busy) return
+        cancel();val token=generation;update {it.copy(busy=true)}
+        work=viewModelScope.launch {
+            try {
+                val repository=repositories().first as? TorznabRepository ?: return@launch
+                val page=if(retryFailed) pageIndex else pageIndex+1
+                val result=withContext(Dispatchers.IO) {repository.searchPage(previous.query,page,if(retryFailed) previous.failures.map {it.substringBefore(':')}.toSet() else null)}
+                if(token==generation) {if(!retryFailed) pageIndex=page;update {it.copy(results=(previous.results+result.releases).distinctBy {it.hash ?: it.id},more=result.more,failures=result.failures,busy=false)}}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
         }
     }
     fun metadata(item:Metadata) { update {it.copy(selectedMetadata=item)}; search(item.title) }

@@ -18,7 +18,7 @@ class VerticalFlowTest {
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
  @Test fun localVideoFirstFrameAndProgress() {
     fun remoteClick(text:String) {
-      val node=compose.onNodeWithText(text)
+      val node=compose.onNodeWithText(text,substring=text=="Смотреть")
       node.performSemanticsAction(SemanticsActions.RequestFocus)
       node.performKeyInput {pressKey(Key.DirectionCenter)}
     }
