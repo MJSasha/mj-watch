@@ -25,6 +25,14 @@ The app uploads verified files and starts a detached systemd job. Reopening the 
 
 CA trust is delivered over pinned SSH and applies only to the managed origin. Hostname verification remains enabled. Root SSH secrets stay encrypted on the owner device; stored credentials require local credential unlock. Regular users never receive SSH, internal TorrServer credentials or the TMDB key.
 
+## Invite a user
+
+Owner: Settings → Server management → Users → enter a name → Add user → Copy invitation. The one-use invitation expires in 24 hours; the raw code is hidden from the main screen. Share it privately. Android clipboard content is marked sensitive.
+
+Recipient: copy the received invitation → “Вставить приглашение” → compare the server certificate fingerprint with the owner and confirm → choose a password of at least 10 characters → “Создать аккаунт и войти”. Address, port, invitation code and CA are imported together. No manual JSON/PEM editing is needed. Clipboard is read only when that button is pressed; an empty/invalid clipboard opens a manual-paste dialog. Manual connection settings remain under a disclosure.
+
+CA trust is explicitly confirmed and stored only for the imported origin. Import alone makes no network request and does not trust a certificate automatically. The existing TLS hostname/chain validation remains in effect; the UI import test is not proof of a successful connection to an arbitrary real server.
+
 ## Operations and updates
 
 * TorrServer settings/read/apply/defaults: root SSH fixed `mjwatchctl` commands. JSON inputs, revision checks, resource/path validation, preserved unknown fields, durable receipts and reread verification. Detached unique systemd jobs survive SSH disconnects.

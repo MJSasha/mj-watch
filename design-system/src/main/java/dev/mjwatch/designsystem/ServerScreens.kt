@@ -59,16 +59,55 @@ import java.util.UUID
    }
    "managed-login"->{
     var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
+    val loginContext=LocalContext.current
+    var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
+    fun fillInvitation(raw:String):Boolean {
+     return try {
+      val parsed=decodeManagedInvitation(raw)
+      url=parsed.url;invite=parsed.invite;ca=parsed.ca;password="";name="";advanced=true;dirty=true;packet="";importOpen=false
+      val origin=endpoint(parsed.url).origin();val fingerprint=managedCaFingerprint(parsed.ca)
+      confirm="Подключиться к $origin? Сверьте отпечаток сертификата с владельцем: $fingerprint" to {model.secrets.put("ca:$origin",parsed.ca);ca="";advanced=false}
+      true
+     } catch(e:Exception){importError="Приглашение не распознано. Скопируйте его целиком у владельца сервера.";false}
+    }
     Text("Войти на сервер MJWatch",fontSize=26.sp,fontWeight=FontWeight.Bold)
-    ServerField(url,{url=it;dirty=true},"HTTPS-адрес MJWatch")
-    ServerField(name,{name=it;dirty=true},"Имя пользователя")
-    ServerSecret(password,{password=it;dirty=true},"Пароль")
-    Action("Войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&url.isNotBlank()&&name.isNotBlank()&&password.isNotBlank()){dirty=false;controller.login(url,name,password);password=""}
-    Action("Войти по коду TV",tv,secondary=true,enabled=!managed.busy&&url.isNotBlank()){controller.startPairing(url)}
+    Text("Получили приглашение? Скопируйте его у владельца и нажмите кнопку ниже.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Action("Вставить приглашение",tv,secondary=true,enabled=!managed.busy){
+     val clipboard=loginContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+     val copied=clipboard.primaryClip?.let {if(it.itemCount>0)it.getItemAt(0).coerceToText(loginContext)?.toString() else null}.orEmpty()
+     if(copied.isBlank()){packet="";importError="";importOpen=true}
+     else if(!fillInvitation(copied)){packet="";importOpen=true}
+    }
+    if(importOpen)AlertDialog(onDismissRequest={importOpen=false;packet=""},title={Text("Вставьте приглашение")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+     Text("Скопируйте приглашение в приложении владельца и вставьте сюда целиком. Адрес и настройки подключения заполнятся сами.")
+     ServerSecret(packet,{packet=it;importError=""},"Приглашение")
+     if(importError.isNotBlank())Text(importError,color=MaterialTheme.colorScheme.error)
+    }},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),enabled=packet.isNotBlank(),onClick={fillInvitation(packet)}){Text("Продолжить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={importOpen=false;packet=""}){Text("Отмена")}})
+
+    if(invite.isBlank())ServerField(url,{url=it;dirty=true},"HTTPS-адрес MJWatch")
+    if(invite.isBlank())ServerField(name,{name=it;dirty=true},"Имя пользователя")
+    if(invite.isNotBlank()){
+     val origin=runCatching{endpoint(url).origin()}.getOrDefault("")
+     SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Приглашение добавлено",fontWeight=FontWeight.Bold);Text(origin);Text(if(ca.isBlank())"Сертификат сохранён. Придумайте пароль от 10 символов." else "Подтвердите сервер по отпечатку сертификата.")}}
+    }
+    ServerSecret(password,{password=it;dirty=true},if(invite.isBlank())"Пароль" else "Придумайте пароль · от 10 символов")
+    if(invite.isBlank())Action("Войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&url.isNotBlank()&&name.isNotBlank()&&password.isNotBlank()&&ca.isBlank()&&invite.isBlank()){dirty=false;controller.login(url,name,password);password=""}
+    if(invite.isBlank())Action("Войти по коду TV",tv,secondary=true,enabled=!managed.busy&&url.isNotBlank()&&ca.isBlank()){controller.startPairing(url)}
     managed.pairing?.let {pair->Text(pair.getString("code"),fontSize=48.sp,fontWeight=FontWeight.Bold);Text("Код действует 5 минут. На вошедшем устройстве откройте «Аккаунт и синхронизация → Добавить телевизор».");Action("Отменить вход по коду",tv,secondary=true){controller.cancelPairing()}}
-    TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Приглашение и CA сервера")}
-    if(advanced){ServerSecret(invite,{invite=it;dirty=true},"Одноразовое приглашение");Action("Принять приглашение",tv,enabled=!managed.busy&&invite.isNotBlank()&&password.length>=10){dirty=false;controller.login(url,name,password,invite);password="";invite=""};ServerField(ca,{ca=it},"Публичный CA из доверенного приглашения",singleLine=false)
-     if(ca.isNotBlank()){val fingerprint=runCatching {val cert=java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(ca.byteInputStream());java.security.MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString(":"){"%02X".format(it)}}.getOrNull();Text(fingerprint ?: "Некорректный CA");Action("Доверять этому CA для сервера",tv,secondary=true,enabled=fingerprint!=null){confirm="Сверьте отпечаток CA с владельцем через доверенный канал: $fingerprint" to {runCatching {model.secrets.put("ca:${endpoint(url).origin()}",ca)};ca=""}}}
+    if(invite.isNotBlank())Action("Создать аккаунт и войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&password.length>=10&&ca.isBlank()){dirty=false;controller.login(url,name,password,invite);password=""}
+    TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Параметры подключения вручную")}
+    if(advanced){ServerSecret(invite,{invite=it;dirty=true},"Одноразовое приглашение");Action("Принять приглашение",tv,enabled=!managed.busy&&invite.isNotBlank()&&password.length>=10&&ca.isBlank()){dirty=false;controller.login(url,name,password,invite);password="";invite=""};ServerField(ca,{ca=it},"Публичный CA из доверенного приглашения",singleLine=false)
+     if(ca.isNotBlank()){
+      val normalizedCa=normalizeManagedCa(ca)
+      val fingerprint=runCatching {managedCaFingerprint(normalizedCa)}.getOrNull()
+      val origin=runCatching {endpoint(url).takeIf {it.scheme=="https"}?.origin()}.getOrNull()
+      Text(fingerprint ?: "Некорректный CA: импортируйте приглашение целиком")
+      if(origin==null)Text("Укажите корректный HTTPS-адрес сервера",color=MaterialTheme.colorScheme.error)
+      Action("Доверять этому CA для сервера",tv,secondary=true,enabled=fingerprint!=null&&origin!=null){confirm="Сервер: $origin. Сверьте отпечаток CA с владельцем через доверенный канал: $fingerprint" to {model.secrets.put("ca:$origin",normalizedCa);ca=""}}
+     }
+     val origin=runCatching {endpoint(url).origin()}.getOrNull()
+     if(origin!=null&&model.secrets.get("ca:$origin").isNotBlank())Text("CA сохранён для $origin. Адрес и порт должны совпадать с приглашением.",color=MaterialTheme.colorScheme.primary)
+
     }
    }
    "managed-account"->{
@@ -109,7 +148,8 @@ import java.util.UUID
     managed.data?.optJSONArray("devices")?.let {devices->Text("Устройства пользователя");for(index in 0 until devices.length()){val device=devices.getJSONObject(index);SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Devices,device.getString("name"),"Последняя активность: ${java.time.Instant.ofEpochSecond(device.optLong("lastSeen"))}",tv){confirm="Отозвать это устройство?" to {controller.action("admin/users/$selectedUser/devices/${device.getString("id")}","DELETE",reload="admin/users/$selectedUser/devices")}}}}}
     val rows=managed.data?.optJSONArray("users")
     if(rows!=null)for(index in 0 until rows.length()){val user=rows.getJSONObject(index);val id=user.getString("id");SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text(user.getString("name"),fontSize=20.sp);Text(user.getString("role")+if(user.optBoolean("blocked")) " · Заблокирован" else "");Action("Устройства",tv,secondary=true){selectedUser=id;controller.load("admin/users/$id/devices")};Action("Отозвать приглашение",tv,secondary=true){confirm="Отозвать ещё не использованное приглашение?" to {controller.action("admin/users/$id/invite","DELETE",reload="admin/users")}};Action("Создать приглашение",tv,secondary=true,enabled=user.getString("role")=="user"){controller.action("admin/users/$id/invite","POST")};Action("Отозвать устройства",tv,secondary=true){confirm="Отозвать все устройства ${user.getString("name")}?" to {controller.action("admin/users/$id/devices","DELETE",reload="admin/users")}};Action(if(user.optBoolean("blocked")) "Разблокировать" else "Заблокировать",tv,secondary=true){confirm="Изменить доступ ${user.getString("name")}?" to {controller.action("admin/users/$id","PATCH",JSONObject().put("blocked",!user.optBoolean("blocked")),reload="admin/users")}};Action("Удалить пользователя",tv,secondary=true){confirm="Удалить пользователя, его историю и отозвать устройства? Уже сохранённые офлайн-данные удалённо стереть нельзя." to {controller.action("admin/users/$id","DELETE",reload="admin/users")}}}}}
-    managed.data?.optString("invite")?.takeIf {it.isNotBlank()}?.let {Text("Одноразовое приглашение, 24 часа");SelectionContainerCompat(it);val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager;Action("Скопировать приглашение",tv,secondary=true){val packet=JSONObject().put("url",s.config.managedUrl).put("invite",it).put("ca",model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"));clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Приглашение MJWatch",packet.toString()))}}
+    var inviteCopied by remember(managed.data?.optString("invite")){mutableStateOf(false)}
+    managed.data?.optString("invite")?.takeIf {it.isNotBlank()}?.let {Text("Приглашение готово",fontWeight=FontWeight.Bold);Text("Действует 24 часа для одного нового аккаунта. Передайте его пользователю; в его приложении нужно нажать «Вставить приглашение».");val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager;Action(if(inviteCopied)"Приглашение скопировано" else "Скопировать приглашение",tv,secondary=true){val packet=JSONObject().put("url",s.config.managedUrl).put("invite",it).put("ca",model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"));val clip=android.content.ClipData.newPlainText("Приглашение MJWatch",packet.toString());clip.description.extras=android.os.PersistableBundle().apply{putBoolean("android.content.extra.IS_SENSITIVE",true)};clipboard.setPrimaryClip(clip);inviteCopied=true};runCatching{managedCaFingerprint(model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"))}.getOrNull()?.let{fingerprint->Text("Отпечаток сервера для сверки:",color=MaterialTheme.colorScheme.onSurfaceVariant);SelectionContainerCompat(fingerprint)}}
     var name by remember {mutableStateOf("")};ServerField(name,{name=it;dirty=true},"Имя нового пользователя");Action("Добавить пользователя",tv,enabled=name.isNotBlank()&&!managed.busy){dirty=false;controller.action("admin/users","POST",JSONObject().put("name",name));name=""};Action("Обновить список",tv,secondary=true){controller.load("admin/users")}
    }
    "server-tmdb"->{
@@ -165,7 +205,7 @@ import java.util.UUID
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
  Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
   Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  OutlinedTextField(value,onChange,singleLine=singleLine,modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=RoundedCornerShape(14.dp))
+  OutlinedTextField(value,onChange,singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=RoundedCornerShape(14.dp))
  }
 }
 @Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String){
