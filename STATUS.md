@@ -60,3 +60,4 @@
 - Финальные сборки и CI этой версии фиксируются отдельно ниже.
 - Итоговая API36 регрессия: 4 tests OK — HTTP JacRed fixtures, cancel/secrets, fake progress/resume и live TorrServer с доступным Sintel MP4 (magnet/upload/first frame). Оба APK debug/release + lint + 21 core tests проходят локально.
 - Live Android API36: check JacRed OK, поиск Sintel дал 12 результатов без ключа. Выбранный небольшой torrent принят MatriX.145.2, но остался `Torrent getting info`, файлов 0; через 60 секунд получен metadata timeout. Первый кадр именно этой раздачи не подтверждён. [Отчёт 0.2.1](docs/testing/0.2.1/REPORT.md) отделяет этот результат от успешных fixture/MP4 проверок.
+- Финальный [CI 43727812428](https://github.com/MJSasha/mj-watch/actions/runs/43727812428), `9ee2120`: build, phone API35 и TV API36 — success. Предыдущий запуск выявил гонку нового UI-теста между async save и переходом в поиск; тест теперь ждёт главную страницу, затем поле поиска. Код APK остаётся `7f3496e`.
