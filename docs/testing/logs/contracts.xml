@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.mjwatch.core.ContractsTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-15T13:47:53.474Z" hostname="Mac" time="7.91">
+  <properties/>
+  <testcase name="jackettMagnetDownloadRedirectIsResolvedWithoutFollowing" classname="dev.mjwatch.core.ContractsTest" time="2.599"/>
+  <testcase name="configExportHasNoSecrets" classname="dev.mjwatch.core.ContractsTest" time="0.01"/>
+  <testcase name="definitiveAuthFailureDoesNotRepeatAddOrProbe" classname="dev.mjwatch.core.ContractsTest" time="0.017"/>
+  <testcase name="baseUrlValidation" classname="dev.mjwatch.core.ContractsTest" time="0.004"/>
+  <testcase name="openingDoesNotOverwriteBookmarkOrProgress" classname="dev.mjwatch.core.ContractsTest" time="0.115"/>
+  <testcase name="xmlUnicodeOptionalAndDedupe" classname="dev.mjwatch.core.ContractsTest" time="0.008"/>
+  <testcase name="serverFileIdsAndUrlEncoding" classname="dev.mjwatch.core.ContractsTest" time="0.006"/>
+  <testcase name="recorded145Upload" classname="dev.mjwatch.core.ContractsTest" time="0.004"/>
+  <testcase name="magnetParameterOrder" classname="dev.mjwatch.core.ContractsTest" time="0.003"/>
+  <testcase name="advertisedPaginationAndCapabilityCache" classname="dev.mjwatch.core.ContractsTest" time="0.013"/>
+  <testcase name="xmlErrorDtdMalformedAndLimits" classname="dev.mjwatch.core.ContractsTest" time="0.021"/>
+  <testcase name="partialSourcesAndCancellation" classname="dev.mjwatch.core.ContractsTest" time="5.03"/>
+  <testcase name="redirectIsRejectedAndCredentialsNotForwarded" classname="dev.mjwatch.core.ContractsTest" time="0.023"/>
+  <testcase name="schemaMigrationPreservesHistoryAndProgress" classname="dev.mjwatch.core.ContractsTest" time="0.037"/>
+  <testcase name="handoffConfigSchemaAndPaths" classname="dev.mjwatch.core.ContractsTest" time="0.005"/>
+  <testcase name="bencodeValidation" classname="dev.mjwatch.core.ContractsTest" time="0.003"/>
+  <testcase name="metadataParserAndOfflineCache" classname="dev.mjwatch.core.ContractsTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

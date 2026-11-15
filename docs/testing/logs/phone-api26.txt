@@ -1,0 +1,9 @@
+
+dev.mjwatch.mobile.SessionTest:.
+dev.mjwatch.mobile.VerticalFlowTest:.
+
+Time: 18.005
+
+OK (2 tests)
+
+

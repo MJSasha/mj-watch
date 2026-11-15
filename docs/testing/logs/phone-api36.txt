@@ -1,0 +1,11 @@
+
+dev.mjwatch.mobile.MetadataFlowTest:.
+dev.mjwatch.mobile.SessionTest:.
+dev.mjwatch.mobile.VerticalFlowTest:.
+dev.mjwatch.mobile.PipTest:.
+
+Time: 26.279
+
+OK (4 tests)
+
+

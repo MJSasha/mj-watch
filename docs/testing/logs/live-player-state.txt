@@ -1,0 +1,4 @@
+11-15 15:30:15.960  9368  9368 I System.out: MJWatch sustained state: positionMs=56221, durationMs=888064, bufferedMs=109738, state=3, ready=true, error=null, retries=0
+11-15 15:30:15.961  9368  9368 I System.out: MJWatch live proof: video=video/avc, audio=audio/mp4a-latm, positionMs=56221, retries=0
+11-15 15:33:37.909 12569 12569 I System.out: MJWatch sustained state: positionMs=84514, durationMs=888064, bufferedMs=142144, state=3, ready=true, error=null, retries=0
+11-15 15:33:37.909 12569 12569 I System.out: MJWatch live proof: video=video/avc, audio=audio/mp4a-latm, positionMs=84514, retries=0

@@ -1,36 +1,46 @@
 # MJWatch — состояние реализации
 
-## 2026-11-15
-- Прочитаны HANDOFF и пять спецификаций, HTML и обзор/экраны подключения и раздач.
-- Исходного Android-проекта не было. Доступны JBR 21, SDK 35/36/37, AVD phone API 37; пользовательские устройства не используются.
-- Удалённый репозиторий MJSasha/mj-watch пустой (ls-remote без refs).
-- Создана структура двух APK и общих core/playback/design-system. Сборка пока не проверена.
+Обновлено 2026-11-15. Версия 0.2.0 (2), исходники приложения: `97a43a4`.
 
-## Уровни доказательств
-Реализация, fixture tests, Android runtime и live servers учитываются отдельно. Live credentials и серверы не предоставлены.
+## Выполнено
 
-## Этап 1–3: исходники и сборка
-- Созданы app-mobile (dev.mjwatch.mobile), app-tv (dev.mjwatch.tv), core, playback, design-system.
-- Clean debug build двух APK и 8 контрактных unit-тестов прошёл локально (JBR21, SDK36).
-- Реализован fake flow с локальным MP4: настройки → поиск → detail → releases → metadata → files → Media3 → Room progress.
-- Подключены Keystore AES-GCM, DataStore, Room, MediaSession, PiP entry, track selector, ±10s, скорость через штатный Media3 player settings.
-- Android runtime ещё в проверке; полная UX/codec/device матрица не пройдена.
+- Прочитаны HANDOFF, DEVELOPMENT, INTEGRATIONS, FLOWS, DESIGN-SYSTEM, ACCEPTANCE; HTML и экраны использованы как визуальные ориентиры. MJAnime не изменялся.
+- Создан нативный проект: отдельные mobile/tablet и TV APK, общие core, playback, design-system. Kotlin, Compose Material 3 / Compose for TV, Media3. Никакого WebView.
+- Работает вертикальный сценарий с локальным видео: подключения → поиск → раздача → server file ID → воспроизведение → сохранение → возобновление с прежнего пути файла.
+- Реализованы Jackett/Torznab и TorrServer, отдельный optional TMDB, кеш метаданных и привязка к истории; без TMDB остаётся прямой поиск.
+- История, избранное, undo удаления, темы, tablet split, TV focus restore, системная IME/Back, PiP, track controls, ограниченные повторы и отмена устаревших операций.
+- Секреты и полные ссылки раздач зашифрованы Android Keystore AES-GCM, backup выключен; redirect запрещён, local HTTP ограничен явно разрешёнными origins. Долгий media stream не ограничен общим control-request call timeout.
+- Room 1→2 мигрирует историю, избранное и прогресс без destructive reset.
+- Исходники отправлены в MJSasha/mj-watch. GitHub Actions собирает APK и запускает phone/TV AVD tests; публикации Releases нет.
 
-## Live TorrServer
-- По разрешению пользователя: /echo сообщает MatriX.145.2.
-- Multipart upload Sintel CC BY 3.0 без save: ответ singleton, video file ID=6.
-- HTTP range stream index=6: 206 Partial Content, Content-Type video/mp4, 65536 bytes. Это подтверждает транспорт, не Android decoding.
-- get после upload однажды вернул 404; stream самостоятельно разрешил hash. Не выполнялись rem/wipe/drop.
-- Live Jackett и TMDB credentials отсутствуют.
+## Проверено на fixtures / mock HTTP
 
-## Подтверждённый Android runtime (2026-11-15)
-- Phone: отдельный AOSP API36 ARM64 AVD (720×1280, 320dpi). Полный fake flow: Compose test OK, реальный onRenderedFirstFrame, 6 секунд playback, Back и сохранённый Room progress.
-- TV: отдельный Android TV API36 ARM64 AVD. Полный fake flow с D-pad/OK на TV controls: OK, first frame и сохранение позиции.
-- Live phone: MatriX.145.2, Sintel CC BY 3.0; настоящие Kotlin magnet/add, download/upload, file ID=6, stream и Media3 first frame: OK.
-- mDNS kompic.local из AVD не разрешился; использован IP того же хоста. На host macOS .local доступен. Никаких TV/проекторов пользователя не подключалось.
-- Preview API37: Espresso несовместим с удалённым InputManager.getInstance; также наблюдался system UI ANR. Основная проверка перенесена на stable API36.
-- 9 core contract tests проходят. Debug/release build и lint выполняются; финальная перепроверка новых изменений ещё идёт.
+17 core tests: XML/Unicode/CDATA, XXE и лимиты, XML error, partial results/deadlines/cancellation, caps/pagination/cache, магнитные ссылки и bencode, server file IDs/encoding/prefixes, redirect и auth isolation, без повторного add при auth failure, конфигурация, атомарное хранение, metadata offline cache и миграция базы.
 
-## Пока не подтверждено
-- Live Jackett и TMDB (нет адреса/ключа), реальные устройства и API26, расширенная codec/network/PiP/TalkBack/fontScale/performance матрица.
-- Полное соответствие всех 24 макетов и production-ready статус не объявлены: реализованы основные экраны и честный direct-search fallback, дальнейшая полировка и расширенные сценарии проверяются отдельно.
+## Проверено в Android runtime
+
+Собственные headless AVD; пользовательские TV/проекторы не подключались.
+
+- Phone API26 и API36 ARM64: fake flow, реальный Media3 first frame, pause/seek, короткий просмотр, Back, немедленное сохранение и повторный запуск с позиции. Проверка секретов и отмены подготовки.
+- Phone API36: synthetic cached metadata → detail → bookmark → связанная раздача; PiP enter/continue/close.
+- TV API36 ARM64: native TV cards/buttons через D-pad/OK, файлы, первый кадр, прогресс, Back и восстановление фокуса.
+- Tablet API36 ≥840dp: две панели поиска/detail; phone fontScale 2.0: основной fake flow. Это отдельные smoke checks, не полная accessibility/device матрица.
+- Оба APK устанавливаются одновременно на API26. Debug и unsigned release сборки, lint и 17 unit tests проходят локально.
+- API37 preview исключён из доказательств: несовместимость Espresso с InputManager и system UI ANR.
+
+## Подтверждено с реальным сервером
+
+- Разрешённый `kompic.local:8090`, `/echo`: MatriX.145.2. Из AVD использован IP того же хоста из-за отсутствия mDNS.
+- Sintel (Blender, CC BY 3.0): Kotlin magnet add и отдельный multipart torrent upload; singleton response, video server file ID=6; HTTP range 206; Media3 first frame.
+- API26: live MP4 H.264 (`video/avc`) / AAC (`audio/mp4a-latm`), дополнительный 30-секундный сеанс продолжает играть, ошибок и deadline reconnect нет. Это функциональная проверка, не benchmark пропускной способности.
+- `save_to_db=false`; rem/wipe/drop и изменения настроек сервера не выполнялись.
+
+## Осталось вне подтверждённой приёмки
+
+- Live Jackett и TMDB: адрес/ключи не предоставлены. Их контракты и offline fallback проверены fixtures, live-совместимость не заявлена.
+- Полная матрица MKV/multiple audio/SRT, HEVC/HDR, unsupported codecs, потери сети и restart сервера; физические устройства и TV API26/30.
+- Ручной TalkBack, все переходы фокуса/Long OK/IME на разных пультах, все 24 визуальных состояния, window resize и performance profiling.
+- Автоматическое сопоставление неизвестных эпизодов отсутствует: нужен ручной выбор. Позиция между разными раздачами автоматически не переносится.
+- Production signing и публикация не входят в выполненную поставку.
+
+Подробности: [docs/testing/ACCEPTANCE-REPORT.md](docs/testing/ACCEPTANCE-REPORT.md).

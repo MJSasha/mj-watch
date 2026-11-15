@@ -1,0 +1,4 @@
+10b56c704b8634c7964607016a788380a1e8bc51f200540920901c170a1f7f08  app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
+9d8755fc9fb233ff0cf65dd2b8d86c0dd4e737af4aef9f84b2fe4dc0c5f9fe50  app-tv/build/outputs/apk/debug/app-tv-debug.apk
+4c5c98ae5adac9a3c08368ffb1f1e10046c587401b86bbdec99175b6f6646e0f  app-mobile/build/outputs/apk/release/app-mobile-release-unsigned.apk
+e7a83f250fae99b9971e316c3f9182556486577c902521f8d4dcc60b6df9c5cf  app-tv/build/outputs/apk/release/app-tv-release-unsigned.apk
