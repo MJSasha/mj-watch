@@ -7,7 +7,8 @@ set -euo pipefail
 : "${RUNNER_TEMP:?}"
 : "${ANDROID_HOME:?}"
 VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
-VERSION_NAME="0.3.0-test.${GITHUB_RUN_NUMBER}"
+BASE_VERSION=$(sed -n 's/^mjwatchVersionName=//p' gradle.properties)
+VERSION_NAME="${BASE_VERSION}-test.${GITHUB_RUN_NUMBER}"
 TAG="test-${GITHUB_RUN_NUMBER}"
 SIGNING_STORE="$RUNNER_TEMP/mjwatch-testing.keystore"
 trap 'rm -f "$SIGNING_STORE"' EXIT

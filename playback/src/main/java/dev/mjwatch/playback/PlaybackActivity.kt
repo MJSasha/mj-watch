@@ -1,6 +1,8 @@
 package dev.mjwatch.playback
 
 import android.app.PictureInPictureParams
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import android.content.res.Configuration
 import android.os.Bundle
@@ -32,6 +34,8 @@ class PlaybackActivity : ComponentActivity() {
         fun hasActivePlayback()=active?.get()?.let {!it.released&&!it.isFinishing}==true
         fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
     }
+    private var controlsVisible by androidx.compose.runtime.mutableStateOf(true)
+    private lateinit var overlay:androidx.compose.ui.platform.ComposeView
     private var released=false
     private var finalWrite:Job?=null
     private lateinit var player: ExoPlayer
@@ -54,22 +58,20 @@ class PlaybackActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
+        if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2).enableMultiInstanceInvalidation().build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
-        root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
-        val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        fun action(label: String, run: (android.view.View)->Unit) { actions.addView(Button(this).apply { text=label; setOnClickListener { run(it) } }) }
-        action("Назад") { finish() }
-        action("Дорожки") { anchor -> tracks(anchor) }
-        action("Масштаб") { view.resizeMode=if(view.resizeMode==0) 4 else 0 }
-        if(intent.getBooleanExtra("mobile",true)) action("PiP") { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build()) }
-        action("Другая раздача") { finish() }
-        root.addView(actions,FrameLayout.LayoutParams(-2,-2,android.view.Gravity.TOP or android.view.Gravity.END))
-        view.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility -> actions.visibility=visibility })
+        root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.CENTER))
+        view.useController=false
+        overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==0) 4 else 0},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
+        }}
+        root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
+        androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if(panel!=null) { panel?.dismiss(); panel=null } else finish() } })
         scope.launch {
             val config=Settings(applicationContext).config.first()
@@ -133,7 +135,7 @@ class PlaybackActivity : ComponentActivity() {
                 val f=group.getTrackFormat(i); names+="${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${f.label ?: f.language ?: "Не указано"}${if(group.isTrackSelected(i)) " ✓" else ""}"; choices+=group to i
             }
         }
-        panel=android.app.AlertDialog.Builder(this).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
+        panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
             val builder=player.trackSelectionParameters.buildUpon(); val selected=choices[which]
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
             if(selected==null) {builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true);preferences.edit().putBoolean("subtitles-off",true).apply()} else {
@@ -146,7 +148,7 @@ class PlaybackActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
-    override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); view.useController=!inPictureInPictureMode }
+    override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
     private fun releasePlayer() {if(!released) {released=true;session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
         val pending=save() ?: finalWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
@@ -156,10 +158,10 @@ class PlaybackActivity : ComponentActivity() {
         super.onDestroy()
     }
     override fun dispatchKeyEvent(event:KeyEvent):Boolean {
-        if(::player.isInitialized&&event.action==KeyEvent.ACTION_DOWN&&!view.isControllerFullyVisible) when(event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> { player.seekBack(); view.showController(); return true }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { player.seekForward(); view.showController(); return true }
-            KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if(player.isPlaying) player.pause() else player.play(); view.showController(); return true }
+        if(::player.isInitialized&&event.action==KeyEvent.ACTION_DOWN&&(!controlsVisible||event.keyCode==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) when(event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> { player.seekBack(); controlsVisible=true; return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { player.seekForward(); controlsVisible=true; return true }
+            KeyEvent.KEYCODE_DPAD_CENTER,KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if(player.isPlaying) player.pause() else player.play(); controlsVisible=true; return true }
         }
         return super.dispatchKeyEvent(event)
     }

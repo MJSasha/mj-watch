@@ -25,17 +25,17 @@ class MetadataFlowTest {
     lateinit var model:WatchModel
     compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
     compose.waitUntil(10000) {model.state.value.catalog.any {it.id==item.id}}
-    compose.onNodeWithTag("home-list").performScrollToNode(hasText("О произведении"))
-    compose.onNodeWithText("О произведении").performClick()
+    compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
+    compose.onNodeWithTag("hero-open").performClick()
     compose.onNodeWithText(item.overview!!).assertExists()
-    compose.onNodeWithText("В «Буду смотреть»").performScrollTo().performClick()
+    compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
     compose.waitUntil(5000) {model.library.value.any {it.id==item.id&&it.bookmarked}}
-    compose.onNodeWithText("Выбрать раздачу").performScrollTo().performClick()
+    compose.onNodeWithTag("detail-sources").performClick()
     compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
     compose.onNodeWithTag("release-list").performScrollToNode(hasText(DemoReleases.items.first().title))
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText("Продолжить с выбранной раздачей"))
-    compose.onNodeWithText("Продолжить с выбранной раздачей").performClick()
+    compose.onNodeWithTag("source-continue").assertIsDisplayed()
+    compose.onNodeWithTag("source-continue").performClick()
     compose.waitUntil(10000) {model.state.value.page=="files"}
     compose.waitUntil(5000) {model.library.value.any {it.id==DemoReleases.items.first().id&&it.metadataId==item.id}}
     Assert.assertEquals(3,model.state.value.handle!!.files.single {it.path.endsWith("01.mp4")}.serverFileId)

@@ -43,6 +43,7 @@ class JacredFlowTest {
  }
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
  @Test fun checksSearchAndVideoUseHttpAdaptersWithoutKeys() {
+    compose.onNodeWithText("Jackett / JacRed").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить поиск"))
     compose.onNodeWithText("Проверить поиск").performClick()
     compose.waitUntil(10000) {compose.onAllNodesWithText("JacRed JSON: подключение проверено").fetchSemanticsNodes().isNotEmpty()}
@@ -57,11 +58,11 @@ class JacredFlowTest {
     compose.onNodeWithText("Название фильма или раздачи").performTextInput("Sintel")
     compose.waitUntil(10000) {compose.onAllNodesWithText("Sintel HTTP fixture 720p").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
-    compose.onNodeWithText("Выбрать раздачу").performScrollTo().performClick()
+    compose.onNodeWithTag("detail-sources").performClick()
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Sintel HTTP fixture 720p"))
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText("Продолжить с выбранной раздачей"))
-    compose.onNodeWithText("Продолжить с выбранной раздачей").performClick()
+    compose.onNodeWithTag("source-continue").assertIsDisplayed()
+    compose.onNodeWithTag("source-continue").performClick()
     val i=InstrumentationRegistry.getInstrumentation();var frame=false
     compose.waitUntil(20000) {i.runOnMainSync {frame=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().any {it.firstFrameSeen}};frame}
     Assert.assertTrue(paths.any {it.startsWith("/parser/api/v2.0/indexers/all/results?")&&it.contains("Query=Sintel")})

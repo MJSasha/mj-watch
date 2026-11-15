@@ -11,7 +11,7 @@ import okhttp3.Credentials
 
 data class WatchState(val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
-    val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
+    val removed:LibraryEntry?=null,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     val updates=UpdateManager(app,viewModelScope)
     private val settings=Settings(app)
@@ -37,12 +37,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }}
     fun discardDraft() {draftConfig=null;draftKey="";draftUser="";draftPassword="";draftMetadata=""}
-    fun page(page:String) { cancel(); update { it.copy(page=page,message="") };if(page in setOf("home","search","library","settings")) viewModelScope.launch {settings.destination(page)} }
+    fun page(page:String) { cancel(); update { it.copy(page=page,message="") };if(page in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(page)} }
     fun back() {
         val s=state.value;cancel()
-        val target=when(s.page) {"files","preparing" -> "releases";"releases" -> "detail";"detail" -> s.originPage;else -> "home"}
+        val target=when(s.page) {"connections" -> "settings";"files","preparing" -> "releases";"releases" -> "detail";"detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="")}
-        if(target in setOf("home","search","library","settings")) viewModelScope.launch {settings.destination(target)}
+        if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
     fun cancel() { generation++; work?.cancel(); update { it.copy(busy=false) } }
     private fun repositories():Pair<ReleaseRepository,StreamGateway> {
@@ -92,14 +92,14 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
         }
     }
-    fun metadata(item:Metadata) {
-        cancel();update {it.copy(selectedMetadata=item,selected=null,resumePath=null,page="detail",originPage=if(it.page in setOf("home","search","library")) it.page else it.originPage,focusKey=item.id,handle=null)}
+    fun metadata(item:Metadata,focusKey:String=item.id) {
+        cancel();update {it.copy(selectedMetadata=item,selected=null,resumePath=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
         viewModelScope.launch(Dispatchers.IO) {dao.put(CachedMetadata(item.id,item.json(),System.currentTimeMillis()));dao.opened(LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id))}
     }
     fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title);update {it.copy(page="releases")}}
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
-        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
+        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
         viewModelScope.launch(Dispatchers.IO) {
             secrets.put("release:${release.id}",release.json())
             dao.opened(LibraryEntry(release.id,release.title,release.source,System.currentTimeMillis(),metadataId=metadata?.id))
@@ -136,8 +136,9 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         val entry=if(m!=null) LibraryEntry(m.id,m.title,"TMDB",metadataId=m.id) else r?.let {LibraryEntry(it.id,it.title,it.source)} ?: return
         viewModelScope.launch(Dispatchers.IO) {dao.toggleBookmark(entry)}
     }
-    fun remove(entry:LibraryEntry,bookmarkOnly:Boolean=false) { viewModelScope.launch(Dispatchers.IO) { if(bookmarkOnly) dao.put(entry.copy(bookmarked=false)) else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id) } }
-    fun undo(entry:LibraryEntry) { viewModelScope.launch(Dispatchers.IO) { dao.put(entry) } }
+    fun remove(entry:LibraryEntry,bookmarkOnly:Boolean=false) { viewModelScope.launch(Dispatchers.IO) { if(bookmarkOnly) dao.put(entry.copy(bookmarked=false)) else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id); update {it.copy(removed=entry)} } }
+    fun undo(entry:LibraryEntry) {update {it.copy(removed=null)};viewModelScope.launch(Dispatchers.IO) {dao.put(entry)}}
+    fun clearUndo() {update {it.copy(removed=null)}}
     fun prepare() {
         if(state.value.busy) return
         cancel(); val token=generation; val release=state.value.selected ?: return

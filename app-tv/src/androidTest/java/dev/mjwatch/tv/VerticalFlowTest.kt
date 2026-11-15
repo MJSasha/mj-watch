@@ -29,16 +29,19 @@ class VerticalFlowTest {
       UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(dir,"tv-$label.png"))
     }
     compose.waitForIdle()
-    compose.onAllNodes(isToggleable())[0].performClick()
+    compose.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Демонстрация с локальным видео"))
+    compose.onNodeWithContentDescription("Демонстрация с локальным видео").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     remoteClick("Сохранить и продолжить")
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithTag("home-list").performScrollToNode(hasText("О тестовой раздаче"))
+    compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
     capture("home")
-    remoteClick("О тестовой раздаче")
-    compose.onNodeWithText("Выбрать раздачу").assertExists()
+    compose.onNodeWithTag("hero-open").performSemanticsAction(SemanticsActions.RequestFocus)
+    compose.onNodeWithTag("hero-open").performKeyInput {pressKey(Key.DirectionCenter)}
+    compose.onNodeWithTag("detail-sources").assertExists()
     capture("detail")
-    remoteClick("Выбрать раздачу")
+    compose.onNodeWithTag("detail-sources").performSemanticsAction(SemanticsActions.RequestFocus)
+    compose.onNodeWithTag("detail-sources").performKeyInput {pressKey(Key.DirectionCenter)}
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Тихая орбита • тестовое видео 720p"))
     remoteClick("Тихая орбита • тестовое видео 720p")
 
@@ -53,6 +56,7 @@ class VerticalFlowTest {
       Thread.sleep(200)
     }
     Assert.assertTrue("Media3 first-frame callback",seen)
+    UiDevice.getInstance(instrumentation).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1500)?.click()
     capture("player")
     Thread.sleep(6000)
     UiDevice.getInstance(instrumentation).pressBack()
@@ -61,8 +65,8 @@ class VerticalFlowTest {
     compose.onNodeWithText("Сохранено",substring=true).assertExists()
     capture("saved-progress")
     UiDevice.getInstance(instrumentation).pressBack()
-    compose.waitUntil(5000) {compose.onAllNodesWithText("О тестовой раздаче").fetchSemanticsNodes().isNotEmpty()}
-    compose.waitUntil(5000) {compose.onAllNodesWithText("О тестовой раздаче").fetchSemanticsNodes().any {it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) {false}}}
-    compose.onNodeWithText("О тестовой раздаче").assertIsFocused()
+    compose.waitUntil(5000) {compose.onAllNodesWithTag("hero-open").fetchSemanticsNodes().isNotEmpty()}
+    compose.waitUntil(5000) {compose.onAllNodesWithTag("hero-open").fetchSemanticsNodes().any {it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) {false}}}
+    compose.onNodeWithTag("hero-open").assertIsFocused()
  }
 }

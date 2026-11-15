@@ -72,3 +72,12 @@
 - TV API36: полный update flow с D-pad/OK/Back, включая системное разрешение и native Update, завершился установкой code1012. Настройки DEMO и Continue watching сохранены. Только собственный AVD.
 - Следующий [релиз test-14](https://github.com/MJSasha/mj-watch/releases/tag/test-14), code1014, вышел полностью автоматически. [CI #14](https://github.com/MJSasha/mj-watch/actions/runs/43731326631) — все 4 jobs success, 27 unit tests. Перед установщиком сохраняется и останавливается активный player. Пользовательский канал готов к тестированию.
 - Установленная test-12 сама обнаружила test-14 при запуске после естественного 15-minute throttle, без сброса prefs/часов и без manual check. Обновление 1012→1014 через приложение и native installer завершилось; повторная проверка encrypted sentinel/history/progress OK. Все изменения и доказательства отправлены в репозиторий.
+
+## 2026-11-15 — визуальная сверка 0.4.0
+
+- Реализовано: единый hero, TV фон до краёв и горизонтальная полка, пять пунктов rail, native mobile source sheet, компактные раздачи/файлы, tablet split с отдельной карточкой, новая библиотека с undo, разделы настроек и двухшаговый mobile setup, оформленные empty/error/preparing состояния, Compose overlay Media3 с тонкой seek-полосой и landscape на телефоне.
+- TV: начальный фокус основных действий/раздач/файлов, возврат к hero, отсутствие focus scale, явный контраст. Phone: закреплённые CTA и полноразмерная панель при крупном шрифте. Сохранены отмена запросов и подготовки, server file ID, системные Back/IME, шифрование и прогресс.
+- Проверено на fixtures: 27 core tests; mock HTTP JacRed/TorrServer; synthetic metadata. Debug и unsigned release обоих APK, Android lint проходят.
+- Проверено в Android runtime: phone API26/36 и TV API36 — первый кадр локального MP4, пауза кнопкой нового UI, seek, Back, сохранение/resume; TV D-pad/focus. Tablet 1200x800dp — две панели; узкий phone 360dp/fontScale 2.0 — полный сценарий. Системная fullscreen-подсказка Android учтена отдельно в тестах.
+- Live JacRed и пользовательский TorrServer в этой визуальной итерации не проверялись. Пользовательские устройства не подключались; MJAnime не изменялся.
+- Сравнения и точные результаты завершаются в `docs/ui-audit/`; финальная публикация и CI будут записаны после окончания workflow.

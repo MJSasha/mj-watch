@@ -21,20 +21,21 @@ class VerticalFlowTest {
       UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(dir,"mobile-$label.png"))
     }
     compose.waitForIdle()
-    compose.onAllNodes(isToggleable())[0].performClick()
+    compose.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Демонстрация с локальным видео"))
+    compose.onNodeWithContentDescription("Демонстрация с локальным видео").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     compose.onNodeWithText("Сохранить и продолжить").performClick()
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithTag("home-list").performScrollToNode(hasText("О тестовой раздаче"))
+    compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
     capture("home")
-    compose.onNodeWithText("О тестовой раздаче").performClick()
-    compose.onNodeWithText("Выбрать раздачу").assertExists()
+    compose.onNodeWithTag("hero-open").performClick()
+    compose.onNodeWithTag("detail-sources").assertExists()
     capture("detail")
-    compose.onNodeWithText("Выбрать раздачу").performScrollTo().performClick()
+    compose.onNodeWithTag("detail-sources").performClick()
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Тихая орбита • тестовое видео 720p"))
     compose.onNodeWithText("Тихая орбита • тестовое видео 720p").performClick()
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText("Продолжить с выбранной раздачей"))
-    compose.onNodeWithText("Продолжить с выбранной раздачей").performClick()
+    compose.onNodeWithTag("source-continue").assertIsDisplayed()
+    compose.onNodeWithTag("source-continue").performClick()
 
     compose.waitUntil(10000) {compose.onAllNodesWithText("Выберите файл").fetchSemanticsNodes().isNotEmpty()}
     capture("files")
@@ -47,23 +48,30 @@ class VerticalFlowTest {
       Thread.sleep(200)
     }
     Assert.assertTrue("Media3 first-frame callback",seen)
+    UiDevice.getInstance(instrumentation).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1500)?.click()
+    compose.mainClock.advanceTimeBy(500)
+    compose.onNodeWithContentDescription("Пауза").performClick()
     capture("player")
     instrumentation.runOnMainSync {
       val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().single()
       val field=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
       val player=field.get(activity) as androidx.media3.common.Player
       Assert.assertTrue(player.duration>0)
-      player.pause();Assert.assertFalse(player.playWhenReady)
+      Assert.assertFalse("Compose pause control",player.playWhenReady)
       player.seekTo(2000);Assert.assertEquals(2000L,player.currentPosition)
       player.play()
     }
     Thread.sleep(1000)
     UiDevice.getInstance(instrumentation).pressBack()
     compose.waitForIdle()
-    compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}
+    try {compose.waitUntil(10000) {compose.onAllNodesWithText("Сохранено",substring=true).fetchSemanticsNodes().isNotEmpty()}} catch(e:Throwable) {
+      capture("back-failure")
+      compose.runOnIdle {val model=androidx.lifecycle.ViewModelProvider(compose.activity)[dev.mjwatch.designsystem.WatchModel::class.java];println("Back failure: page=${model.state.value.page}, selected=${model.state.value.selected?.id}, progress=${model.progress.value}, saved=${model.library.value.size}")}
+      throw e
+    }
     compose.onNodeWithText("Сохранено",substring=true).assertExists()
     capture("saved-progress")
-    compose.onNodeWithText("Продолжить с",substring=true).performScrollTo().performClick()
+    compose.onNodeWithTag("detail-resume").performClick()
     seen=false
     compose.waitUntil(30000) {
       instrumentation.runOnMainSync {seen=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().any {it.firstFrameSeen}}

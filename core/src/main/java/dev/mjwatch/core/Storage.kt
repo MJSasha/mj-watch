@@ -59,7 +59,7 @@ abstract class WatchDatabase : RoomDatabase() {
 private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
 class Settings(private val context: Context) {
     val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()
-    suspend fun destination(value:String) {require(value in setOf("home","search","library","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
+    suspend fun destination(value:String) {require(value in setOf("home","search","library","history","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
     val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }.distinctUntilChanged()
     suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
 }
