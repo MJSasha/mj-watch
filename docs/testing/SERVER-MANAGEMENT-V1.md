@@ -2,6 +2,8 @@
 
 Date: 2026-11-15. Base `5edc318`, isolated branch `codex/server-management-v1`. Main checkout and its untracked design originals were preserved. This report distinguishes implementation from runtime coverage; it is not a production-readiness certificate.
 
+Publication follow-up, 2026-11-15: [0.5.0-test.19 (1019)](https://github.com/MJSasha/mj-watch/releases/tag/test-19), source `0a82997`, is marked Latest. [CI 19](https://github.com/MJSasha/mj-watch/actions/runs/43760217990) passed build, phone API35, TV API36 and publication. Downloaded APKs were verified for package/version/hash, non-debuggable release configuration and the established Android certificate. The downloaded server 0.1.0 ZIP and both embedded supplies share the same verified manifest/signing identity; every payload hash was checked. The earlier local server key is now retained as the stable testing-channel key in the protected `MJWATCH_RELEASE_SIGNING_KEY` Actions Secret. The implementation-stage notes below describe the earlier pre-publication state; live-platform/provider/accessibility limits remain. No deployment to a user server or separate production signing identity was introduced.
+
 ## Delivered behavior
 
 * Direct and managed are independent modes. Direct preserves ready TorrServer/Basic Auth, Jackett/JacRed, personal optional TMDB, demo and favorites, while openings/progress/completion do not write disk or sync queues. Legacy history is preserved with explicit keep/delete and separate managed import.
