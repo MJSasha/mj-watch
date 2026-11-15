@@ -1,6 +1,6 @@
 # MJWatch — состояние реализации
 
-Текущая версия 0.2.1 (3): исправления JacRed и результаты повторной проверки в конце файла. Данные 0.2.0 ниже сохранены как исторический отчёт.
+Текущая публикация: 0.3.0-test.14 (1014), GitHub Releases и встроенные обновления работают. Последние результаты — в конце файла. Данные 0.2.x ниже сохранены как исторический отчёт.
 
 Обновлено 2026-11-15. Версия 0.2.0 (2), исходники приложения: `97a43a4`.
 
@@ -69,3 +69,6 @@
 - [Первый релиз test-12](https://github.com/MJSasha/mj-watch/releases/tag/test-12), versionCode1012: оба подписанных APK, update.json, SHA256SUMS. [CI #12](https://github.com/MJSasha/mj-watch/actions/runs/43729640745) — build/phone/TV/publish success.
 - Android API36: real GitHub download → integrity/signature verification → permission settings → native UPDATE → code1012 installed. После обновления сохранены Room history/progress и зашифрованный sentinel. Неверная подпись отклоняется. Локальные unit tests: 27 OK.
 - [Отчёт и логи](docs/testing/0.3.0/REPORT.md), [инструкция выпуска](docs/UPDATES.md). В 0.2.1 updater отсутствует: первый новый APK ставится вручную поверх; затем обновления доступны из приложения. Подтверждение Android остаётся обязательным.
+- TV API36: полный update flow с D-pad/OK/Back, включая системное разрешение и native Update, завершился установкой code1012. Настройки DEMO и Continue watching сохранены. Только собственный AVD.
+- Следующий [релиз test-14](https://github.com/MJSasha/mj-watch/releases/tag/test-14), code1014, вышел полностью автоматически. [CI #14](https://github.com/MJSasha/mj-watch/actions/runs/43731326631) — все 4 jobs success, 27 unit tests. Перед установщиком сохраняется и останавливается активный player. Пользовательский канал готов к тестированию.
+- Установленная test-12 сама обнаружила test-14 при запуске после естественного 15-minute throttle, без сброса prefs/часов и без manual check. Обновление 1012→1014 через приложение и native installer завершилось; повторная проверка encrypted sentinel/history/progress OK. Все изменения и доказательства отправлены в репозиторий.

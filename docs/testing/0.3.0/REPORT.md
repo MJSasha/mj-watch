@@ -28,3 +28,11 @@ The test installer permission was changed only on our disposable AVD. Actual use
 ## Operation
 
 First installation of the updater-containing release is manual over 0.2.1. Thereafter startup/foreground checks are automatic with a 15-minute throttle; manual check bypasses it. Downloads and system installation require user actions; silent install is not implemented. Main pushes publish only after all checks succeed. See [release workflow](../../UPDATES.md).
+
+## TV update runtime and next automatic release
+
+On our separate Android TV API36 ARM64 AVD, the app automatically discovered test-12 and downloaded the TV APK. The complete path used D-pad/OK/Back: download → verified APK → native Install unknown apps → allow MJWatch TV → Back (Install update focus restored) → native Update confirmation → versionCode1012 installed. DEMO settings and Continue watching remained after relaunch. [Steps](logs/tv-update.txt), [installer screenshot](tv-native-installer.png), [post-update UI](logs/tv-after-update.xml). Physical/OEM devices and API26 updater remain unconfirmed.
+
+[CI #14](https://github.com/MJSasha/mj-watch/actions/runs/43731326631), source `1efeacd378cfcc4ca9c8b460d465c605ea771c30`, automatically completed build/phone/TV/publish with no rerun or manual release creation. [test-14](https://github.com/MJSasha/mj-watch/releases/tag/test-14), code1014, includes saving/stopping active playback before the native installer. Unit suite: 27 tests. Runtime/source code otherwise matches the first verified release.
+
+The installed test-12 app subsequently discovered test-14 on ordinary startup after the real 15-minute throttle elapsed, without resetting app data, forcing the clock, or pressing Check now. [Home screenshot](automatic-next-release.png), [UI tree](logs/automatic-next-release.xml). Then the app downloaded/verified the published code1014 APK and opened the system installer: [test](logs/update-12-to-14.txt). Native UPDATE completed 1012→1014; encrypted sentinel, history and progress again passed verification: [test](logs/after-update-14.txt). This confirms the second-update path, not just bootstrap installation.

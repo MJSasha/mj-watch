@@ -1,0 +1,10 @@
+Own Android TV API36 ARM64 AVD emulator-5584.
+Updated prior local TV install to debug baseline versionCode4 with the existing certificate.
+Automatic startup check displayed 0.3.0-test.12.
+D-pad UP -> rail home; RIGHT -> focused Download update; CENTER -> download.
+APK verified; RIGHT/CENTER -> per-app Android TV Install unknown apps panel.
+CENTER enabled MJWatch TV; BACK returned with Install update focused.
+CENTER opened com.google.android.packageinstaller; LEFT/CENTER confirmed Update.
+PackageManager reported dev.mjwatch.tv versionCode1012.
+After Done and relaunch, DEMO configuration and Continue watching shelf remained.
+No user TV/projector was connected or controlled. No mouse actions were used.
