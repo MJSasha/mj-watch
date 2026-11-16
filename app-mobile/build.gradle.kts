@@ -9,6 +9,7 @@ android {
 }
 kotlin { jvmToolchain(21); compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
+ implementation("com.journeyapps:zxing-android-embedded:4.3.0")
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
  implementation(platform(libs.compose.bom))
  implementation("androidx.compose.ui:ui")

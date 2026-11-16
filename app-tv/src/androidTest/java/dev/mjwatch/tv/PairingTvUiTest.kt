@@ -25,7 +25,8 @@ class PairingTvUiTest {
     @get:Rule(order=0) val seed=object:org.junit.rules.ExternalResource(){override fun before()=runBlocking {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("pairingFixture")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
-        fixture=JSONObject(java.net.URL("http://127.0.0.1:18544/bootstrap").readText())
+        val control=InstrumentationRegistry.getArguments().getString("pairingControlPort") ?: "18544"
+        fixture=JSONObject(java.net.URL("http://127.0.0.1:$control/bootstrap").readText())
         context.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
         SecretStore(context).put("ca:${endpoint(fixture.getString("url")).origin()}","")
         Settings(context).handleLegacyHistory()
@@ -55,6 +56,7 @@ class PairingTvUiTest {
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000){model.state.value.config.managedUrl.isNotBlank()}
         compose.runOnIdle {model.page("managed-login")}
+        press("Другие способы входа")
         compose.onNodeWithText("Имя пользователя").assertDoesNotExist()
         compose.onNodeWithText("Пароль").assertDoesNotExist()
         press("Получить код")
@@ -117,7 +119,7 @@ class PairingTvUiTest {
                 val me=ManagedApi(model.state.value.config,model.secrets).authorized("me")
                 Assert.assertNotEquals("Phone and TV have separate sessions",fixture.optString("deviceId"),me.getString("deviceId"))
                 // The CA stays scoped to this origin, and never disables hostname verification.
-                val wrong=model.state.value.config.copy(managedUrl="https://wrong.invalid:18543")
+                val wrong=model.state.value.config.copy(managedUrl="https://wrong.invalid:${endpoint(fixture.getString("url")).port}")
                 model.secrets.put("ca:${endpoint(wrong.managedUrl).origin()}",fixture.getString("ca"))
                 try {
                     val client=managedClient(wrong,model.secrets).newBuilder().dns(object:okhttp3.Dns{override fun lookup(hostname:String)=listOf(java.net.InetAddress.getByName("127.0.0.1"))}).build()
@@ -134,6 +136,7 @@ class PairingTvUiTest {
         compose.waitUntil(10000){model.state.value.config.managedUrl.isNotBlank()}
         model.secrets.put("ca:${endpoint(fixture.getString("url")).origin()}",fixture.getString("ca"))
         compose.runOnIdle {model.page("managed-login")}
+        press("Другие способы входа")
         press("Получить код")
         compose.waitUntil(15000){model.managed.state.value.pairing!=null}
         val pair=model.managed.state.value.pairing!!

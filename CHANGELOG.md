@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0
+
+- TV connects through an automatically generated QR, with no server address,
+  password, code or file transfer on TV. The authenticated phone scans it with
+  its camera, transfers public settings through an encrypted one-time LAN inbox,
+  then previews and explicitly approves the device.
+- TV explicitly accepts the named account/server before trusting its CA. Managed
+  HTTPS and hostname checks remain enforced; passwords, account tokens and the TV
+  polling secret are never sent over the local bootstrap channel.
+- QR expires after five minutes. Refresh, rejection, cancellation on either
+  device and account changes terminate the old attempt. Old codes cannot replace
+  a new proposal. Phone camera scanning stays in portrait orientation.
+- Manual code/file/password routes remain under secondary actions. Both phone
+  and TV APKs need this update, and must share a private local network.
+
+Validation: docs/testing/TV-QR.md.
+
 ## 0.6.2
 
 - Dedicated TV pairing screen: import public connection settings from a phone,

@@ -32,4 +32,11 @@ class ManagedTvSetupTest {
         assertTrue(runCatching{decodeManagedTvSetup(JSONObject(valid).put("ca","broken").toString())}.isFailure)
         assertTrue(runCatching{decodeManagedTvSetup(" ".repeat(65537))}.isFailure)
     }
+    @Test fun deeplyNestedAndDuplicateFieldsAreRejectedWithoutStackOverflow() {
+        val nested="{\"unknown\":"+"[".repeat(5000)+"0"+"]".repeat(5000)+"}"
+        assertTrue(runCatching{decodeManagedTvSetup(nested)}.exceptionOrNull() is Exception)
+        val duplicate="{\"schema\":1,\"schema\":1,\"type\":\"mjwatch-tv\",\"url\":\"https://fixture.invalid\"}"
+        assertTrue(runCatching{decodeManagedTvSetup(duplicate)}.isFailure)
+    }
+
 }

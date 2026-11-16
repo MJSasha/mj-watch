@@ -50,7 +50,7 @@ private data class Destination(val id:String,val title:String,val icon:ImageVect
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
-@Composable fun WatchApp(model:WatchModel,tv:Boolean) {
+@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
     AutomaticUpdates(model.updates)
     val state by model.state.collectAsStateWithLifecycle()
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
@@ -115,7 +115,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 when(state.page) {
                                     "home"->HomeScreen(state,titles,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
-                                    "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv)
+                                    "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv,scanTvQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
                                     "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})

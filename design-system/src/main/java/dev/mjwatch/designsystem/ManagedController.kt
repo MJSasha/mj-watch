@@ -10,10 +10,11 @@ data class ManagedState(val scope:String="",val busy:Boolean=false,val message:S
 class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val config:()->Config) {
  private val mutable=MutableStateFlow(ManagedState());val state=mutable.asStateFlow()
  val users=UsersController(scope,secrets,config)
+ val qr=TvQrController(scope,secrets,config,this)
  fun storePreferences(c:Config){val prefs=context.getSharedPreferences("playback-preferences",0);val row=JSONObject().put("metadataProvider",if(c.managed)"none" else c.metadataProvider).put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null));context.getSharedPreferences("profile-playback-preferences",0).edit().putString(if(c.managed)c.scope else "direct",row.toString()).apply()}
  private suspend fun restorePreferences(c:Config){val server=if(c.historyEnabled)db.syncDao().entity(c.scope,"preferences","profile")?.takeUnless{it.deleted}?.json else null;val stored=context.getSharedPreferences("profile-playback-preferences",0).getString(if(c.managed)c.scope else "direct",null);if(!c.managed&&server==null&&stored==null)return;val value=JSONObject(server ?: stored ?: "{}");context.getSharedPreferences("playback-preferences",0).edit().putString("quality",value.optString("quality","Все")).putString("audio-language",value.optString("audioLanguage").takeIf{it.isNotBlank()&&it!="null"}).putString("subtitle-language",value.optString("subtitleLanguage").takeIf{it.isNotBlank()&&it!="null"&&it!="off"}).putBoolean("subtitles-off",value.optString("subtitleLanguage","off")=="off").apply()}
  private var syncJob:Job?=null;private var observer:Job?=null
- init {scope.launch {var previous:Config?=null;settings.config.collectLatest {c->if(previous?.scope!=c.scope||previous?.connectionMode!=c.connectionMode){previous?.let{storePreferences(it)};restorePreferences(c)};previous=c;users.reset(c.scope);syncJob?.cancel();observer?.cancel();mutable.value=ManagedState(scope=c.scope);if(c.historyEnabled) {
+ init {scope.launch {var previous:Config?=null;settings.config.collectLatest {c->if(previous?.scope!=c.scope||previous?.connectionMode!=c.connectionMode){previous?.let{storePreferences(it)};restorePreferences(c)};if(previous?.scope!=c.scope||previous?.managedUrl!=c.managedUrl)qr.cancelPhone();previous=c;users.reset(c.scope);syncJob?.cancel();observer?.cancel();mutable.value=ManagedState(scope=c.scope);if(c.historyEnabled) {
    observer=launch {db.syncDao().observePending(c.scope).collect {rows->if(config().scope==c.scope)mutable.update {it.copy(pending=rows)}}}
    syncJob=launch {while(isActive) {sync(c);delay(30000)}}
  }}}}
@@ -25,9 +26,12 @@ class ManagedController(private val context:android.content.Context,private val 
   val api=api(c);val result=if(invite.isBlank()) api.request("auth/login","POST",JSONObject().put("name",name).put("password",password).put("device",android.os.Build.MODEL)) else api.request("auth/accept-invite","POST",JSONObject().put("invite",invite).put("password",password).put("device",android.os.Build.MODEL))
   connected(c,result)
  }
- suspend fun connected(c:Config,result:JSONObject) {
+ suspend fun connected(c:Config,result:JSONObject,expectedServerId:String="",expectedUserId:String="",expectedName:String="") {
   check(!PlaybackActivity.hasActivePlayback()){ "Остановите воспроизведение перед сменой подключения" }
-  val api=api(c);api.saveTokens(result);val me=api.authorized("me");val saved=c.copy(serverId=me.getString("serverId"),userId=me.getString("userId"),metadataProvider="tmdb")
+  val api=api(c)
+  val me=api.request("me",headers=mapOf("Authorization" to "Bearer ${result.getString("accessToken")}"))
+  if((expectedServerId.isNotBlank()&&me.getString("serverId")!=expectedServerId)||(expectedUserId.isNotBlank()&&me.getString("userId")!=expectedUserId)||(expectedName.isNotBlank()&&me.getString("name")!=expectedName))throw java.io.IOException("Телефон подтвердил другой аккаунт. Обновите QR и повторите вход.")
+  val saved=c.copy(serverId=me.getString("serverId"),userId=me.getString("userId"),metadataProvider="tmdb")
   // Snapshot establishes epochs before any local writes; old local history is imported only explicitly.
   api(saved).saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(api(saved),db.syncDao()).connect();settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
  }
@@ -78,7 +82,7 @@ class ManagedController(private val context:android.content.Context,private val 
   context.contentResolver.openOutputStream(uri)?.use {it.write(raw.toByteArray(Charsets.UTF_8))} ?: error("Не удалось сохранить файл")
   mutable.update {it.copy(message="Настройки TV сохранены. Перенесите файл на телевизор и выберите «Импортировать настройки».")}
  }
- fun startPairing(url:String) {
+ fun startPairing(url:String,expectedServerId:String="",expectedUserId:String="",expectedName:String="") {
   if(state.value.busy)return
   cancelPairing()
   val generation=pairingGeneration
@@ -97,15 +101,15 @@ class ManagedController(private val context:android.content.Context,private val 
      val response=api.request("pairing/${result.getString("id")}",headers=mapOf("X-Pairing-Secret" to result.getString("pollSecret")))
      if(response.has("accessToken")) {
       mutable.update {it.copy(busy=true)}
-      connected(c,response)
+      connected(c,response,expectedServerId,expectedUserId,expectedName)
       return@launch
      }
     }
     mutable.update {it.copy(message="Код истёк. Получите новый код и введите его на телефоне.")}
    }catch(e:CancellationException){throw e}
-   catch(e:Exception){if(generation==pairingGeneration)mutable.update {it.copy(message=if(e.message?.contains("TLS")==true) "Не удалось проверить сертификат сервера. На телефоне сохраните настройки TV и импортируйте их здесь, затем сверьте отпечаток." else safeError(e))}}
+   catch(e:Exception){if(generation==pairingGeneration)mutable.update {it.copy(message=if(e.message?.contains("TLS")==true) "Не удалось проверить сертификат сервера. Проверьте адрес сервера на телефоне и обновите QR на TV." else safeError(e))}}
    finally {if(generation==pairingGeneration)mutable.update {it.copy(pairing=null,busy=false)}}
   }
  }
- fun cancelPairing(){pairingGeneration++;pairingJob?.cancel();pairingJob=null;mutable.update {it.copy(pairing=null,busy=false)}}
+ fun cancelPairing(clearMessage:Boolean=false){pairingGeneration++;pairingJob?.cancel();pairingJob=null;mutable.update {it.copy(pairing=null,busy=false,message=if(clearMessage)"" else it.message)}}
 }

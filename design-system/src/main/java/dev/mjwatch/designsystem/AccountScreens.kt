@@ -28,7 +28,7 @@ import org.json.JSONObject
     }
 }
 
-@Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean) {
+@Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
     val controller=model.managed
     val raw by controller.state.collectAsState()
     val managed=raw.takeIf {it.scope==s.config.scope} ?: ManagedState()
@@ -62,6 +62,25 @@ import org.json.JSONObject
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
             "managed-tv"->{
+                val qr by controller.qr.phone.collectAsState()
+                DisposableEffect(Unit){onDispose{controller.qr.cancelPhone()}}
+                Text("Откройте подключение MJWatch на TV и отсканируйте QR. Адрес и сертификат передадутся автоматически.")
+                if(scanTvQr!=null)Action("Сканировать QR телевизора",tv,enabled=qr.stage !in setOf("sending","waiting","approving"),onClick=scanTvQr)
+                if(qr.stage in setOf("sending","waiting","approving")) {
+                    CircularProgressIndicator()
+                    Text(when(qr.stage){"sending"->"Передаём настройки на TV…";"approving"->"Подтверждаем телевизор…";else->"На TV выберите «Подключить»."},modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+                }
+                if(qr.stage=="preview") {
+                    Text("Телевизор: ${qr.device}",fontWeight=FontWeight.Medium)
+                    Text("Аккаунт: ${qr.account}")
+                    val shown=qr
+                    Action("Подключить телевизор",tv){controller.qr.approvePhone(shown)}
+                }
+                OperationMessage(qr.message,error=qr.stage=="error")
+                if(qr.stage.isNotBlank()&&qr.stage!="approved")Action("Отменить подключение TV",tv,secondary=true){controller.qr.cancelPhone()}
+                var legacy by rememberSaveable {mutableStateOf(false)}
+                Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
+                if(legacy) {
                 var code by rememberSaveable {mutableStateOf("")}
                 val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->if(uri!=null)controller.exportTvSetup(uri)}
                 Text("Первое подключение: сохраните настройки и перенесите файл на TV. На телевизоре выберите «Импортировать настройки» и сверьте отпечаток.")
@@ -78,6 +97,7 @@ import org.json.JSONObject
                     Text("Устройство: ${pair.getString("device")} · Пользователь: ${managed.me?.optString("name")}")
                     Action("Добавить телевизор",tv,enabled=!managed.busy){confirm="Добавить ${pair.getString("device")} в аккаунт ${managed.me?.optString("name")}?" to {controller.action("pairing/${pair.getString("code")}/approve","POST",JSONObject().put("code",pair.getString("code")),reload="devices");code=""}}
                 }
+                }
             }
             else->{
                 Text(s.config.managedUrl)
@@ -86,7 +106,7 @@ import org.json.JSONObject
                 SettingsGroup(tv) {
                     SettingsActionRow(Icons.Outlined.Devices,"Мои устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
                     SettingsDivider()
-                    SettingsActionRow(Icons.Outlined.Tv,"Добавить телевизор","Вход по коду с экрана TV",tv){model.page("managed-tv")}
+                    SettingsActionRow(Icons.Outlined.Tv,"Добавить телевизор","Сканировать QR с экрана TV",tv){model.page("managed-tv")}
                 }
                 val history by model.scopedLibrary.collectAsState()
                 managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->

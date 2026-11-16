@@ -33,3 +33,18 @@ the authenticated phone before storing trust for that exact origin. Empty CA use
 Android system trust. Import does not approve a TV or create a session: the existing
 pairing code, phone device preview, explicit approval and separate polling secret
 remain required. General config export continues to exclude CA and account secrets.
+
+## QR bootstrap
+
+The default TV path now starts a temporary local encrypted inbox. The scanned
+`mjwatch://tv-connect?v=1&ip=PRIVATE_IPV4&port=EPHEMERAL&key=BASE64URL_32_BYTES`
+invitation authenticates AES-GCM setup/status/cancel messages, bound to endpoint
+and direction by associated data. It expires after five minutes and accepts one
+phone nonce. The phone first verifies its managed session and transfers the
+public TV settings packet, display name and public server/user IDs. TV verifies
+those IDs against its authenticated `me` response before saving any session.
+TV explicitly accepts the origin
+and QR-authenticated phone proposal before saving CA trust. The existing managed
+pairing code, server preview, explicit phone approval and separate TV polling
+secret still gate session issuance. This is client-side bootstrap; backend API
+and TLS/hostname verification are unchanged. See `docs/testing/TV-QR.md`.

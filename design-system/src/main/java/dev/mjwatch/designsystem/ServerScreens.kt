@@ -59,7 +59,9 @@ import java.util.UUID
    }
    "managed-login"->{
     var manualLogin by rememberSaveable {mutableStateOf(false)}
-    if(tv&&!manualLogin) {TvPairingScreen(s,model){manualLogin=true}} else {
+    var tvLegacy by rememberSaveable {mutableStateOf(false)}
+    if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){tvLegacy=false;manualLogin=false}
+    if(tv&&!manualLogin) {if(tvLegacy)TvPairingScreen(s,model){manualLogin=true} else TvQrScreen(model){tvLegacy=true}} else {
     var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
     DisposableEffect(Unit){onDispose{controller.cancelPairing()}}
     val loginContext=LocalContext.current

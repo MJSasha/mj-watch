@@ -17,6 +17,7 @@ dependencies {
  implementation("androidx.compose.material:material-icons-extended")
  implementation("androidx.activity:activity-compose:1.12.2")
  implementation(project(":design-system"))
+ androidTestImplementation("com.google.zxing:core:3.5.4")
  androidTestImplementation(platform(libs.compose.bom))
  androidTestImplementation("androidx.compose.ui:ui-test-junit4")
  debugImplementation("androidx.compose.ui:ui-test-manifest")
