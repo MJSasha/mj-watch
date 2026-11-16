@@ -128,6 +128,7 @@ import kotlinx.coroutines.delay
         }
     }
     fun seek(direction:Int) {player()?.let {p -> p.seekTo((p.currentPosition+direction*10_000L).coerceIn(0,duration))}}
+    CompositionLocalProvider(LocalContentColor provides Color(0xFFF0F2EC)) {
     MaterialTheme(colorScheme=darkColorScheme(primary=PlayerLime,onPrimary=Color(0xFF0C0E15),surface=Color(0xFF191E29),onSurface=Color(0xFFF0F2EC))) {
         Box(Modifier.fillMaxSize().onPreviewKeyEvent {event ->
             val code=event.nativeKeyEvent.keyCode
@@ -206,4 +207,5 @@ import kotlinx.coroutines.delay
             }},confirmButton={TextButton(onClick={episodePanel=false}) {Text("Закрыть")}})
         }
     }
+}
 }
