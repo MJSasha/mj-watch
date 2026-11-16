@@ -188,14 +188,14 @@ import java.util.UUID
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
  Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
   Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  OutlinedTextField(value,onChange,singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
+  OutlinedTextField(value,onChange,singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
  }
 }
 @Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String){
  var visible by remember{mutableStateOf(false)}
  Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
   Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  OutlinedTextField(value,onChange,singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
+  OutlinedTextField(value,onChange,singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
  }
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}

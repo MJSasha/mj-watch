@@ -120,9 +120,9 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onEvents(player:Player,events:Player.Events) {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
-                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; status=null }
+                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; view.setKeepContentOnPlayerReset(true); status=null }
                 override fun onPlaybackStateChanged(state: Int) {
-                    if(state==Player.STATE_BUFFERING) { status=if(firstFrame)PlaybackStatus("Буферизация","Видео продолжится автоматически",loading=true) else PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true); startedAt=System.currentTimeMillis() }
+                    if(state==Player.STATE_BUFFERING) { status=bufferingStatus(firstFrame); startedAt=System.currentTimeMillis() }
                     if(state==Player.STATE_READY&&firstFrame) status=null
                     if(state==Player.STATE_ENDED) { save(true); status=PlaybackStatus("Просмотр завершён") }
                 }
@@ -130,7 +130,7 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
                     save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L;status=PlaybackStatus("Восстанавливаем соединение","Попытка $retries из 2",loading=true); handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
+                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L;status=PlaybackStatus("Восстанавливаем соединение","Попытка $retries из 2",loading=true,compact=firstFrame); handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
                     else { terminalError=true;status=if(error.errorCode in 4000..5999) PlaybackStatus("Формат не поддерживается","Выберите другую дорожку или раздачу.") else PlaybackStatus("Видео недоступно","Проверьте соединение или выберите другую раздачу.",retry=true) }
                 }
             })
@@ -142,7 +142,7 @@ class PlaybackActivity : ComponentActivity() {
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
                     if(elapsed>180_000) {terminalError=true;player.stop();status=PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
-                    else if(elapsed>30_000) status=PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени. Можно подождать или выбрать другую раздачу.",loading=true)
+                    else if(elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
                 }
             }
         }
@@ -155,6 +155,7 @@ class PlaybackActivity : ComponentActivity() {
         save()
         episodeLoad?.cancel();handler.removeCallbacksAndMessages(null)
         firstFrame=false;firstFrameSeen=false;terminalError=false;retries=0
+        view.setKeepContentOnPlayerReset(false)
         player.stop()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
         intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)

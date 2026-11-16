@@ -91,7 +91,7 @@ import org.json.JSONObject
                     Text(managedCaFingerprint(ca),fontSize=16.sp)
                 }
                 Text("Когда телевизор покажет код, введите шесть цифр ниже.")
-                OutlinedTextField(code,{code=it},label={Text("Код телевизора")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(code,{code=it},label={Text("Код телевизора")},singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation())
                 Action("Проверить телевизор",tv,enabled=code.matches(Regex("[0-9]{6}"))&&!managed.busy){controller.action("pairing/lookup","POST",JSONObject().put("code",code))}
                 managed.data?.optJSONObject("pairing")?.takeIf {it.optString("code")==code}?.let {pair->
                     Text("Устройство: ${pair.getString("device")} · Пользователь: ${managed.me?.optString("name")}")

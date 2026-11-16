@@ -49,6 +49,7 @@ import kotlinx.coroutines.delay
     var centerHandled by remember {mutableStateOf(false)}
     var repeats by remember {mutableIntStateOf(0)}
     val modal=externalPanel||episodePanel
+    val blockingStatus=status!=null&&!status.compact
     val blocked=modal||remote.preview!=null||status!=null
     val currentBlocked by rememberUpdatedState(blocked)
     val currentIndex by rememberUpdatedState(episodeIndex)
@@ -101,8 +102,8 @@ import kotlinx.coroutines.delay
             delay(250)
         }
     }
-    LaunchedEffect(visible,ready,requestedFocus,status==null) {
-        if(!modal&&status==null) {
+    LaunchedEffect(visible,ready,requestedFocus,blockingStatus) {
+        if(!modal&&!blockingStatus) {
             if(!visible) rootFocus.requestFocus()
             else if(requestedFocus=="back"||!ready) backFocus.requestFocus()
             else playFocus.requestFocus()
@@ -197,7 +198,7 @@ import kotlinx.coroutines.delay
                 }) {Text(if(prompt=="opening")"Пропустить опенинг" else if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}" else "Следующая серия")}
                 TextButton(modifier=Modifier.onFocusChanged {if(it.isFocused)focusedArea="prompt"}.playerFocus(),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
             }
-            if(status!=null) Box(Modifier.align(Alignment.Center)) {PlaybackStatusCard(status,onRetry,onBack,focusAction=true)}
+            if(status!=null) Box(Modifier.align(Alignment.Center)) {PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true)}
             if(episodePanel) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={Column(Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState())) {
                 val selectedFocus=remember {FocusRequester()}
                 LaunchedEffect(Unit) {selectedFocus.requestFocus()}

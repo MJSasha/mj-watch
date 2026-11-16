@@ -2,7 +2,7 @@ plugins { alias(libs.plugins.android.library); alias(libs.plugins.kotlin.android
 android {
  namespace = "dev.mjwatch.playback"
  compileSdk = 36
- defaultConfig { minSdk = 26; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+ defaultConfig { minSdk = 26; targetSdk = 36; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { compose = true }
 }

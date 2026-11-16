@@ -95,7 +95,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
             "server-user-create"->{
                 UserHeading("Новый пользователь")
                 Text("У каждого пользователя будут отдельные история и избранное.")
-                OutlinedTextField(current.draftName,controller::editName,label={Text("Имя пользователя")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(current.draftName,controller::editName,label={Text("Имя пользователя")},singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation())
                 OperationMessage(message,current.error)
                 Action(if(current.busy)"Создаём пользователя…" else "Создать и получить приглашение",tv,enabled=validManagedUserName(current.draftName)&&!current.busy){controller.create {if(model.state.value.page=="server-user-create")model.page("server-user-invite")}}
             }

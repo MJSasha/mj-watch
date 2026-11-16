@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
@@ -148,8 +150,8 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
 internal object TVBringIntoView:androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float=when {
         size>containerSize->offset
-        offset<0f->offset
-        offset+size>containerSize->offset+size-containerSize
+        offset<8f->offset-8f
+        offset+size>containerSize-8f->offset+size-containerSize+8f
         else->0f
     }
 }
@@ -158,4 +160,36 @@ internal object TVBringIntoView:androidx.compose.foundation.gestures.BringIntoVi
     Box(modifier.fillMaxWidth().padding(vertical=16.dp),contentAlignment=Alignment.Center) {
         CircularProgressIndicator(Modifier.size(28.dp).semantics {contentDescription=label},strokeWidth=3.dp)
     }
+}
+
+internal val LocalTvNavigation=staticCompositionLocalOf {false}
+
+/** Once the IME closes, Up/Down belong to the remote, not the text cursor. */
+@Composable internal fun Modifier.tvFieldNavigation():Modifier {
+    if(!LocalTvNavigation.current) return this
+    val focus=LocalFocusManager.current
+    val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
+    return onPreviewKeyEvent {event->
+        if(imeVisible||event.key !in listOf(Key.DirectionDown,Key.DirectionUp)) false
+        else {
+            if(event.type==KeyEventType.KeyDown) focus.moveFocus(if(event.key==Key.DirectionDown) FocusDirection.Down else FocusDirection.Up)
+            true
+        }
+    }
+}
+
+/** The current UI is Russian even when Android's system language is different. */
+fun releaseCountText(context:android.content.Context,count:Int):String =
+    context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {setLocale(java.util.Locale("ru"))})
+        .resources.getQuantityString(R.plurals.release_count,count,count)
+
+/** Stock Android TV advertises a document activity that only displays a no-provider toast. */
+internal fun filePickerIntent(context:android.content.Context,intent:android.content.Intent):android.content.Intent? {
+    val handlers=context.packageManager.queryIntentActivities(intent,0)
+    val unavailable=handlers.filter {it.activityInfo.packageName=="com.android.tv.frameworkpackagestubs"}
+    val available=handlers-unavailable.toSet()
+    if(available.isEmpty()) return null
+    if(unavailable.isEmpty()) return intent
+    if(available.size==1) return intent.setComponent(android.content.ComponentName(available.first().activityInfo.packageName,available.first().activityInfo.name))
+    return android.content.Intent.createChooser(intent,"Выберите приложение").putExtra(android.content.Intent.EXTRA_EXCLUDE_COMPONENTS,unavailable.map {android.content.ComponentName(it.activityInfo.packageName,it.activityInfo.name)}.toTypedArray())
 }

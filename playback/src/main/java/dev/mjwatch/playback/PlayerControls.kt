@@ -76,7 +76,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 }
             }
-            if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusCard(status,onRetry,onBack)}
+            if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusOverlay(status,onRetry,onBack)}
         }
     }
 }

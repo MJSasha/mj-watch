@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,8 @@ import kotlinx.coroutines.*
     val scope=rememberCoroutineScope()
     var installing by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf("")}
+    val entryFocus=remember {FocusRequester()}
+    LaunchedEffect(tv,compact) {if(tv&&!compact) {withFrameNanos {};entryFocus.requestFocus()}}
     @Composable fun UpdateButton(text:String,enabled:Boolean=true,loading:Boolean=false,action:()->Unit) {
         Action(text,tv,Modifier.fillMaxWidth(),enabled=enabled,secondary=text in setOf("GitHub Releases","Загрузить заново","Отменить загрузку"),loading=loading,onClick=action)
     }
@@ -40,17 +44,17 @@ import kotlinx.coroutines.*
             Box(Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer,RoundedCornerShape(16.dp)),contentAlignment=Alignment.Center) {Icon(Icons.Outlined.SystemUpdate,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(28.dp))}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 Text(if(compact) "Доступно обновление" else "MJWatch",fontSize=21.sp,fontWeight=FontWeight.Bold)
-                Text(if(compact) state.available?.versionName.orEmpty() else "Установлена версия ${manager.versionName}",fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if(compact) state.available?.let {"${it.versionName} · сборка ${it.versionCode}"}.orEmpty() else "Установлена ${manager.versionName} · сборка ${manager.versionCode}",fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }}
         if(!compact) {
-            SettingsGroup(tv,featured=true) {SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},description="При открытии приложения",icon=Icons.Outlined.Update)}
+            SettingsGroup(tv,featured=true) {SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},modifier=Modifier.focusRequester(entryFocus),description="При открытии приложения",icon=Icons.Outlined.Update)}
             Text("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.",fontSize=13.sp,lineHeight=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading,loading=state.checking) {manager.check()}
             SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}
         }
         state.available?.let {update->
-            if(!compact) Text("Доступна ${update.versionName} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+            if(!compact) Text("Доступна ${update.versionName} · сборка ${update.versionCode} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             if(state.downloading) {
                 if(tv) UpdateButton("Скачиваем…",enabled=false,loading=true) {}
                 LinearProgressIndicator(progress={ (state.downloaded.toFloat()/update.size).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth())

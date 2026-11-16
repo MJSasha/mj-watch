@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -50,11 +52,21 @@ import dev.mjwatch.core.*
                 val matrix=QRCodeWriter().encode(link.encode(),BarcodeFormat.QR_CODE,768,768)
                 Bitmap.createBitmap(768,768,Bitmap.Config.ARGB_8888).apply {setPixels(IntArray(768*768){i->if(matrix[i%768,i/768])android.graphics.Color.BLACK else android.graphics.Color.WHITE},0,768,0,0,768,768)}.asImageBitmap()
             }
-            Image(bitmap,"QR для подключения телевизора",Modifier.size(280.dp).background(Color.White).testTag("tv-connect-qr"))
-            Text("На телефоне: MJWatch → Аккаунт → Добавить телевизор → Сканировать QR.")
-            Text("Телефон и TV должны быть в одной сети. QR действует 5 минут.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if(qr.message.isBlank())CircularProgressIndicator()
-        Action("Обновить QR",true,secondary=true){controller.qr.startTv()}
-        Action("Другие способы входа",true,secondary=true,onClick=manual)
+            val refreshFocus=remember {FocusRequester()}
+            LaunchedEffect(Unit) {withFrameNanos {};refreshFocus.requestFocus()}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(32.dp),verticalAlignment=Alignment.CenterVertically) {
+                Image(bitmap,"QR для подключения телевизора",Modifier.size((LocalConfiguration.current.screenHeightDp*.4f).coerceIn(160f,280f).dp).background(Color.White).testTag("tv-connect-qr"))
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+                    Text("На телефоне: MJWatch → Аккаунт → Добавить телевизор → Сканировать QR.")
+                    Text("Телефон и TV должны быть в одной сети. QR действует 5 минут.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Action("Обновить QR",true,Modifier.focusRequester(refreshFocus).testTag("tv-refresh-qr"),secondary=true){controller.qr.startTv()}
+                    Action("Другие способы входа",true,secondary=true,onClick=manual)
+                }
+            }
+        } else {
+            if(qr.message.isBlank())CircularProgressIndicator()
+            Action("Обновить QR",true,secondary=true){controller.qr.startTv()}
+            Action("Другие способы входа",true,secondary=true,onClick=manual)
+        }
     }
 }

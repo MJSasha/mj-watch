@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="release_count">
+        <item quantity="one">%d раздача</item>
+        <item quantity="few">%d раздачи</item>
+        <item quantity="many">%d раздач</item>
+        <item quantity="other">%d раздачи</item>
+    </plurals>
+</resources>

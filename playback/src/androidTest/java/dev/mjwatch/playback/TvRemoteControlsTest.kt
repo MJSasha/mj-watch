@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import android.view.KeyEvent
 import android.os.SystemClock
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -61,6 +62,13 @@ class TvRemoteControlsTest {
     private fun key(key:Key) {compose.onRoot().performKeyInput {pressKey(key)};compose.waitForIdle()}
     private fun pressBack() {compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};compose.waitForIdle()}
     private fun focus(tag:String)=compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus)
+    private fun captureBuffering(name:String) {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val directory=java.io.File(context.getExternalFilesDir(null),"buffering-proof").apply {mkdirs()}
+        java.io.File(directory,"$name.png").outputStream().use {output->
+            assertTrue(compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,output))
+        }
+    }
     @Test fun hiddenDirectionsSelectCorrectRowAndSeekWithoutShowingControls() {
         start();key(Key.DirectionLeft);assertEquals(40_000L,position);assertFalse(visible)
         key(Key.DirectionRight);assertEquals(50_000L,position);assertFalse(visible)
@@ -164,6 +172,45 @@ class TvRemoteControlsTest {
         compose.runOnIdle {status=null}
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("player-play").assertIsFocused()
+    }
+
+    @Test fun briefRebufferingKeepsFocusAndBackAvailable() {
+        start(true);focus("player-tracks")
+        compose.runOnIdle {status=bufferingStatus(firstFrame=true)}
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("playback-buffering").assertExists()
+        compose.onNodeWithTag("playback-status").assertDoesNotExist()
+        compose.onNodeWithTag("player-tracks").assertIsFocused()
+        captureBuffering("tv-compact-spinner-fake-engine")
+        compose.runOnIdle {status=null}
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("player-tracks").assertIsFocused()
+        compose.runOnIdle {status=bufferingStatus(firstFrame=true)}
+        pressBack();assertEquals(1,exits)
+    }
+
+    @Test fun prolongedBufferingExplainsWaitAndFocusesCancel() {
+        start(true);focus("player-tracks")
+        compose.runOnIdle {status=bufferingStatus(firstFrame=true,elapsedMs=30_000)}
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("playback-buffering").assertDoesNotExist()
+        compose.onNodeWithText("Отменить").assertIsFocused()
+        key(Key.DirectionCenter);assertEquals(1,exits)
+    }
+
+    @Test fun mobileUsesTheSameCompactBufferingFeedback() {
+        status=bufferingStatus(firstFrame=true)
+        compose.setContent {
+            PlayerControls(player={fake},title="Test",visible=true,mobile=true,keepVisible=false,status=status,
+                onRetry={},onVisibility={},onBack={exits++},onTracks={},onFit={},onPip={})
+            BackHandler {exits++}
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("playback-buffering").assertExists()
+        compose.onNodeWithTag("playback-status").assertDoesNotExist()
+        captureBuffering("mobile-compact-spinner-fake-engine")
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
+        assertEquals(1,exits)
     }
 
 }

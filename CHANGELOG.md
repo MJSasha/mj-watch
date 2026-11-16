@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.9
+
+- Keep phone navigation and search input usable in short landscape windows, with the keyboard open and at 200% font scale.
+- Fix TV D-pad navigation out of input fields, restore the original focus after returning from details and updates, and keep pairing controls and connection focus rings within screen bounds.
+- Use a compact spinner over the retained video frame for brief rebuffering on phone and TV, without stealing focus. Keep explanations and recovery actions for initial preparation, long waits and errors.
+- Show build numbers for installed and available updates, clarify demo progress limitations, and fix Russian release-count plurals.
+- Explain missing file-picker support on TV and cover the audit fixes with targeted runtime regressions.
+
 ## 0.8.8
 
 - Keep the existing TV player design and add consistent remote navigation, immediate seeking with hidden controls, and timeline preview confirmed by OK or cancelled by Back.

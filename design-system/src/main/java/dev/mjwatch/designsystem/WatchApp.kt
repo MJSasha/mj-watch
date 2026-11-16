@@ -71,28 +71,32 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val context=LocalContext.current.applicationContext
     val images=remember(state.config) {ImageLoader.Builder(context).okHttpClient(if(state.config.managed) managedClient(state.config,model.secrets) else guardedClient(state.config)).build()}
     DisposableEffect(images) {onDispose {images.shutdown()}}
-    CompositionLocalProvider(LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) TVBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
+    CompositionLocalProvider(LocalTvNavigation provides tv,LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) TVBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
         val colors=MaterialTheme.colorScheme
         val activity=androidx.activity.compose.LocalActivity.current
         SideEffect {activity?.let {a->WindowCompat.getInsetsController(a.window,a.window.decorView).apply {isAppearanceLightStatusBars=colors.background.luminance()>.5;isAppearanceLightNavigationBars=colors.background.luminance()>.5};if(android.os.Build.VERSION.SDK_INT>=29) a.window.isNavigationBarContrastEnforced=false}}
         androidx.tv.material3.MaterialTheme(colorScheme=androidx.tv.material3.darkColorScheme(primary=colors.primary,onPrimary=colors.onPrimary,surface=colors.surface,onSurface=colors.onSurface,surfaceVariant=colors.surfaceVariant,onSurfaceVariant=colors.onSurfaceVariant)) {
             val width=LocalConfiguration.current.screenWidthDp
-            val rail=tv||width>=600
+            val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
+            val rail=tv||(width>=600&&LocalConfiguration.current.screenHeightDp>=480&&!imeVisible)
             val railItems=if(rail) listOf(destinations[0],destinations[1],Destination("history","История",Icons.Outlined.History),destinations[2],destinations[3]) else destinations
             val top=state.page in (destinations.map {it.id}+"history")
             val cinematic=state.page in setOf("home","detail")
             val railFocus=remember {FocusRequester()};var railFocused by remember {mutableStateOf(false)}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
-            val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&top&&state.configured) {
+            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&top&&state.configured&&!imeVisible) {
                 Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
-                    NavigationBar(Modifier.height(if(LocalConfiguration.current.fontScale>=1.5f) 96.dp else 74.dp),containerColor=colors.surface,tonalElevation=0.dp,windowInsets=WindowInsets(0)) {
-                        destinations.forEach {d->NavigationBarItem(selected=state.page==d.id,onClick={model.page(d.id)},colors=NavigationBarItemDefaults.colors(selectedIconColor=colors.primary,selectedTextColor=colors.onSurface,unselectedIconColor=colors.onSurfaceVariant,unselectedTextColor=colors.onSurfaceVariant,indicatorColor=colors.primaryContainer),icon={Icon(d.icon,null,Modifier.size(24.dp))},label={Text(d.title,fontSize=11.sp)})}
+                    val fontScale=LocalConfiguration.current.fontScale
+                    val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
+                    destinations.chunked(columns).forEach {row->
+                    NavigationBar(Modifier.fillMaxWidth().height(if(fontScale>=1.5f) 88.dp else 74.dp),containerColor=colors.surface,tonalElevation=0.dp,windowInsets=WindowInsets(0)) {
+                        row.forEach {d->NavigationBarItem(selected=state.page==d.id,onClick={model.page(d.id)},colors=NavigationBarItemDefaults.colors(selectedIconColor=colors.primary,selectedTextColor=colors.onSurface,unselectedIconColor=colors.onSurfaceVariant,unselectedTextColor=colors.onSurfaceVariant,indicatorColor=colors.primaryContainer),icon={Icon(d.icon,null,Modifier.size(24.dp))},label={Text(d.title,fontSize=11.sp,maxLines=1,softWrap=false)})}
+                    }
                     }
                 }
             }}) {padding->
-                Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding()) {
+                Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                     if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
                         Spacer(Modifier.height(if(tv) 24.dp else 28.dp))
@@ -102,7 +106,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(if(tv) Modifier.size(width=tvUnit(96f),height=72.dp) else Modifier.size(48.dp)).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
                         }
                     }
-                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                    Column(Modifier.weight(1f).fillMaxHeight().imePadding()) {
                         if(!(tv&&(cinematic||state.page=="search"))&&state.page!="detail"&&!(state.page=="releases"&&!tv)&&!(tv&&state.page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
@@ -113,7 +117,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             }
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
-                        val edge=state.page in setOf("home","detail")||state.page=="releases"&&!tv||state.page=="settings"&&!state.configured
+                        val edge=state.page in setOf("home","detail")||state.page=="releases"&&!tv||state.page=="settings"&&!state.configured&&!tv
                         val screenFocus=remember {FocusRequester()}
                         LaunchedEffect(state.page,tv) {
                             if(tv&&state.page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
@@ -223,7 +227,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 } else {
                     Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
-                        if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=374.dp).clip(RoundedCornerShape(24.dp))) {
+                        if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=if(LocalConfiguration.current.screenHeightDp<480) 240.dp else 374.dp).clip(RoundedCornerShape(24.dp))) {
                             Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.matchParentSize())
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",fontSize=11.sp,letterSpacing=1.5.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
@@ -268,13 +272,18 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable private fun SearchScreen(s:WatchState,model:WatchModel,tv:Boolean,listState:LazyListState) {
     val keyboard=LocalSoftwareKeyboardController.current
     val fieldFocus=remember {FocusRequester()}
+    val focusManager=LocalFocusManager.current
+    var focusResultsOnReady by remember {mutableStateOf(false)}
+    LaunchedEffect(tv,s.busy,focusResultsOnReady) {
+        if(tv&&focusResultsOnReady&&!s.busy) {withFrameNanos {};focusManager.moveFocus(FocusDirection.Down);focusResultsOnReady=false}
+    }
     var resultTab by rememberSaveable {mutableStateOf("Каталог")}
     val context=LocalContext.current
     val voice=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {result -> if(result.resultCode==android.app.Activity.RESULT_OK) result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(model::search)}
     val voiceAvailable=remember {context.packageManager.resolveActivity(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH),0)!=null}
     Column(Modifier.fillMaxSize().padding(top=if(tv) 24.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
-        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide(); model.search(s.query)}),modifier=Modifier.fillMaxWidth().focusRequester(fieldFocus),shape=RoundedCornerShape(28.dp))
+        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) focusResultsOnReady=true}),modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation().focusRequester(fieldFocus).testTag("search-field"),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
     if(s.busy) LoadingIndicator("Поиск…")
     if(s.metadata.isNotEmpty()) WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
@@ -364,7 +373,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     if(related.isEmpty()) Empty("Похожих пока нет","Попробуйте поиск по названию",tv,onClick={model.page("search")})
                     else {Text("Из того же раздела",color=MaterialTheme.colorScheme.onSurfaceVariant);LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp)) {items(related,key={it.id}) {item->Box(Modifier.width(156.dp)) {MetadataCard(item,s.config,tv) {model.metadata(item)}}}}}
                 } else {
-                Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и сохранение позиции." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и управление плеером. История и позиции доступны после подключения сервера MJWatch." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(m?.kind=="tv"&&s.config.managed) ManagedEpisodes(m,s.config,model,tv)
                 if(r!=null) {Text("Исходное название",fontWeight=FontWeight.Bold);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Свойства дорожек и устройства проверяются при воспроизведении.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                 progress.filter {it.releaseId==r?.id||it.releaseId in linked}.forEach {p->Text("Сохранено ${p.path} · ${time(p.positionMs)}${if(p.completed) " · Завершено" else ""}",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
@@ -410,6 +419,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     fun resetFilters() {filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"}
     if(filters) AlertDialog(onDismissRequest={filters=false},title={Text("Фильтры раздач")},text={
         Column(Modifier.heightIn(max=440.dp).verticalScroll(rememberScrollState()).testTag("release-filters"),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+            Text("Прокрутите вниз, чтобы увидеть все фильтры",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             ReleaseFilterChoices("Качество",listOf("Все")+candidates.map {it.resolution}.distinct().sorted(),filter,tv){filter=it}
             if(seasons.isNotEmpty())ReleaseFilterChoices("Сезон",listOf("Все сезоны")+seasons.map {"Сезон $it"},season?.let {"Сезон $it"} ?: "Все сезоны",tv){label->season=seasons.firstOrNull {"Сезон $it"==label}}
             if(voices.isNotEmpty())ReleaseFilterChoices("Озвучка",listOf("Любая озвучка")+voices,voice ?: "Любая озвучка",tv){voice=it.takeUnless {it=="Любая озвучка"}}
@@ -433,7 +443,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number}}
         }
         if(voice!=null||source!="Все источники"||seeds!="Любые сиды"||language!="Любой язык")Text(listOfNotNull(voice,source.takeUnless {it=="Все источники"},seeds.takeUnless {it=="Любые сиды"},language.takeUnless {it=="Любой язык"}).joinToString(" · "),style=MaterialTheme.typography.bodySmall)
-        Text("${releases.size} раздач · свойства указаны источником",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        val resourceContext=LocalContext.current
+        val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
+        Text("${countText} · свойства указаны источником",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.weight(1f).testTag("release-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
             items(releases,key={it.id}) {r->ReleaseCard(r,tv,focus=tv&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season)}}
             if(releases.isEmpty()) item {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}
@@ -524,7 +536,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
     NativeCard(tv,modifier,selected,onClick=onClick) {content()}
 }
-@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false) {
+@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={}) {
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
     if(menu) {
@@ -535,7 +547,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val cardState by model.state.collectAsState()
     val config=cardState.config
     val metadata=item.metadata ?: cardState.catalog.firstOrNull {it.id==e.metadataId}
-    NativeCard(tv,Modifier.fillMaxWidth(),onLongClick={menu=true},onClick={model.restore(e)}) {
+    val requester=remember {FocusRequester()}
+    LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
+    NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester).testTag("library-${e.id}"),onLongClick={menu=true},onClick={onOpen();model.restore(e)}) {
         if(wide) Column {
             Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {p.episodeLabel()?.let {Text(it,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
@@ -554,12 +568,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable private fun LibraryScreen(entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
     val libraryState by model.state.collectAsState()
     var tab by rememberSaveable { mutableStateOf(if(model.state.value.page=="history") "История" else "Продолжить") }
+    var returnFocusId by rememberSaveable {mutableStateOf<String?>(null)}
     val filtered=entries.filter { e -> when(tab) { "Буду смотреть" -> e.entry.bookmarked; "Продолжить" -> e.entry.openedAt>0&&progress.any { it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0 }; else -> e.entry.openedAt>0 } }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         WatchTabs(listOf("Продолжить","Буду смотреть","История"),tab,tv) {tab=it}
         LazyColumn(contentPadding=PaddingValues(8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
-            items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,bookmarkOnly=tab=="Буду смотреть")}
+            items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
         }
     }
 }
@@ -576,6 +591,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var leave by remember {mutableStateOf(false)}
     var baseline by remember {mutableStateOf(listOf("","","",""))}
     var preview by remember { mutableStateOf<Config?>(null) }; var importError by remember { mutableStateOf("") }
+    if(importError.isNotBlank()) {
+        val errorFocus=remember {FocusRequester()}
+        LaunchedEffect(importError) {if(tv) {withFrameNanos {};errorFocus.requestFocus()}}
+        AlertDialog(onDismissRequest={importError=""},title={Text("Импорт и экспорт")},text={Text(importError)},confirmButton={TextButton(modifier=Modifier.focusRequester(errorFocus),onClick={importError=""}) {Text("Понятно")}})
+    }
     LaunchedEffect(Unit) { if(model.draftConfig==null) { metadataToken=model.secrets.get("tmdb"); key=model.secrets.get("jackett:${s.config.jackett}");user=model.secrets.get("torrUser:${s.config.torrServer}");password=model.secrets.get("torrPassword:${s.config.torrServer}") }; baseline=listOf(model.secrets.get("jackett:${s.config.jackett}"),model.secrets.get("torrUser:${s.config.torrServer}"),model.secrets.get("torrPassword:${s.config.torrServer}"),model.secrets.get("tmdb")) }
     LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
     val editorImeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
@@ -584,8 +604,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     DisposableEffect(Unit) {registerBack?.invoke {requestBack.value()};onDispose {registerBack?.invoke(null)}}
     BackHandler(dirty&&!editorImeVisible) {requestBack.value()}
     if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.back()}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
-    val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if(uri!=null) context.contentResolver.openOutputStream(uri)?.use { it.write(encodeConfig(c.copy(torrServer=normalizeDirectAddress(c.torrServer)),includeAccount=false).toByteArray()) } }
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) try {
+    val export=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result -> val uri=result.data?.data?.takeIf {result.resultCode==android.app.Activity.RESULT_OK}; if(uri!=null) context.contentResolver.openOutputStream(uri)?.use { it.write(encodeConfig(c.copy(torrServer=normalizeDirectAddress(c.torrServer)),includeAccount=false).toByteArray()) } }
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result -> val uri=result.data?.data?.takeIf {result.resultCode==android.app.Activity.RESULT_OK}; if(uri!=null) try {
         val raw=context.contentResolver.openInputStream(uri)!!.use { String(it.readBytes().also { b -> require(b.size<65536) }) }; preview=decodeConfig(raw)
     } catch(_:Exception) {importError="Не удалось импортировать конфигурацию"} }
     fun urlError(raw:String)=raw.isNotBlank()&&runCatching {endpoint(raw)}.isFailure
@@ -605,14 +625,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         else if(section==null) item {Heading("Подключения")}
         if((!setup||setupStep==1)&&(section==null||section=="search")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("Jackett / JacRed",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)
+            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
             Action("Проверить поиск",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(true,c,key,user,password)}
             if(s.checkJackett.isNotBlank()) Text(s.checkJackett,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         if((!setup||setupStep==2)&&(section==null||section=="server")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("TorrServer",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank()) "Введите http/https URL без логина, query и fragment" else runCatching {"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)} · IP без порта использует 8090"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)
+            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank()) "Введите http/https URL без логина, query и fragment" else runCatching {"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)} · IP без порта использует 8090"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SettingsCheckbox("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))})
             Action("Проверить TorrServer",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(false,c,key,user,password)}
             if(s.checkTorr.isNotBlank()) Text(s.checkTorr,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -627,17 +647,16 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(section==null) item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
         if(advanced) {
             if(section==null||section=="search") item {Text("Протокол поиска",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->Pill(label,c.releaseApi==id,tv) {changed(c.copy(releaseApi=id))}}}}
-            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.small)}
-            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)}
+            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)}
+            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)}
             if(section==null||section=="server") item {SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")}
             if(section==null||section=="catalog") item {SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{c=c.copy(metadataProvider=if(it) "tmdb" else "none")})}
             if((section==null||section=="catalog")&&c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
             if(section==null) item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
         }
         if(section!=null) item {Action(if(s.busy) "Сохранение…" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy) {applySettings()}}
-        if(section==null) item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {importer.launch(arrayOf("application/json"))}}
-        if(section==null) item {TextButton(onClick={if(!urlError(c.jackett)&&(c.torrServer.isBlank()||runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isSuccess)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
-        if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
+        if(section==null) item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {try {val request=filePickerIntent(context,ActivityResultContracts.OpenDocument().createIntent(context,arrayOf("application/json")));if(request==null) importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную." else importer.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную."}}}
+        if(section==null) item {TextButton(onClick={if(!urlError(c.jackett)&&(c.torrServer.isBlank()||runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isSuccess)) try {val request=filePickerIntent(context,ActivityResultContracts.CreateDocument("application/json").createIntent(context,"mjwatch-config.json"));if(request==null) importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную." else export.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную."} else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
         if(section==null) item {Text("Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         if(section==null) item {Text("MJWatch ${model.updates.versionName} · TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
@@ -646,7 +665,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 }
 @Composable private fun SecretField(value:String,onChange:(String)->Unit,label:String) {
     var visible by remember { mutableStateOf(false) }
-    OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
+    OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
 }
 private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
@@ -788,7 +807,10 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun UpdateLink(model:WatchModel,tv:Boolean) {
     val update by model.updates.state.collectAsStateWithLifecycle()
-    SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.SystemUpdate,"Обновления",update.available?.let {"Доступна ${it.versionName}"} ?: "Версия ${model.updates.versionName}",tv) {model.page("settings-updates")}}
+    val requester=remember {FocusRequester()}
+    var restoreFocus by rememberSaveable {mutableStateOf(false)}
+    LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
+    SettingsGroup(tv) {Box(Modifier.focusRequester(requester).focusGroup()) {SettingsActionRow(Icons.Outlined.SystemUpdate,"Обновления",update.available?.let {"Доступна ${it.versionName} · сборка ${it.versionCode}"} ?: "Версия ${model.updates.versionName} · сборка ${model.updates.versionCode}",tv) {restoreFocus=true;model.page("settings-updates")}}}
 }
 @Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)

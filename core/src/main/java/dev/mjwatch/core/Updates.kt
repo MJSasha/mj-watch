@@ -135,7 +135,7 @@ class UpdateManager(private val context:Context,private val scope:CoroutineScope
         job=scope.launch {try {
             val found=source.latest(context.packageName)?.takeIf {it.versionCode>versionCode}
             prefs.edit().putString("manifest",found?.manifest).apply()
-            mutable.update {it.copy(checking=false,available=found,ready=if(it.available==found) it.ready else null,message=if(found==null) "Обновлений нет" else "Доступна ${found.versionName}")}
+            mutable.update {it.copy(checking=false,available=found,ready=if(it.available==found) it.ready else null,message=if(found==null) "Обновлений нет" else "Проверка завершена")}
         } catch(e:CancellationException) {mutable.update {it.copy(checking=false)};throw e} catch(_:Exception) {mutable.update {it.copy(checking=false,message="Не удалось проверить GitHub. Повторите позже")}}}
     }
     fun cancel() {job?.cancel();mutable.update {it.copy(message="Загрузка отменена")}}

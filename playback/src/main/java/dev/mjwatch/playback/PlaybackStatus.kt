@@ -13,7 +13,21 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false)
+internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false)
+
+internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus = when {
+    elapsedMs>=30_000 -> PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени. Можно подождать или выбрать другую раздачу.",loading=true)
+    firstFrame -> PlaybackStatus("Буферизация",loading=true,compact=true)
+    else -> PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true)
+}
+
+@Composable internal fun PlaybackStatusOverlay(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
+    if(status.compact) {
+        Surface(Modifier.testTag("playback-buffering"),shape=androidx.compose.foundation.shape.CircleShape,color=MaterialTheme.colorScheme.surface.copy(alpha=.72f)) {
+            CircularProgressIndicator(Modifier.padding(16.dp).size(32.dp).semantics {contentDescription=status.title;liveRegion=LiveRegionMode.Polite},strokeWidth=3.dp)
+        }
+    } else PlaybackStatusCard(status,onRetry,onBack,focusAction)
+}
 
 @Composable internal fun PlaybackStatusCard(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
     val actionFocus=remember {FocusRequester()}
