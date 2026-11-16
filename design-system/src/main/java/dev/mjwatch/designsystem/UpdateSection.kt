@@ -36,7 +36,7 @@ import kotlinx.coroutines.*
         Action(text,tv,Modifier.fillMaxWidth(),enabled=enabled,secondary=text in setOf("GitHub Releases","Загрузить заново","Отменить загрузку"),onClick=action)
     }
     if(!compact||state.available!=null) Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        SettingsGroup(tv) {Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+        SettingsGroup(tv,featured=compact) {Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
             Box(Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer,RoundedCornerShape(16.dp)),contentAlignment=Alignment.Center) {Icon(Icons.Outlined.SystemUpdate,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(28.dp))}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 Text(if(compact) "Доступно обновление" else "MJWatch",fontSize=21.sp,fontWeight=FontWeight.Bold)
@@ -44,11 +44,7 @@ import kotlinx.coroutines.*
             }
         }}
         if(!compact) {
-            SettingsGroup(tv) {Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                Icon(Icons.Outlined.Update,null,tint=MaterialTheme.colorScheme.onSurface)
-                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text("Автопроверка",fontWeight=FontWeight.Medium);Text("При открытии приложения",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                Switch(checked=state.automatic,onCheckedChange={manager.automatic(it)},modifier=Modifier.semantics {contentDescription="Автоматически проверять обновления"})
-            }}
+            SettingsGroup(tv,featured=true) {SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},description="При открытии приложения",icon=Icons.Outlined.Update)}
             Text("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.",fontSize=13.sp,lineHeight=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading) {manager.check()}
             SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}

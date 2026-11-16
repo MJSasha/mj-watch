@@ -1,0 +1,114 @@
+[
+  {
+    "theme": "dark",
+    "fg": "onSurface",
+    "bg": "background",
+    "ratio": 17.09128443422738,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "onSurface",
+    "bg": "surface",
+    "ratio": 14.786496813416413,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "onSurfaceVariant",
+    "bg": "surfaceHigh",
+    "ratio": 6.857977467780387,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "onPrimary",
+    "bg": "primary",
+    "ratio": 16.462598199120496,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "onPrimaryContainer",
+    "bg": "primaryContainer",
+    "ratio": 9.832321086945123,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "error",
+    "bg": "surface",
+    "ratio": 9.8236213267452,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "warning",
+    "bg": "surface",
+    "ratio": 10.545906184268729,
+    "min": 4.5
+  },
+  {
+    "theme": "dark",
+    "fg": "outline",
+    "bg": "surfaceHigh",
+    "ratio": 3.1169342696170705,
+    "min": 3
+  },
+  {
+    "theme": "light",
+    "fg": "onSurface",
+    "bg": "background",
+    "ratio": 14.92175741798549,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "onSurface",
+    "bg": "surface",
+    "ratio": 13.192467081668722,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "onSurfaceVariant",
+    "bg": "surfaceHigh",
+    "ratio": 5.827731963181165,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "onPrimary",
+    "bg": "primary",
+    "ratio": 8.043911872838214,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "onPrimaryContainer",
+    "bg": "primaryContainer",
+    "ratio": 6.3436026190609685,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "error",
+    "bg": "surface",
+    "ratio": 6.291589562394283,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "warning",
+    "bg": "surface",
+    "ratio": 5.757463469839035,
+    "min": 4.5
+  },
+  {
+    "theme": "light",
+    "fg": "outline",
+    "bg": "surfaceHigh",
+    "ratio": 3.9229686011918465,
+    "min": 3
+  }
+]

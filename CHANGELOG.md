@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.3
+
+- Add a restrained, theme-aware surface gradient to the automatic-update row, compact update notice and stream-preparation status; keep ordinary controls and surfaces flat.
+
+- Align shared buttons, chips, tabs, badges, fields and settings groups with the MJ Family control sizes, spacing, shapes and typography. Keep long button labels readable at double font scale.
+- Let the entire switch row toggle a setting, with a single accessible switch action instead of requiring a precise tap on the thumb.
+- Separate selected filters from TV focus, retain focus without scaling controls, and use the actual focused/disabled content color for TV button labels and icons. Define explicit error colors for both themes.
+
 ## 0.8.2
 
 - Fix managed maintenance on Python 3.13+ with existing MJWatch CAs that lack `keyUsage`. Use an explicit private-CA TLS client context with required chain, validity, hostname and TLS 1.2+ checks; retain the installed CA and account data.

@@ -5,12 +5,17 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,12 +37,28 @@ import kotlinx.coroutines.delay
 }
 @Composable internal fun Badge(text:String,accent:Boolean=false,warning:Boolean=false) {
     val color=when {warning->if(MaterialTheme.colorScheme.background.luminance()<.5) Color(0xFFF1C879) else Color(0xFF775500);accent->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.onSurfaceVariant}
-    Text(text,color=color,fontSize=12.sp,lineHeight=16.sp,modifier=Modifier.background(if(accent) MaterialTheme.colorScheme.primary.copy(alpha=.12f) else MaterialTheme.colorScheme.surfaceContainerHigh,RoundedCornerShape(6.dp)).padding(horizontal=8.dp,vertical=4.dp))
+    Text(text,color=color,fontSize=12.sp,lineHeight=16.sp,modifier=Modifier.background(if(accent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,RoundedCornerShape(8.dp)).padding(horizontal=8.dp,vertical=4.dp))
 }
 @Composable internal fun Pill(text:String,selected:Boolean,tv:Boolean=false,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
-    if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.primary else colors.onSurfaceVariant,focusedContainerColor=colors.primary,focusedContentColor=colors.onPrimary),modifier=Modifier.heightIn(min=48.dp)) {Text(text,fontSize=14.sp,color=androidx.tv.material3.LocalContentColor.current)}
-    else FilterChip(selected=selected,onClick=onClick,label={Text(text,fontSize=14.sp,color=if(selected) colors.primary else colors.onSurfaceVariant)},shape=RoundedCornerShape(12.dp),border=null,colors=FilterChipDefaults.filterChipColors(containerColor=colors.surface,labelColor=colors.onSurfaceVariant,selectedContainerColor=colors.primaryContainer,selectedLabelColor=colors.primary))
+    if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.onPrimaryContainer else colors.onSurfaceVariant,focusedContainerColor=if(selected) colors.primaryContainer else colors.surface,focusedContentColor=if(selected) colors.onPrimaryContainer else colors.onSurface),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary),inset=(-4).dp,shape=RoundedCornerShape(12.dp))),modifier=Modifier.heightIn(min=48.dp).semantics {this.selected=selected}) {Text(text,fontSize=18.sp,lineHeight=24.sp,color=androidx.tv.material3.LocalContentColor.current)}
+    else FilterChip(selected=selected,onClick=onClick,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(true,RoundedCornerShape(12.dp)),label={Text(text,fontSize=14.sp,lineHeight=20.sp)},shape=RoundedCornerShape(12.dp),border=null,colors=FilterChipDefaults.filterChipColors(containerColor=colors.surface,labelColor=colors.onSurfaceVariant,selectedContainerColor=colors.primaryContainer,selectedLabelColor=colors.onPrimaryContainer))
+}
+@Composable internal fun SettingsToggle(label:String,checked:Boolean,onCheckedChange:(Boolean)->Unit,modifier:Modifier=Modifier,description:String?=null,icon:ImageVector?=null) {
+    Row(modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(true,MaterialTheme.shapes.small).toggleable(value=checked,role=Role.Switch,onValueChange=onCheckedChange).padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+        if(icon!=null) Icon(icon,null,Modifier.size(24.dp))
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            Text(label,style=MaterialTheme.typography.bodyLarge)
+            if(description!=null) Text(description,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked=checked,onCheckedChange=null)
+    }
+}
+@Composable internal fun SettingsCheckbox(label:String,checked:Boolean,onCheckedChange:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(true,MaterialTheme.shapes.small).toggleable(value=checked,role=Role.Checkbox,onValueChange=onCheckedChange).padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Checkbox(checked=checked,onCheckedChange=null)
+        Text(label,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f))
+    }
 }
 @Composable internal fun PreferenceChoice(text:String,selected:Boolean,tv:Boolean=false,onClick:()->Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(tv).selectable(selected=selected,role=Role.RadioButton,onClick=onClick)
@@ -49,7 +70,7 @@ import kotlinx.coroutines.delay
 }
 @Composable internal fun SectionTitle(text:String,action:String?=null,onClick:()->Unit={}) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-        Text(text,fontSize=21.sp,lineHeight=28.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})
+        Text(text,fontSize=22.sp,lineHeight=28.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})
         if(action!=null) TextButton(onClick=onClick) {Text(action);Icon(Icons.Outlined.ArrowForward,null,Modifier.padding(start=6.dp).size(18.dp))}
     }
 }
@@ -79,8 +100,8 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(if(tv) 16.dp else 20.dp)) {
         labels.forEach {label->
             val active=selected==label
-            Column(Modifier.width(IntrinsicSize.Max).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
-                Text(label,color=if(active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(vertical=12.dp))
+            Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
+                Text(label,color=if(active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=if(tv) 18.sp else 14.sp,lineHeight=if(tv) 24.sp else 20.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(vertical=12.dp))
                 Box(Modifier.height(3.dp).widthIn(min=32.dp).fillMaxWidth().background(if(active) MaterialTheme.colorScheme.primary else Color.Transparent))
             }
         }
@@ -94,7 +115,15 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
 @Composable internal fun Modifier.tvFocusRing(tv:Boolean,shape:Shape=RoundedCornerShape(24.dp)):Modifier {
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
-    return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,shape)
+    val color=MaterialTheme.colorScheme.primary
+    return this.onFocusChanged {focused=it.isFocused}.drawWithContent {
+        drawContent()
+        if(focused) {
+            val offset=4.dp.toPx()
+            val outline=shape.createOutline(Size(size.width+offset*2,size.height+offset*2),layoutDirection,this)
+            translate(-offset,-offset) {drawOutline(outline,color,style=Stroke(2.dp.toPx()))}
+        }
+    }
 }
 
 /** Keep an already visible TV control in place; the platform pivot otherwise scrolls the hero offscreen. */

@@ -94,7 +94,7 @@ Debug APK находятся в `app-mobile/build/outputs/apk/debug/` и `app-tv
 ## Документация
 
 - [Текущее состояние и ограничения](STATUS.md), [проверки](docs/testing/ACCEPTANCE-REPORT.md)
-- [Дизайн и сценарии](design/HANDOFF.md), [галерея сверки](docs/ui-audit/index.html)
+- [Дизайн и сценарии](design/HANDOFF.md), [стандарт MJ Family](docs/mj-family/guide.html), [галерея сверки](docs/ui-audit/index.html)
 - [Интеграционные контракты](docs/contracts/README.md), [публикация и обновления](docs/UPDATES.md)
 
 Ключи подписи, токены, APK и кеши не хранятся в Git.

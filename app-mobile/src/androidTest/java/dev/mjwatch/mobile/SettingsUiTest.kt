@@ -49,7 +49,7 @@ class SettingsUiTest {
     compose.waitUntil(5000) {model.state.value.page=="settings"}
     Assert.assertEquals("http://127.0.0.1:8090",model.state.value.config.torrServer)
     compose.onNodeWithText("Каталог").performClick()
-    compose.onNodeWithContentDescription("Каталог TMDB").assertExists()
+    compose.onNode(hasText("Каталог TMDB") and isToggleable()).assertExists()
     compose.onNodeWithText("Адрес TorrServer").assertDoesNotExist()
     screenshot("catalog")
     UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()

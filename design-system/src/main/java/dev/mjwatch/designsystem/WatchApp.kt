@@ -155,9 +155,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
 @Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
-    val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=if(!enabled) colors.onSurface.copy(alpha=.38f) else if(secondary) colors.onSurface else colors.onPrimary);Text(text,fontSize=16.sp,fontWeight=FontWeight.Medium,color=if(!enabled) colors.onSurface.copy(alpha=.38f) else if(secondary) colors.onSurface else colors.onPrimary)}}
-    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(26.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.primary else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(3.dp,colors.onSurface),inset=(-6).dp,shape=RoundedCornerShape(26.dp)))) {content()}
-    else Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=52.dp),shape=RoundedCornerShape(26.dp),colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)) {content()}
+    val shape=MaterialTheme.shapes.medium
+    val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        val contentColor=if(tv) androidx.tv.material3.LocalContentColor.current else LocalContentColor.current
+        if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=contentColor)
+        Text(text,fontSize=if(tv) 18.sp else 16.sp,lineHeight=24.sp,fontWeight=FontWeight.Medium,color=contentColor,textAlign=androidx.compose.ui.text.style.TextAlign.Center,modifier=Modifier.weight(1f,fill=false))
+    }}
+    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.onPrimaryContainer else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary),inset=(-4).dp,shape=shape)),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
+    else Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
 }
 @Composable private fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical=36.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -589,32 +594,32 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         else if(section==null) item {Heading("Подключения")}
         if((!setup||setupStep==1)&&(section==null||section=="search")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("Jackett / JacRed",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))
+            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
             Action("Проверить поиск",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(true,c,key,user,password)}
             if(s.checkJackett.isNotBlank()) Text(s.checkJackett,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         if((!setup||setupStep==2)&&(section==null||section=="server")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Text("TorrServer",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank()) "Введите http/https URL без логина, query и fragment" else runCatching {"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)} · IP без порта использует 8090"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))
-            Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(modifier=Modifier.semantics {contentDescription="Разрешить локальный HTTP"},checked=c.localHttp,onCheckedChange={changed(c.copy(localHttp=it))});Text("Разрешить локальный HTTP",fontSize=14.sp)}
+            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank()) "Введите http/https URL без логина, query и fragment" else runCatching {"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)} · IP без порта использует 8090"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)
+            SettingsCheckbox("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))})
             Action("Проверить TorrServer",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(false,c,key,user,password)}
             if(s.checkTorr.isNotBlank()) Text(s.checkTorr,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
-        if(section=="search") item {Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(checked=c.localHttp,onCheckedChange={changed(c.copy(localHttp=it))});Text("Разрешить локальный HTTP")}}
+        if(section=="search") item {SettingsCheckbox("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))})}
         if(section=="server") item {Text("БЕЗ ИСТОРИИ · Позиция и открытия не сохраняются",color=MaterialTheme.colorScheme.primary)}
         if(section=="catalog") item {Text("Метаданные и обложки из TMDB. Поиск раздач работает и без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        if(section==null) item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Демонстрация с локальным видео"},checked=c.demo,onCheckedChange={changed(c.copy(demo=it))});Text("Демонстрация с локальным видео",Modifier.padding(start=12.dp))}}
+        if(section==null) item {SettingsToggle("Демонстрация с локальным видео",c.demo,{changed(c.copy(demo=it))})}
         if(setup&&setupStep==1&&!c.demo) item {Action("Далее · TorrServer",false,Modifier.fillMaxWidth(),enabled=!urlError(c.jackett),icon=Icons.Outlined.ArrowForward) {setupStep=2}}
         if(section==null&&(!setup||setupStep==2||c.demo)) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
         if(s.message.isNotBlank()) item {Text(s.message,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(section==null) item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
         if(advanced) {
             if(section==null||section=="search") item {Text("Протокол поиска",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->Pill(label,c.releaseApi==id,tv) {changed(c.copy(releaseApi=id))}}}}
-            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(14.dp))}
-            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(14.dp))}
+            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.small)}
+            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.small)}
             if(section==null||section=="server") item {SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")}
-            if(section==null||section=="catalog") item {Row(verticalAlignment=Alignment.CenterVertically) {Switch(modifier=Modifier.semantics {contentDescription="Каталог TMDB"},checked=c.metadataProvider=="tmdb",onCheckedChange={c=c.copy(metadataProvider=if(it) "tmdb" else "none")});Text("Каталог TMDB",Modifier.padding(start=12.dp))}}
+            if(section==null||section=="catalog") item {SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{c=c.copy(metadataProvider=if(it) "tmdb" else "none")})}
             if((section==null||section=="catalog")&&c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
             if(section==null) item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
         }
@@ -630,7 +635,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 }
 @Composable private fun SecretField(value:String,onChange:(String)->Unit,label:String) {
     var visible by remember { mutableStateOf(false) }
-    OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(14.dp),trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
+    OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
 }
 private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
@@ -702,7 +707,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 
 @Composable internal fun SettingsRow(icon:ImageVector,title:String,value:String,modifier:Modifier=Modifier,chevron:Boolean=true) {
-    Row(modifier.fillMaxWidth().heightIn(min=42.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().heightIn(min=48.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
         Icon(icon,null,tint=MaterialTheme.colorScheme.onSurface)
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text(title,fontWeight=FontWeight.Medium,lineHeight=20.sp,color=MaterialTheme.colorScheme.onSurface);Text(value.ifBlank {"Не настроен"},fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)}
         if(chevron) Icon(Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -719,7 +724,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         Text(s.selectedMetadata?.title ?: s.selected?.displayTitle().orEmpty(),fontSize=12.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Heading(if(s.busy) "Готовим к просмотру" else "Не удалось подготовить поток")
         if(s.busy) {
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(18.dp)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().background(featureSurfaceGradient(),MaterialTheme.shapes.large).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 PreparationStep(Icons.Outlined.CheckCircle,"Раздача выбрана",s.selected?.resolution.orEmpty(),true)
                 HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.15f))
                 Row(horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp);Column {Text("Получаем информацию о файлах",fontWeight=FontWeight.Medium);Text("Ожидаем ответ TorrServer",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
@@ -743,8 +748,10 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     }
 }
 
-@Composable internal fun SettingsGroup(tv:Boolean,content:@Composable ColumnScope.()->Unit) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(16.dp)).then(if(tv) Modifier else Modifier.clip(RoundedCornerShape(16.dp))),content=content)
+@Composable internal fun SettingsGroup(tv:Boolean,featured:Boolean=false,content:@Composable ColumnScope.()->Unit) {
+    val shape=MaterialTheme.shapes.large
+    val background=if(featured) Modifier.background(featureSurfaceGradient(),shape) else Modifier.background(MaterialTheme.colorScheme.surface,shape)
+    Column(Modifier.fillMaxWidth().then(background).then(if(tv) Modifier else Modifier.clip(shape)),content=content)
 }
 @Composable internal fun SettingsDivider() {HorizontalDivider(Modifier.padding(horizontal=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.18f))}
 @Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,onClick:()->Unit) {
