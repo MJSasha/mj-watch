@@ -122,7 +122,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv,scanTvQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
-                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance"->ServerScreen(state,model,tv,registerBack={editorBack=it})
+                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})

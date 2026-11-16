@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Replace the long server-update form with a four-step wizard: package, SSH access, backup phrase and final review. Explain every credential, confirm the backup phrase and keep other maintenance operations collapsed.
+- Show actual upload and server-operation stages, confirm completion only from a verified receipt, and retain an operation identifier for read-only status checks after interruption or recreation. Recover operations started by 0.8.0 without launching them again.
+- Distinguish confirmed rollback from `health_failed`, whose rollback result is unknown; show plain-language recovery guidance and copyable diagnostics without credentials. This UI change does not resolve a server's failed health check by itself.
+
 ## 0.8.0
 
 - Replace JSON invitation sharing with a short HTTPS link and Android's share sheet. Tapping it opens password registration directly on cold and warm app starts; address and server trust are filled automatically.

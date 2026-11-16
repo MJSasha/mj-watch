@@ -12,6 +12,7 @@ import java.security.spec.X509EncodedKeySpec
 import android.util.Base64
 
 class HostKeyRequired(val fingerprint:String,val changed:Boolean):java.io.IOException(if(changed) "SSH host key изменился. Сверьте отпечаток с консолью сервера." else "Подтвердите SSH host key после сверки с консолью провайдера.")
+class MaintenanceFailure(val code:String):java.io.IOException("Операция обслуживания: $code")
 data class SshTarget(val host:String,val port:Int=22,val user:String="root",val password:String) {
  override fun toString()="SshTarget(password=redacted)"
  init {require(host.length in 1..253&&host.all {it.isLetterOrDigit()||it in ".:-"}){"Укажите IP или домен без протокола и пути"};require(port in 1..65535){"SSH-порт должен быть от 1 до 65535"};require(user=="root"){"Для установки нужен пользователь root"}}
@@ -63,7 +64,7 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   val previous=result();if(previous.optBoolean("verified"))return previous
   startOperation(session,"maintenance",body)
   val deadline=System.currentTimeMillis()+300000;var state:JSONObject
-  do{Thread.sleep(1000);state=result();if(state.optString("state")=="failed")error("Операция обслуживания: ${state.optString("code")}");check(System.currentTimeMillis()<deadline){"Операция продолжается. Проверьте состояние после подключения."}}while(state.optString("state")!="complete")
+  do{Thread.sleep(1000);state=result();if(state.optString("state")=="failed")throw MaintenanceFailure(state.optString("code"));check(System.currentTimeMillis()<deadline){"Операция продолжается. Проверьте состояние после подключения."}}while(state.optString("state")!="complete")
   check(state.optBoolean("verified")){"Операция обслуживания не подтверждена"};return state
  }
  suspend fun restart(target:SshTarget)=session(target){exec(it,"/usr/local/sbin/mjwatchctl restart")}
@@ -71,7 +72,14 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   val state=exec(session,"systemctl is-active --quiet mjwatch-install.service && echo running || echo stopped")
   if(state.trim()!="running"){exec(session,"rm -f /var/lib/mjwatch-install/cancel");upload(session,target);exec(session,"systemd-run --unit=mjwatch-install --collect /bin/sh /var/lib/mjwatch-install/upload/install.sh")}
  }
- suspend fun update(target:SshTarget,passphrase:String,operation:String)=session(target){session->upload(session,target);maintenanceJob(session,JSONObject().put("action","update").put("operationId",operation).put("confirmed",true).put("passphrase",passphrase))}
+ suspend fun maintenanceStatus(target:SshTarget,operation:String)=session(target){session->
+  require(operation.matches(Regex("[A-Za-z0-9_-]{16,128}")))
+  JSONObject(exec(session,"/usr/local/sbin/mjwatchctl maintenance operation",JSONObject().put("operationId",operation).toString()))
+ }
+ suspend fun update(target:SshTarget,passphrase:String,operation:String,onProgress:(String)->Unit={})=session(target){session->
+  onProgress("uploading");upload(session,target);onProgress("applying")
+  maintenanceJob(session,JSONObject().put("action","update").put("operationId",operation).put("confirmed",true).put("passphrase",passphrase))
+ }
  suspend fun ownerPassword(target:SshTarget,user:String,password:String)=session(target){exec(it,"/usr/local/sbin/mjwatchctl owner password",JSONObject().put("User",user).put("Password",password).toString())}
  private fun upload(session:Session,target:SshTarget) {
   val bundles=ServerBundles(context);val source=bundles.active();bundles.verify(source)
