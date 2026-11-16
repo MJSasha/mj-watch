@@ -8,13 +8,13 @@
 
 По явному разрешению пользователя текущий локальный debug-keystore сохранён в GitHub Actions Secret MJWATCH_TEST_KEYSTORE_B64. Это тестовый канал, не отдельная production identity. Он сохраняет совместимость с установленными локальными APK 0.2.1. Private key не коммитится. Только publish job на main получает secret; pull requests его не получают. CI проверяет отпечаток сертификата по scripts/test-signing-cert.sha256 и завершает работу при несовпадении. Для будущего production-канала потребуется отдельное решение по ключу/миграции.
 
-Updater использует отдельный HTTP client и публичный API только MJSasha/mj-watch, не передаёт ключи Jackett/TorrServer/TMDB или cookies. HTTPS и allowlist GitHub/CDN обязательны. Проверяется schema/channel, платформа, immutable release URL, versionCode, размер, SHA256 и совпадение сертификата с установленным приложением. APK другой платформы/подписи и downgrade отклоняются. FileProvider открывает только cache/updates, не файлы настроек/БД. Частичный файл удаляется после ошибки/отмены. Обновление сохраняет Android sandbox/Keystore; приложение не удаляется.
+Updater использует отдельный HTTP client и публичный файл `releases/latest/download/update.json` только MJSasha/mj-watch, не обращается к REST API и не передаёт ключи Jackett/TorrServer/TMDB или cookies. Лимит анонимного GitHub API не участвует в проверке. HTTPS и allowlist GitHub/CDN обязательны. Проверяется schema/channel, платформа, immutable release URL, versionCode, размер, SHA256 и совпадение сертификата с установленным приложением. APK другой платформы/подписи и downgrade отклоняются. FileProvider открывает только cache/updates, не файлы настроек/БД. Частичный файл удаляется после ошибки/отмены. Обновление сохраняет Android sandbox/Keystore; приложение не удаляется.
 
 ## Выпуск
 
 Обычный выпуск: push в main → зелёные проверки → автоматический релиз Latest. Ручной: Actions → Android → Run workflow → main. Документационные коммиты не создают релиз. Перезапуск уже опубликованного номера не перезаписывает assets: gh release create отклонит существующий tag. При сбое публикации до создания релиза можно повторить failed publish job. Для выпуска новой сборки используйте новый запуск workflow.
 
-Source defaults (0.8.9/code23) предназначены для локальной разработки; CI использует монотонные коды CI выше 1000. Релизные APK не debuggable, но подписаны согласованным тестовым ключом.
+Source defaults (0.8.10/code24) предназначены для локальной разработки; CI использует монотонные коды CI выше 1000. Релизные APK не debuggable, но подписаны согласованным тестовым ключом.
 # Версии managed-сервера
 
 Обновления APK сохранены отдельно. Сервер имеет собственную SemVer, версии API/schema и подписанную ZIP-поставку. Импорт и установка из приложения выполняются по SSH владельца с encrypted backup, health-check и откатом бинарников. [Процесс и доверие](../server/README.md).

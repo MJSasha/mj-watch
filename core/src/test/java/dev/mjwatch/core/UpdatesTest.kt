@@ -41,25 +41,58 @@ class UpdatesTest {
     }
     private fun client(handler:(Request)->Response):OkHttpClient=OkHttpClient.Builder().addInterceptor {handler(it.request())}.build()
     private fun response(request:Request,body:String,code:Int=200,location:String?=null)=Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(code).message("fixture").body(body.toResponseBody("application/json".toMediaType())).apply {location?.let {header("Location",it)}}.build()
-    @Test fun githubReleaseSelectionRedirectsAndCredentialIsolation()=runBlocking {
-        val paths=mutableListOf<String>()
-        val source=GitHubUpdates(client {request->
-            paths+=request.url.host
-            assertNull(request.header("Authorization"));assertNull(request.header("Cookie"));assertEquals("MJWatch-Updater/1",request.header("User-Agent"))
-            when(request.url.host) {
-                "api.github.com" -> response(request,"""[{"tag_name":"unrelated","draft":false},{"tag_name":"test-41","draft":false},{"tag_name":"test-42","draft":false}]""")
-                "github.com" -> response(request,"",302,"https://release-assets.githubusercontent.com/fixture?signature=public-fixture")
-                else -> response(request,manifest())
-            }
-        })
-        assertEquals(1042,source.latest("dev.mjwatch.mobile")!!.versionCode)
-        assertEquals(listOf("api.github.com","github.com","release-assets.githubusercontent.com"),paths)
+    @Test fun latestReleaseAssetRedirectsWithoutApiOrCredentialsForBothPlatforms()=runBlocking {
+        val latest="https://github.com/MJSasha/mj-watch/releases/latest/download/update.json"
+        val immutable="https://github.com/MJSasha/mj-watch/releases/download/test-42/update.json"
+        val cdn="https://release-assets.githubusercontent.com/fixture?signature=public-fixture"
+        for(platform in listOf("mobile","tv")) {
+            val requests=mutableListOf<String>()
+            val source=GitHubUpdates(client {request->
+                requests+=request.url.toString()
+                assertNotEquals("api.github.com",request.url.host)
+                assertNull(request.header("Authorization"));assertNull(request.header("Cookie"));assertEquals("MJWatch-Updater/1",request.header("User-Agent"))
+                when(request.url.toString()) {
+                    latest -> response(request,"",302,immutable)
+                    immutable -> response(request,"",302,cdn)
+                    cdn -> response(request,manifest())
+                    else -> error("Unexpected updater request: ${request.url}")
+                }
+            })
+            val update=source.latest("dev.mjwatch.$platform")!!
+            assertEquals(1042L,update.versionCode)
+            assertEquals("0.3.0-test.42",update.versionName)
+            assertEquals(3L,update.size)
+            assertEquals(JSONObject(manifest()).getJSONObject("packages").getJSONObject(platform).getString("sha256"),update.sha256)
+            assertEquals("dev.mjwatch.$platform",update.packageName)
+            assertEquals("https://github.com/MJSasha/mj-watch/releases/download/test-42/MJWatch-$platform.apk",update.apkUrl)
+            assertEquals("https://github.com/MJSasha/mj-watch/releases/tag/test-42",update.releaseUrl)
+            assertEquals(listOf(latest,immutable,cdn),requests)
+        }
+    }
+    @Test fun latestDescriptorStillBindsRepositoryTagAndPlatform()=runBlocking {
+        val malicious=listOf(
+            JSONObject(manifest()).put("releaseUrl","https://github.com/attacker/mj-watch/releases/tag/test-42"),
+            JSONObject(manifest()).put("releaseUrl","https://github.com/MJSasha/mj-watch/releases/tag/other-42"),
+            JSONObject(manifest()).apply {getJSONObject("packages").getJSONObject("mobile").put("url","https://github.com/MJSasha/mj-watch/releases/download/test-43/MJWatch-mobile.apk")},
+            JSONObject(manifest()).apply {getJSONObject("packages").getJSONObject("mobile").put("packageName","dev.mjwatch.tv")},
+            JSONObject(manifest()).apply {getJSONObject("packages").getJSONObject("mobile").put("sha256","not-a-sha256")}
+        )
+        for(descriptor in malicious) {
+            var requests=0
+            val source=GitHubUpdates(client {request->
+                requests++
+                assertEquals("https://github.com/MJSasha/mj-watch/releases/latest/download/update.json",request.url.toString())
+                response(request,descriptor.toString())
+            })
+            assertTrue(runCatching {source.latest("dev.mjwatch.mobile")}.isFailure)
+            assertEquals(1,requests)
+        }
     }
     @Test fun redirectDowngradeAndOtherHostsAreRejectedBeforeRequest()=runBlocking {
-        for(location in listOf("http://github.com/unsafe","https://evil.invalid/unsafe","https://user:secret@github.com/unsafe")) {
+        for(location in listOf("http://github.com/unsafe","https://evil.invalid/unsafe","https://user:secret@github.com/unsafe","https://api.github.com/repos/MJSasha/mj-watch/releases")) {
             var requests=0
-            val source=GitHubUpdates(client {request->requests++;if(request.url.host=="api.github.com") response(request,"""[{"tag_name":"test-42"}]""") else response(request,"",302,location)})
-            assertTrue(runCatching {source.latest("dev.mjwatch.mobile")}.isFailure);assertEquals(2,requests)
+            val source=GitHubUpdates(client {request->requests++;response(request,"",302,location)})
+            assertTrue(runCatching {source.latest("dev.mjwatch.mobile")}.isFailure);assertEquals(1,requests)
         }
     }
     @Test fun streamedDownloadChecksHashAndSize()=runBlocking {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.10
+
+- Check the Latest release descriptor directly instead of using the unauthenticated GitHub REST API, so shared IP rate limits do not block app updates.
+- Keep repository/tag/package, HTTPS redirect, hash and APK signature checks; report HTTP errors and check timeouts clearly.
+
 ## 0.8.9
 
 - Keep phone navigation and search input usable in short landscape windows, with the keyboard open and at 200% font scale.

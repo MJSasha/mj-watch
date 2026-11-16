@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -48,7 +47,7 @@ fun verifyUpdateBytes(file:File,update:AppUpdate) {
 class GitHubUpdates(client:OkHttpClient=OkHttpClient()) {
     private val http=client.newBuilder().followRedirects(false).followSslRedirects(false).connectTimeout(10,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).callTimeout(0,TimeUnit.SECONDS).build()
     private fun safeUrl(raw:String):HttpUrl=raw.toHttpUrl().also {
-        require(it.scheme=="https"&&it.port==443&&it.username.isEmpty()&&it.password.isEmpty()&&it.fragment==null&&it.host in setOf("api.github.com","github.com","release-assets.githubusercontent.com","objects.githubusercontent.com")) {"Небезопасный адрес обновления"}
+        require(it.scheme=="https"&&it.port==443&&it.username.isEmpty()&&it.password.isEmpty()&&it.fragment==null&&it.host in setOf("github.com","release-assets.githubusercontent.com","objects.githubusercontent.com")) {"Небезопасный адрес обновления"}
     }
     private suspend fun fetch(raw:String,limit:Long,file:File?=null,progress:(Long)->Unit={}):ByteArray {
         var url=safeUrl(raw)
@@ -85,11 +84,9 @@ class GitHubUpdates(client:OkHttpClient=OkHttpClient()) {
         error("Слишком много перенаправлений")
     }
     suspend fun latest(packageName:String):AppUpdate?=withTimeout(60_000) {
-        val releases=JSONArray(String(fetch("https://api.github.com/repos/$REPOSITORY/releases?per_page=10",1024*1024)))
-        val candidates=(0 until releases.length()).map {releases.getJSONObject(it)}.filter {!it.optBoolean("draft")&&it.optString("tag_name").matches(Regex("test-[1-9][0-9]*"))}
-        val release=candidates.maxByOrNull {it.getString("tag_name").removePrefix("test-").toLong()} ?: return@withTimeout null
-        val tag=release.getString("tag_name")
-        parseUpdate(String(fetch("https://github.com/$REPOSITORY/releases/download/$tag/update.json",65536)),packageName,tag)
+        val raw=String(fetch("https://github.com/$REPOSITORY/releases/latest/download/update.json",65536))
+        val tag=JSONObject(raw).getString("releaseUrl").substringAfterLast('/')
+        parseUpdate(raw,packageName,tag)
     }
     suspend fun download(update:AppUpdate,file:File,progress:(Long)->Unit) = withTimeout(300_000) {
         fetch(update.apkUrl,update.size,file,progress)
@@ -136,7 +133,9 @@ class UpdateManager(private val context:Context,private val scope:CoroutineScope
             val found=source.latest(context.packageName)?.takeIf {it.versionCode>versionCode}
             prefs.edit().putString("manifest",found?.manifest).apply()
             mutable.update {it.copy(checking=false,available=found,ready=if(it.available==found) it.ready else null,message=if(found==null) "Обновлений нет" else "Проверка завершена")}
-        } catch(e:CancellationException) {mutable.update {it.copy(checking=false)};throw e} catch(_:Exception) {mutable.update {it.copy(checking=false,message="Не удалось проверить GitHub. Повторите позже")}}}
+        } catch(_:TimeoutCancellationException) {mutable.update {it.copy(checking=false,message="Проверка обновления заняла слишком много времени. Проверьте интернет и повторите")}}
+        catch(e:CancellationException) {mutable.update {it.copy(checking=false)};throw e}
+        catch(e:Exception) {mutable.update {it.copy(checking=false,message=if(e is HttpFailure) "Не удалось проверить обновление: HTTP ${e.status}. Откройте GitHub Releases или повторите позже" else "Не удалось проверить обновление. Проверьте интернет или откройте GitHub Releases")}}}
     }
     fun cancel() {job?.cancel();mutable.update {it.copy(message="Загрузка отменена")}}
     fun download() {
