@@ -21,3 +21,21 @@
 ![Плеер телефона](issue-13/phone-series-controls.png)
 
 ![Плеер TV](issue-13/tv-series-controls.png)
+
+## Проверка опубликованного релиза
+
+16 ноября 2026 опубликован [MJWatch 0.8.5 / test-37](https://github.com/MJSasha/mj-watch/releases/tag/test-37), versionCode 1037, обычный Latest (не prerelease). Исходники: `d22eb090dbecb73b4492dfa2e6fe99c245bacf5a`. Все четыре задачи [CI #37](https://github.com/MJSasha/mj-watch/actions/runs/43911532519) завершились успешно: build, phone API35, TV API36, publish-release.
+
+Скачанные APK проверены через apksigner и aapt: правильные packageName/версия, release без debuggable, SHA-256 и размеры совпадают с update.json и SHA256SUMS.txt. Сертификат совместим с прежними выпусками: `c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad`.
+
+Серверная поставка 0.1.3: проверена подпись manifest.json через OpenSSL, размер и SHA-256 каждого payload; содержимое ZIP совпадает с server assets обоих APK.
+
+После установки именно скачанных release APK на временные AVD API36 `SeriesPlaybackUiTest` прошёл на телефоне и TV: `OK (1 test)` на каждом. Проверены переключение серий, границы, пересоздание Activity, media key и удержание экрана во время просмотра с освобождением на паузе.
+
+Контрольные суммы опубликованных файлов:
+
+```text
+eab0a8467910318661b194c40123cc8be4fade03d455bc5d923e76cb9894cfed  MJWatch-mobile.apk
+95187d1e353c5551d16d7fa1b475c8cc176f83c96532ddfeda28e0de32ec7786  MJWatch-tv.apk
+8b5b768761f17d0a8e7fc9cf35aedfbabb75c3b30d4bdbb4602cbd8521c5bf7b  mjwatch-0.1.3-supply.zip
+```
