@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml"><img src="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml/badge.svg" alt="Android checks"></a>
-  <a href="https://github.com/MJSasha/mj-watch/releases"><img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?include_prereleases&amp;label=APK&amp;color=c7ff68" alt="Latest testing APK"></a>
+  <a href="https://github.com/MJSasha/mj-watch/releases"><img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?label=APK&amp;color=c7ff68" alt="Latest APK"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-c7ff68?logo=android&amp;logoColor=c7ff68" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/Kotlin-Compose-8bd9ff?logo=kotlin" alt="Kotlin and Jetpack Compose">
 </p>
@@ -51,13 +51,13 @@
 
 ## Установка и обновления
 
-1. Откройте [Releases](https://github.com/MJSasha/mj-watch/releases), включая предварительные тестовые выпуски.
+1. Откройте [Releases](https://github.com/MJSasha/mj-watch/releases), выберите выпуск с отметкой **Latest**.
 2. Выберите **MJWatch-mobile.apk** для телефона/планшета или **MJWatch-tv.apk** для телевизора.
 3. Установите APK. Обновляйте **поверх установленного приложения**, чтобы сохранить подключения, историю и прогресс.
 
 **Настройки → Обновления** — отдельная страница с установленной версией, состоянием проверки и действиями загрузки/установки. Автопроверка выполняется при открытии приложения не чаще раза в 15 минут; её можно отключить. Она не запускает загрузку сама. Установка требует подтверждения Android.
 
-Перед установкой проверяются SHA-256, размер, имя пакета, возрастающая версия и совместимость подписи. Текущий канал тестовый; production signing не заявляется. [Процесс выпуска](docs/UPDATES.md).
+Перед установкой проверяются SHA-256, размер, имя пакета, возрастающая версия и совместимость подписи. Выпуски публикуются как **Latest** после проверок; используется прежняя подпись для обновления поверх установленных APK. [Процесс выпуска](docs/UPDATES.md).
 
 ## Подключения
 
@@ -85,7 +85,7 @@ JDK **21**, Android SDK **36**, Build Tools **36.0.0**, Gradle wrapper **8.13**.
 ./gradlew :app-mobile:assembleRelease :app-tv:assembleRelease
 ```
 
-Debug APK находятся в `app-mobile/build/outputs/apk/debug/` и `app-tv/build/outputs/apk/debug/`. Локальные release APK unsigned. Подписанные тестовые APK публикуются из `main` после зелёных unit/lint/build и Android runtime checks. Разные пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime.
+Debug APK находятся в `app-mobile/build/outputs/apk/debug/` и `app-tv/build/outputs/apk/debug/`. Локальные release APK unsigned. Подписанные APK с отметкой **Latest** публикуются из `main` после зелёных unit/lint/build и Android runtime checks. Разные пакеты `dev.mjwatch.mobile` / `dev.mjwatch.tv` устанавливаются одновременно и не заменяют MJAnime.
 
 ## Документация
 

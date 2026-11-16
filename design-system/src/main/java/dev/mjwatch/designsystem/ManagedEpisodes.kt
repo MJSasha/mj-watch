@@ -24,7 +24,7 @@ import org.json.JSONObject
   if(rows!=null)for(index in 0 until rows.length()) {
    val row=rows.getJSONObject(index)
    if(season==null){val number=row.getInt("season_number");Action(row.optString("name","Сезон $number")+" · ${row.optInt("episode_count")} эпизодов",tv,secondary=true){load(number)}}
-   else {val episode=row.getInt("episode_number");Action("${episode}. ${row.optString("name")}",tv,secondary=true){model.search("${item.title} S%02dE%02d".format(season,episode))}}
+   else {val episode=row.getInt("episode_number");Action("${episode}. ${row.optString("name")}",tv,secondary=true){model.findEpisodeReleases(item,season!!,episode)}}
   }
   if(data!=null)Text("Поиск раздач для выбранного эпизода. Файл для просмотра выбирается отдельно.",color=MaterialTheme.colorScheme.onSurfaceVariant)
  }

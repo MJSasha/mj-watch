@@ -2,7 +2,7 @@ package dev.mjwatch.core
 
 data class Release(val id: String, val title: String, val source: String, val hash: String? = null,
     val magnet: String? = null, val download: String? = null, val size: Long? = null, val seeds: Int? = null) {
-    val resolution: String get() = Regex("(?i)(2160p|1080p|720p|4K)").find(title)?.value ?: "Не указано"
+    val resolution: String get() = releaseResolution(title)
 }
 data class TorrentFile(val serverFileId: Int, val path: String, val size: Long) {
     val video get() = path.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
@@ -15,7 +15,7 @@ sealed interface TorrentInput {
 data class TorrentHandle(val hash: String, val files: List<TorrentFile>,val contentHash:String?=null)
 data class StreamRequest(val uri: String, val headers: Map<String, String> = emptyMap())
 data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
-data class Config(val schemaVersion: Int = 1, val jackett: String = "", val indexers: String = "",
+data class Config(val schemaVersion: Int = 1, val jackett: String = "https://jac.red", val indexers: String = "",
     val torrServer: String = "", val localHttp: Boolean = false, val demo: Boolean = false,
     val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap(), val releaseApi:String="auto", val connectionMode:String="direct", val managedUrl:String="", val serverId:String="", val userId:String="")
 interface ReleaseRepository {
@@ -28,7 +28,7 @@ interface StreamGateway {
     suspend fun status(hash: String): TorrentHandle
     fun stream(handle: TorrentHandle, file: TorrentFile): StreamRequest
 }
-interface MetadataAdapter { suspend fun search(query: String): List<Metadata>; suspend fun home():List<Metadata> = emptyList() }
+interface MetadataAdapter { suspend fun search(query: String): List<Metadata>; suspend fun home():List<Metadata> = emptyList(); suspend fun details(id:String):Metadata?=null }
 data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null)
 object NoMetadata : MetadataAdapter { override suspend fun search(query: String) = emptyList<Metadata>() }
 object DemoReleases : ReleaseRepository {

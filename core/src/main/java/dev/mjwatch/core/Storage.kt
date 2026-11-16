@@ -24,6 +24,7 @@ data class Progress(@PrimaryKey val key: String, val releaseId: String, val file
 @Entity(tableName="metadataCache")
 data class CachedMetadata(@PrimaryKey val id:String,val json:String,val updatedAt:Long)
 @Dao interface WatchDao {
+    @Query("SELECT * FROM metadataCache") fun metadataEntries():Flow<List<CachedMetadata>>
     @Query("SELECT * FROM metadataCache WHERE id=:id") suspend fun metadata(id:String):CachedMetadata?
     @Upsert suspend fun put(entry:CachedMetadata)
     @Transaction suspend fun cacheMetadata(query:String,items:List<Metadata>,now:Long,namespace:String="") {
@@ -106,7 +107,7 @@ fun decodeConfig(raw: String): Config {
         require(Regex("[A-Za-z0-9_-]+").matches(id));validateTorznabPath(path);paths[id]=path
     }}
     // Read the early local flat schema too; all new exports follow the handoff's nested schema.
-    return Config(schemaVersion=1,jackett=jackett?.optString("baseUrl") ?: j.optString("jackett"),
+    return Config(schemaVersion=1,jackett=(jackett?.optString("baseUrl") ?: j.optString("jackett")).ifBlank {Config().jackett},
         indexers=if(jackett!=null) paths.keys.joinToString(",") else j.optString("indexers"),
         torrServer=server?.optString("baseUrl") ?: j.optString("torrServer"),
         localHttp=j.optJSONObject("network")?.optBoolean("localHttpOptIn") ?: j.optBoolean("localHttp"),

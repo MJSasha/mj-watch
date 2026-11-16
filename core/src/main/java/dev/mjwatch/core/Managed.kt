@@ -107,6 +107,12 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
  }}}
  override suspend fun search(query:String)=parse(api.authorized("metadata/search?query="+java.net.URLEncoder.encode(query,"UTF-8")))
  override suspend fun home()=parse(api.authorized("metadata/home"))
+ override suspend fun details(id:String):Metadata? {
+  require(id.matches(Regex("tmdb:(movie|tv):[0-9]+")))
+  val (_,kind,number)=id.split(':')
+  val item=api.authorized("metadata/$kind/$number").put("media_type",kind)
+  return parse(JSONObject().put("results",JSONArray().put(item))).singleOrNull()
+ }
 }
 class SyncEngine(private val api:ManagedApi,private val dao:SyncDao) {
  companion object {val mutex=Mutex();private val lastPush=mutableMapOf<String,Long>()}

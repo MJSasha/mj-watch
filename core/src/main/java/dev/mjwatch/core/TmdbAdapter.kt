@@ -13,6 +13,13 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
     }
     override suspend fun search(query:String)=request("search/multi",query)
     override suspend fun home()=request("trending/all/week")
+    override suspend fun details(id:String):Metadata? {
+        require(id.matches(Regex("tmdb:(movie|tv):[0-9]+")))
+        val (_,kind,number)=id.split(':')
+        val url=endpoint("https://api.themoviedb.org").child("3/$kind/$number").newBuilder().addQueryParameter("language","ru-RU").build()
+        val item=JSONObject(String(client.bytes(Request.Builder().url(url).header("Authorization","Bearer $token").build()))).put("media_type",kind)
+        return parse(JSONObject().put("results",org.json.JSONArray().put(item)).toString()).singleOrNull()
+    }
     companion object {
         fun parse(raw:String):List<Metadata> {
             val results=JSONObject(raw).getJSONArray("results");require(results.length()<=500)
@@ -36,6 +43,11 @@ fun metadataFromJson(raw:String):Metadata {val j=JSONObject(raw)
 }
 data class MetadataResult(val items:List<Metadata>,val cached:Boolean)
 class MetadataRepository(private val adapter:MetadataAdapter,private val dao:WatchDao,private val namespace:String="") {
+    suspend fun details(id:String):Metadata? {
+        val key=if(namespace.isBlank())id else "$namespace:$id"
+        dao.metadata(key)?.let {return metadataFromJson(it.json)}
+        return adapter.details(id)?.also {dao.put(CachedMetadata(key,it.json(),System.currentTimeMillis()))}
+    }
     suspend fun search(query:String)=load("${if(namespace.isBlank()) "" else "$namespace:"}search:$query") {adapter.search(query)}
     suspend fun home(force:Boolean=false)=load("${if(namespace.isBlank()) "" else "$namespace:"}home",force) {adapter.home()}
     private suspend fun load(query:String,force:Boolean=false,request:suspend ()->List<Metadata>):MetadataResult {

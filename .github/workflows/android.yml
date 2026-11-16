@@ -99,7 +99,7 @@ jobs:
         with:
           name: runtime-${{ matrix.app }}
           path: app-*/build/reports/androidTests/
-  publish-testing:
+  publish-release:
     needs: [build, runtime]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -121,11 +121,11 @@ jobs:
         env:
           MJWATCH_RELEASE_SIGNING_KEY: ${{ secrets.MJWATCH_RELEASE_SIGNING_KEY }}
       - uses: gradle/actions/setup-gradle@v4
-      - name: Sign and publish immutable testing release
+      - name: Sign and publish stable Latest release
         env:
           GH_TOKEN: ${{ github.token }}
           MJWATCH_TEST_KEYSTORE_B64: ${{ secrets.MJWATCH_TEST_KEYSTORE_B64 }}
-        run: scripts/publish_testing.sh
+        run: scripts/publish_release.sh
       - uses: actions/upload-artifact@v4
         if: success()
         with:

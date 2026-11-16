@@ -10,21 +10,35 @@ import kotlinx.coroutines.flow.*
 import okhttp3.Credentials
 
 data class WatchState(val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
-    val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
-    val removed:LibraryEntry?=null,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
+    val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
+    val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     val updates=UpdateManager(app,viewModelScope)
     private val settings=Settings(app)
     val secrets=SecretStore(app)
     private val db=Room.databaseBuilder(app,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
     val dao=db.dao()
-    data class LibrarySnapshot(val context:String="",val entries:List<LibraryEntry> = emptyList(),val positions:List<Progress> = emptyList())
+    data class LibrarySnapshot(val context:String="",val entries:List<LibraryEntry> = emptyList(),val positions:List<Progress> = emptyList(),val metadata:Map<String,Metadata> = emptyMap()) {
+        val titles get()=libraryTitles(entries,metadata)
+    }
+    private fun snapshot(c:Config,entries:List<LibraryEntry>,positions:List<Progress>,cache:List<CachedMetadata>):LibrarySnapshot {
+        val byId=cache.associateBy {it.id}
+        val metadata=entries.mapNotNull {it.metadataId}.distinct().mapNotNull {id->
+            (byId["${if(c.managed)c.scope else "direct"}:$id"] ?: if(!c.managed)byId[id] else null)
+                ?.let {runCatching {id to metadataFromJson(it.json)}.getOrNull()}
+        }.toMap()
+        return LibrarySnapshot(c.profileKey,entries,positions,metadata)
+    }
     @OptIn(ExperimentalCoroutinesApi::class)
-    val scopedLibrary:StateFlow<LibrarySnapshot> =settings.config.flatMapLatest {c->if(c.historyEnabled) db.syncDao().entities(c.scope).map {rows->
-        val favorites=rows.filter {it.kind=="favorite"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}.filter {it.bookmarked}.associateBy {it.id}
-        val openings=rows.filter {it.kind=="opening"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}
-        LibrarySnapshot(c.profileKey,(openings.map {it.copy(bookmarked=favorites[it.id]?.bookmarked==true)}+favorites.values.filter {f->openings.none {it.id==f.id}}).sortedByDescending {it.openedAt},rows.filter {it.kind=="progress"}.mapNotNull {runCatching {it.progress()}.getOrNull()})
-    } else if(c.managed) flowOf(LibrarySnapshot(c.profileKey)) else dao.library().map {rows->LibrarySnapshot(c.profileKey,rows.filter {it.bookmarked}.map {it.copy(openedAt=0)})}}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),LibrarySnapshot())
+    val scopedLibrary:StateFlow<LibrarySnapshot> =settings.config.flatMapLatest {c->
+        if(c.historyEnabled) combine(db.syncDao().entities(c.scope),dao.metadataEntries()) {rows,cache->
+            val favorites=rows.filter {it.kind=="favorite"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}.filter {it.bookmarked}.associateBy {it.id}
+            val openings=rows.filter {it.kind=="opening"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}
+            snapshot(c,(openings.map {it.copy(bookmarked=favorites[it.id]?.bookmarked==true)}+favorites.values.filter {f->openings.none {it.id==f.id}}).sortedByDescending {it.openedAt},
+                rows.filter {it.kind=="progress"}.mapNotNull {runCatching {it.progress()}.getOrNull()},cache)
+        } else if(c.managed) flowOf(LibrarySnapshot(c.profileKey))
+        else combine(dao.library(),dao.metadataEntries()) {rows,cache->snapshot(c,rows.filter {it.bookmarked}.map {it.copy(openedAt=0)},emptyList(),cache)}
+    }.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),LibrarySnapshot())
     val library:StateFlow<List<LibraryEntry>> =scopedLibrary.map {it.entries}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val progress:StateFlow<List<Progress>> =scopedLibrary.map {it.positions}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     private val mutable=MutableStateFlow(WatchState())
@@ -41,10 +55,18 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         var first=true;var provider:String?=null
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
             val changed=state.value.config.profileKey!=c.profileKey
-            if(changed){cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="")}}
+            if(changed){discardDraft();cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="")}}
             update {it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first) if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
             if(provider!="${c.profileKey}:${c.metadataProvider}") {provider="${c.profileKey}:${c.metadataProvider}";refreshCatalog()}
             first=false
+        }
+    }}
+    init {viewModelScope.launch {
+        combine(settings.config,scopedLibrary) {c,snapshot->Triple(c,snapshot.context,snapshot.entries.mapNotNull {it.metadataId}.distinct())}.distinctUntilChanged().collectLatest {(c,context,ids)->
+            if(context==c.profileKey&&c.metadataProvider=="tmdb"&&!c.demo) for(id in ids) {
+                try {withContext(Dispatchers.IO) {metadataRepository(c).details(id)}}
+                catch(e:CancellationException){throw e}catch(_:Exception) { /* Cached title remains available offline. */ }
+            }
         }
     }}
     fun preferencesChanged(){val c=state.value.config;val prefs=getApplication<Application>().getSharedPreferences("playback-preferences",0);managed.storePreferences(c);if(c.historyEnabled)viewModelScope.launch(Dispatchers.IO){managed.record(c,"preferences","profile",org.json.JSONObject().put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null)))}}
@@ -65,7 +87,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         val client=if(c.managed&&runCatching{endpoint(c.jackett).origin()==endpoint(c.managedUrl).origin()}.getOrDefault(false)) managedClient(c,secrets) else guardedClient(c); val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client)
         return (r to if(c.managed) ManagedGateway(ManagedApi(c,secrets),r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
-    private fun metadataRepository():MetadataRepository {val c=state.value.config;return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
+    private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
     fun refreshCatalog(force:Boolean=false) {
         catalogJob?.cancel()
         if(state.value.config.metadataProvider!="tmdb") {update {it.copy(catalog=emptyList(),catalogBusy=false,catalogMessage="")};return}
@@ -76,7 +98,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
     }
     fun search(query:String) {
-        cancel(); pageIndex=0; val token=generation; update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==query.trim()},metadata=emptyList(),results=emptyList(),more=false,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
+        cancel(); pageIndex=0; val token=generation; update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==query.trim()},metadata=emptyList(),results=emptyList(),more=false,releaseSeason=null,releaseEpisode=null,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
         if(query.trim().length<2) { update { it.copy(results=emptyList()) }; return }
         work=viewModelScope.launch {
             delay(400)
@@ -105,12 +127,16 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
         }
     }
-    fun metadata(item:Metadata,focusKey:String=item.id) {
-        cancel();update {it.copy(selectedMetadata=item,selected=null,resumePath=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
+    fun metadata(item:Metadata,focusKey:String=item.id,cache:Boolean=true) {
+        cancel();update {it.copy(selectedMetadata=item,selected=null,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
         val c=state.value.config
-        viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled){dao.put(CachedMetadata("${c.scope}:${item.id}",item.json(),System.currentTimeMillis()));managed.record(c,"opening",item.id,LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id).syncJson())}}
+        viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled){if(cache)dao.put(CachedMetadata("${c.scope}:${item.id}",item.json(),System.currentTimeMillis()));managed.record(c,"opening",item.id,LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id).syncJson())}}
     }
     fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title);update {it.copy(page="releases")}}
+    fun findEpisodeReleases(item:Metadata,season:Int,episode:Int) {
+        search(item.title)
+        update {it.copy(selectedMetadata=item,page="releases",releaseSeason=season,releaseEpisode=episode)}
+    }
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
         cancel(); update { it.copy(selectedMetadata=metadata,selected=release,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
@@ -121,10 +147,13 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }}
     }
     fun restore(entry:LibraryEntry) {cancel();val c=state.value.config;val token=generation;viewModelScope.launch(Dispatchers.IO) {
-        val metadata=entry.metadataId?.let {id->(dao.metadata("${if(c.managed)c.scope else "direct"}:$id") ?: if(!c.managed)dao.metadata(id) else null)?.let {metadataFromJson(it.json)}}
+        val metadata=entry.metadataId?.let {id->
+            (dao.metadata("${if(c.managed)c.scope else "direct"}:$id") ?: if(!c.managed)dao.metadata(id) else null)?.let {metadataFromJson(it.json)}
+                ?: Metadata(id,entry.title,null,null,kind=if(id.startsWith("tmdb:tv:"))"tv" else "movie")
+        }
         val raw=secrets.get("release:${c.scope}:${entry.id}").ifBlank {if(!c.managed)secrets.get("release:${entry.id}") else ""}
         withContext(Dispatchers.Main){if(state.value.config.profileKey!=c.profileKey||generation!=token)return@withContext
-            if(entry.id.startsWith("tmdb:")&&metadata!=null)this@WatchModel.metadata(metadata)
+            if(metadata!=null)this@WatchModel.metadata(metadata,cache=false)
             else if(raw.isNotBlank())open(releaseFromJson(raw),metadata=metadata.takeIf {c.metadataProvider!="none"})
             else {search(entry.title);update {it.copy(message="Сохранённая ссылка недоступна. Найдите раздачу заново.")}}
         }
@@ -154,9 +183,30 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled) {val old=scopedLibrary.value.takeIf{it.context==c.profileKey}?.entries?.firstOrNull {it.id==entry.id};managed.record(c,"favorite",entry.id,entry.copy(bookmarked=old?.bookmarked!=true).syncJson())} else {m?.let {dao.put(CachedMetadata("direct:${it.id}",it.json(),System.currentTimeMillis()))};r?.let {secrets.put("release::${it.id}",it.json())};dao.toggleBookmark(entry)}}
     }
-    fun remove(entry:LibraryEntry,bookmarkOnly:Boolean=false) { val c=state.value.config;viewModelScope.launch(Dispatchers.IO) { if(c.historyEnabled) {managed.record(c,if(bookmarkOnly) "favorite" else "opening",entry.id,entry.syncJson(),"delete")} else if(bookmarkOnly) dao.put((dao.entry(entry.id) ?: entry).copy(bookmarked=false)) else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id); if(state.value.config.profileKey==c.profileKey)update {it.copy(removed=entry)} } }
-    fun undo(entry:LibraryEntry) {val c=state.value.config;update {it.copy(removed=null)};viewModelScope.launch(Dispatchers.IO) {if(state.value.config.profileKey!=c.profileKey)return@launch;if(c.historyEnabled) managed.record(c,"opening",entry.id,entry.syncJson(),"restore") else dao.put(entry)}}
+    fun remove(entries:List<LibraryEntry>,bookmarkOnly:Boolean=false) {
+        val c=state.value.config;val removed=entries.filter {!bookmarkOnly||it.bookmarked}
+        viewModelScope.launch(Dispatchers.IO) {
+            for(entry in removed) {
+                if(c.historyEnabled) managed.record(c,if(bookmarkOnly) "favorite" else "opening",entry.id,entry.syncJson(),"delete")
+                else if(bookmarkOnly) dao.put((dao.entry(entry.id) ?: entry).copy(bookmarked=false))
+                else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id)
+            }
+            if(state.value.config.profileKey==c.profileKey)update {it.copy(removed=removed,removedBookmarks=bookmarkOnly)}
+        }
+    }
+    fun undo(entries:List<LibraryEntry>,bookmarks:Boolean) {
+        val c=state.value.config;update {it.copy(removed=null)}
+        viewModelScope.launch(Dispatchers.IO) {
+            if(state.value.config.profileKey!=c.profileKey)return@launch
+            for(entry in entries) if(c.historyEnabled) managed.record(c,if(bookmarks) "favorite" else "opening",entry.id,entry.syncJson(),"restore") else dao.put(entry)
+        }
+    }
     fun clearUndo() {update {it.copy(removed=null)}}
+    fun playRelease(release:Release,season:Int?) {
+        if(state.value.selected?.id!=release.id)open(release)
+        update {it.copy(releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
+        prepare()
+    }
     fun prepare() {
         if(state.value.busy) return
         cancel(); val token=generation; val release=state.value.selected ?: return
@@ -195,15 +245,29 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
     fun invalidateChecks() {checkRevision++;checkJobs.values.forEach {it.cancel()}; update { it.copy(checkJackett="Не проверено",checkTorr="Не проверено") } }
     fun validate(c:Config) {if(c.managed) {require(endpoint(c.managedUrl).scheme=="https");return}; if(!c.demo) { if(c.jackett.isNotBlank()) endpoint(c.jackett); if(c.torrServer.isNotBlank()) endpoint(c.torrServer); require(c.torrServer.isNotBlank()) { "Укажите TorrServer" } } }
-    fun save(input:Config,key:String,user:String,password:String,metadataToken:String="") {
-        val c=if(input.managed)input else input.copy(torrServer=runCatching{normalizeDirectAddress(input.torrServer)}.getOrDefault(input.torrServer))
+    fun save(input:Config,key:String,user:String,password:String,metadataToken:String="",section:String?=null) {
+        val current=state.value.config
+        val merged=when(section) {
+            "search"->current.withSearchSettings(input)
+            "server"->current.copy(torrServer=input.torrServer,localHttp=input.localHttp)
+            "catalog"->current.copy(metadataProvider=input.metadataProvider)
+            else->input
+        }
+        val c=if(merged.managed)merged else merged.copy(torrServer=runCatching{normalizeDirectAddress(merged.torrServer)}.getOrDefault(merged.torrServer))
         if(state.value.busy) return
         if(dev.mjwatch.playback.PlaybackActivity.hasActivePlayback()) {update {it.copy(message="Остановите воспроизведение перед сменой подключения")};return}
         val target=if(c.managed&&!c.historyEnabled) "managed-login" else if(state.value.page.startsWith("settings-")) "settings" else "home"
         update {it.copy(busy=true,message="")}
         viewModelScope.launch { try {
-            android.util.Log.i("MJWatch", "Saving configuration (demo=${c.demo})"); validate(c)
-            withContext(Dispatchers.IO) { secrets.put("tmdb",metadataToken); secrets.put("jackett:${c.jackett}",key); secrets.put("torrAuth:${c.torrServer}",if(user.isBlank()) "" else Credentials.basic(user,password)); secrets.put("torrUser:${c.torrServer}",user); secrets.put("torrPassword:${c.torrServer}",password) }
+            android.util.Log.i("MJWatch", "Saving configuration (demo=${c.demo})"); if(section!="search")validate(c);encodeConfig(c)
+            withContext(Dispatchers.IO) {
+                if(section==null||section=="catalog")secrets.put("tmdb",metadataToken)
+                if(section==null||section=="search")secrets.put("jackett:${c.jackett}",key)
+                if(section==null||section=="server") {
+                    secrets.put("torrAuth:${c.torrServer}",if(user.isBlank()) "" else Credentials.basic(user,password))
+                    secrets.put("torrUser:${c.torrServer}",user);secrets.put("torrPassword:${c.torrServer}",password)
+                }
+            }
             android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination(target);settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page=target,busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
         } catch(e:Exception) { update { it.copy(busy=false,message=safeError(e)) } } }
     }
