@@ -23,6 +23,14 @@
 
 CI релизного commit отдельно выполняет полный phone API35 и TV API36 suite и публикацию с сохранёнными сертификатами. Локальный debug APK не является доказательством проверки подписанного release APK.
 
+## Опубликованный релиз
+
+[0.8.3 / test-35](https://github.com/MJSasha/mj-watch/releases/tag/test-35), versionCode 1035, исходники `0cc2dfbb5b88648cf1d058a91948e51c4626fa3b`. [CI №35](https://github.com/MJSasha/mj-watch/actions/runs/43898948733): build, phone API35, TV API36 и publish-release — success. Релиз обычный Latest, без prerelease.
+
+Фактически скачанные MJWatch-mobile.apk и MJWatch-tv.apk проверены по package ID, версии, размеру, SHA256, отсутствию debuggable и прежнему сертификату из scripts/test-signing-cert.sha256. update.json и все три строки SHA256SUMS.txt совпадают с файлами. Подпись серверного manifest и хеши всех payload проверены OpenSSL/Python; ZIP-поставка идентична server assets внутри обоих APK.
+
+На скачанных подписанных APK выполнены ещё 10 phone-сценариев (Controls, Settings, CatalogSections, Invitation, Session, VerticalFlow) и 3 TV-сценария (RemoteNavigation, VerticalFlow) — успешно на API36. APK установлены поверх локальных пакетов с тем же сертификатом; для тестов использованы только чистые данные временных AVD. Локальные проверенные копии сохранены в игнорируемом dist/test-35/.
+
 ## До и после
 
 Снимки получены на одном временном телефонном AVD, 430×932 dp, в одинаковых состояниях. До: исходный commit 4396c84 (0.8.2), после: 0.8.3. До/после не сравнивают разные приложения или демонстрационные HTML-компоненты.
