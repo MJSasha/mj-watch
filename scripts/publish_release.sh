@@ -21,7 +21,7 @@ p.write_bytes(base64.b64decode(os.environ['MJWATCH_TEST_KEYSTORE_B64'], validate
 p.chmod(0o600)
 PY
 unset MJWATCH_TEST_KEYSTORE_B64
-./gradlew :app-mobile:assembleRelease :app-tv:assembleRelease "-PmjwatchVersionCode=$VERSION_CODE" "-PmjwatchVersionName=$VERSION_NAME"
+./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app-mobile:assembleRelease :app-tv:assembleRelease --no-daemon "-PmjwatchVersionCode=$VERSION_CODE" "-PmjwatchVersionName=$VERSION_NAME"
 mkdir -p dist
 APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
 for platform in mobile tv; do

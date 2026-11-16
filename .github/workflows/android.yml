@@ -28,7 +28,10 @@ jobs:
       - run: sh server/prepare-ci.sh --local-test
       - run: sh server/check.sh
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :core:testDebugUnitTest :playback:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug :app-mobile:assembleRelease :app-tv:assembleRelease --stacktrace
+      - name: Check and build debug APKs
+        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :core:testDebugUnitTest :playback:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug --no-daemon --stacktrace
+      - name: Build release APKs in a fresh JVM
+        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app-mobile:assembleRelease :app-tv:assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
         with:
