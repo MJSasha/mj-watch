@@ -34,6 +34,9 @@ class PlaybackActivity : ComponentActivity() {
         fun hasActivePlayback()=active?.get()?.let {!it.released&&!it.isFinishing}==true
         fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
     }
+    private var episodes=emptyList<PlaybackEpisode>()
+    private var episodeIndex by androidx.compose.runtime.mutableIntStateOf(-1)
+    private var episodeLoad:Job?=null
     private var controlsVisible by androidx.compose.runtime.mutableStateOf(true)
     private lateinit var overlay:androidx.compose.ui.platform.ComposeView
     private var released=false
@@ -65,12 +68,14 @@ class PlaybackActivity : ComponentActivity() {
         if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         contentIdentity=intent.getStringExtra("contentKey") ?: ""
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
+        episodes=PlaybackEpisode.decode(intent.getStringExtra("episodes"))
+        episodeIndex=episodes.indexOfFirst {it.path==path&&it.fileId==fileId}
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status,onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status,onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)})
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -101,6 +106,9 @@ class PlaybackActivity : ComponentActivity() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT,preferences.getBoolean("subtitles-off",false)).build()
             view.player=player; session=MediaSession.Builder(this@PlaybackActivity,player).build()
             player.addListener(object: Player.Listener {
+                override fun onEvents(player:Player,events:Player.Events) {
+                    view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
+                }
                 override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; status=null }
                 override fun onPlaybackStateChanged(state: Int) {
                     if(state==Player.STATE_BUFFERING) { status=if(firstFrame)PlaybackStatus("Буферизация","Видео продолжится автоматически",loading=true) else PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true); startedAt=System.currentTimeMillis() }
@@ -126,6 +134,24 @@ class PlaybackActivity : ComponentActivity() {
                     else if(elapsed>30_000) status=PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени. Можно подождать или выбрать другую раздачу.",loading=true)
                 }
             }
+        }
+    }
+    private fun switchEpisode(index:Int) {
+        val episode=episodes.getOrNull(index) ?: return
+        val config=playbackConfig ?: return
+        if(!::player.isInitialized||released||index==episodeIndex)return
+        if(!episode.uri.startsWith("asset:")&&runCatching {episode.uri.toHttpUrl().origin()==endpoint(if(config.managed)config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true)return
+        save()
+        episodeLoad?.cancel();handler.removeCallbacksAndMessages(null)
+        firstFrame=false;firstFrameSeen=false;terminalError=false;retries=0
+        player.stop()
+        episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
+        intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)
+        controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
+        episodeLoad=scope.launch {
+            val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress()} else null
+            player.setMediaItem(MediaItem.fromUri(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
+            startedAt=System.currentTimeMillis();player.prepare();player.play()
         }
     }
     private fun retryPlayback() {
@@ -179,6 +205,10 @@ class PlaybackActivity : ComponentActivity() {
     // AndroidX exposes the platform Activity override through a restricted bridge.
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event:KeyEvent):Boolean {
+        if(::player.isInitialized&&!released&&event.keyCode in listOf(KeyEvent.KEYCODE_MEDIA_NEXT,KeyEvent.KEYCODE_MEDIA_PREVIOUS)) {
+            if(event.action==KeyEvent.ACTION_DOWN&&event.repeatCount==0)switchEpisode(episodeIndex+if(event.keyCode==KeyEvent.KEYCODE_MEDIA_NEXT)1 else -1)
+            return true
+        }
         if(::player.isInitialized&&event.action==KeyEvent.ACTION_DOWN&&(!controlsVisible||event.keyCode==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)) when(event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> { player.seekBack(); controlsVisible=true; return true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { player.seekForward(); controlsVisible=true; return true }

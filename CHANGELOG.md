@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.5
+
+- Add previous/next episode controls to the phone and TV players, including media remote keys. Use all playable files from the selected release in season/episode order, exclude samples, preserve server file IDs and save each episode separately.
+- Keep the screen awake during playback and buffering; release the wake request on pause, completion and exit.
+- Fix season filters that interpreted episode ranges as additional seasons (issue #13).
+
 ## 0.8.4
 
 - Match TV action buttons to the supplied MJ Family state reference: 52 dp primary / 48 dp secondary, stable rounded shape, unchanged focus fill with an external ring, darker press and tinted disabled state.

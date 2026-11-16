@@ -17,10 +17,15 @@ fun seasonNumbers(title:String):Set<Int> {
     val numbers="[0-9]{1,2}(?:\\s*(?:[-–,;+]\\s*S?\\s*)[0-9]{1,2})*"
     val patterns=listOf(
         Regex("(?iu)(?<![a-z0-9])S($numbers)(?=E[0-9]|[^a-z0-9]|$)"),
-        Regex("(?iu)(?:сезон(?:ы|ов)?|seasons?)\\s*[: №]*($numbers)(?![0-9])"),
-        Regex("(?iu)(?<![0-9])($numbers)\\s*сезон"),
         Regex("(?iu)(?<![0-9])([0-9]{1,2})x[0-9]{1,3}(?![0-9])"))
-    return patterns.flatMap {pattern->pattern.findAll(title).flatMap {numberList(it.groupValues[1],99)}}.toSet()
+    val before=Regex("(?iu)(?<![\\p{L}\\p{N}])S?($numbers)\\s*$")
+    val after=Regex("(?iu)^\\s*[: №]*S?($numbers)(?![0-9])")
+    val labelled=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:сезон(?:ы|ов|а)?|seasons?)(?!\\p{L})").findAll(title).flatMap {marker->
+        // In "1-3 сезоны: 1-24 серии", the numbers after the label describe episodes.
+        val match=before.find(title.substring(0,marker.range.first)) ?: after.find(title.substring(marker.range.last+1))
+        match?.let {numberList(it.groupValues[1],99)} ?: emptySet()
+    }
+    return (patterns.flatMap {pattern->pattern.findAll(title).flatMap {numberList(it.groupValues[1],99)}}+labelled).toSet()
 }
 
 data class EpisodeNumber(val season:Int?,val episode:Int?)

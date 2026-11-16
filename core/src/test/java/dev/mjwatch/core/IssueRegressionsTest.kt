@@ -6,6 +6,15 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk=[35],manifest=org.robolectric.annotation.Config.NONE)
 class IssueRegressionsTest {
+    @Test fun seasonFilterDoesNotTreatEpisodeCountsAsMoreSeasons() {
+        for(title in listOf("Сериал (1-3 сезоны: 1-24 серии из 24) 1080p", "Show [1–3 сезон: 1–10 серии]", "Show S01-S03 seasons: 1-24 episodes")) {
+            assertEquals(title,setOf(1,2,3),seasonNumbers(title))
+            assertFalse(title,ReleaseFilter(season=24).matches(Release("fixture",title,"fixture")))
+        }
+        assertEquals(setOf(2),seasonNumbers("Сериал (2 сезон: 1-16 серии из 16)"))
+        assertEquals(setOf(1,2,3),seasonNumbers("Сезоны: 1-3, серии: 1-24"))
+        assertEquals(setOf(1),seasonNumbers("Show 2026 Season 1: episodes 1-24"))
+    }
     @Test fun releaseFiltersRecognizePacksVoicesAndQualityAliases() {
         val pack=Release("a","Сериал S01-S03 4K LostFilm, NewStudio MVO","fixture")
         assertEquals("2160p",pack.resolution)
