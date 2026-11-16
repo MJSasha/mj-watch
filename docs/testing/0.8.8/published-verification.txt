@@ -1,0 +1,3 @@
+mobile: SHA256/size, compatible signature, package/version, non-debuggable and new player classes verified
+tv: SHA256/size, compatible signature, package/version, non-debuggable and new player classes verified
+Published TV APK SHA256: 20394bfbcf658fcf4273e61363b17f7b61ade8c9080e2969b36c4a0195dd2a7f

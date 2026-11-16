@@ -1,0 +1,3 @@
+47eb09f48da90c668c7660e49a7e9a7c17aa93515b2334dd04855c96e9fdfda2  MJWatch-mobile.apk
+20394bfbcf658fcf4273e61363b17f7b61ade8c9080e2969b36c4a0195dd2a7f  MJWatch-tv.apk
+8b5b768761f17d0a8e7fc9cf35aedfbabb75c3b30d4bdbb4602cbd8521c5bf7b  mjwatch-0.1.3-supply.zip

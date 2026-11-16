@@ -23,4 +23,17 @@
 
 CI теперь включает `:playback:testDebugUnitTest` и одиннадцать `:playback:connectedDebugAndroidTest` в TV job. Подпись, технические теги `test-N`, формат `channel=testing`, монотонные versionCode и механизм Latest сохранены. Публикация возможна только после успешных build, phone и TV runtime jobs.
 
-Результаты CI и проверка подписанных опубликованных APK дополняются после завершения workflow.
+## Опубликованный релиз
+
+[0.8.8 — Latest, test-46](https://github.com/MJSasha/mj-watch/releases/tag/test-46), versionCode **1046**, source `6dea54062b6f3c451db1a39167319f59915e28e7`.
+
+[CI #46](https://github.com/MJSasha/mj-watch/actions/runs/43935105397) полностью зелёный: build, phone runtime, TV runtime и publish-release. Phone suite: 53 passed / 24 skipped; TV suite: 30 passed / 12 skipped; fake Player: 11 passed. Пропуски — сценарии, которым требуется отдельное окружение; они не считаются пройденными.
+
+Оба APK скачаны из опубликованного релиза. Проверены размер, SHA-256 по update.json и SHA256SUMS, package/version, совместимая подпись по `scripts/test-signing-cert.sha256`, отсутствие debuggable и наличие классов нового ТВ-плеера внутри dex. [Результат проверки](published-verification.txt), [update.json](published-update.json), [контрольные суммы](published-SHA256SUMS.txt).
+
+Затем **именно скачанные release APK** установлены поверх локальных debug-сборок в собственные эмуляторы:
+
+- [Подписанный TV APK](signed-tv.txt): 9/9 тестов — новый пульт/Back/панели/параметры, сохранение паузы/позиции/скорости, серии и продолжение без локальной ссылки; один из девяти тестов — фокус экранов подключения.
+- [Подписанный phone APK](signed-phone.txt): 5/5 тестов — серии, буферизация/повтор и продолжение сериалов.
+
+Сервер остаётся 0.1.3: для нового плеера обновление сервера не требуется. Пользовательские устройства не подключались.

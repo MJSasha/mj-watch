@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "channel": "testing",
+  "versionCode": 1046,
+  "versionName": "0.8.8",
+  "publishedAt": "2026-11-16T19:16:51.410770+00:00",
+  "releaseUrl": "https://github.com/MJSasha/mj-watch/releases/tag/test-46",
+  "packages": {
+    "mobile": {
+      "packageName": "dev.mjwatch.mobile",
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-46/MJWatch-mobile.apk",
+      "sha256": "47eb09f48da90c668c7660e49a7e9a7c17aa93515b2334dd04855c96e9fdfda2",
+      "size": 80241634
+    },
+    "tv": {
+      "packageName": "dev.mjwatch.tv",
+      "url": "https://github.com/MJSasha/mj-watch/releases/download/test-46/MJWatch-tv.apk",
+      "sha256": "20394bfbcf658fcf4273e61363b17f7b61ade8c9080e2969b36c4a0195dd2a7f",
+      "size": 80167738
+    }
+  }
+}
