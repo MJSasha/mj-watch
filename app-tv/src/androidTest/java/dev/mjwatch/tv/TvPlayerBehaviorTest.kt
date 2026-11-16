@@ -29,7 +29,26 @@ class TvPlayerBehaviorTest {
     @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
     private fun activity():PlaybackActivity?=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().firstOrNull()
     private fun field(a:PlaybackActivity,name:String):Any?=PlaybackActivity::class.java.getDeclaredField(name).apply {isAccessible=true}.get(a)
-    private fun key(code:Int) {instrumentation.sendKeyDownUpSync(code);compose.waitForIdle()}
+    private fun key(code:Int) {
+        // Compose focus returns before Android finishes transferring input from a closing dialog.
+        compose.waitUntil(5000) {
+            var focused=false
+            instrumentation.runOnMainSync {activity()?.let {a ->
+                val dialog=field(a,"panel") as? android.app.AlertDialog
+                focused=(dialog?.window ?: a.window).decorView.hasWindowFocus()
+            }}
+            focused
+        }
+        instrumentation.sendKeyDownUpSync(code);compose.waitForIdle()
+    }
+    private fun awaitReady(a:PlaybackActivity) {
+        compose.waitUntil(10000) {
+            var ready=false
+            instrumentation.runOnMainSync {ready=(field(a,"player") as Player).playbackState==Player.STATE_READY}
+            ready&&compose.onAllNodesWithTag("playback-status").fetchSemanticsNodes().isEmpty()
+        }
+        compose.waitForIdle()
+    }
     private fun launch(series:Boolean=false):PlaybackActivity {
         val c=instrumentation.targetContext
         val queue=(1..if(series)2 else 1).map {PlaybackEpisode("asset:///demo.mp4","$it.mp4",it)}
@@ -37,6 +56,7 @@ class TvPlayerBehaviorTest {
         var a:PlaybackActivity?=null
         compose.waitUntil(20000) {instrumentation.runOnMainSync {a=activity()?.takeIf {it.firstFrameSeen}};a!=null}
         instrumentation.runOnMainSync {(field(a!!,"player") as Player).apply {pause();seekTo(2000)}}
+        awaitReady(a!!)
         compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isNotEmpty()}
         return a!!
     }
@@ -64,13 +84,15 @@ class TvPlayerBehaviorTest {
         instrumentation.runOnMainSync {Assert.assertSame(a,activity());Assert.assertEquals(2000L,player.currentPosition)}
         key(KeyEvent.KEYCODE_DPAD_LEFT);key(KeyEvent.KEYCODE_DPAD_CENTER)
         instrumentation.runOnMainSync {Assert.assertEquals(0L,player.currentPosition)}
+        awaitReady(a)
         key(KeyEvent.KEYCODE_DPAD_DOWN)
         compose.onNodeWithTag("player-tracks").performSemanticsAction(SemanticsActions.RequestFocus)
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         instrumentation.runOnMainSync {Assert.assertNotNull(field(a,"panel"))}
         key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {runCatching {compose.onNodeWithTag("player-tracks").assertIsFocused();true}.getOrDefault(false)}
-        key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_DPAD_UP)
+        key(KeyEvent.KEYCODE_DPAD_UP);compose.onNodeWithTag("player-timeline").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_UP)
         compose.onNodeWithTag("player-play").assertDoesNotExist()
         key(KeyEvent.KEYCODE_DPAD_LEFT)
         compose.onNodeWithTag("player-play").assertDoesNotExist()

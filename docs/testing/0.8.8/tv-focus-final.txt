@@ -43,7 +43,7 @@ INSTRUMENTATION_STATUS: test=remotePreviewModalFocusHiddenControlsAndSingleBackE
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 9.358
+Time: 10.195
 
 OK (3 tests)
 
