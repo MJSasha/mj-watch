@@ -153,16 +153,16 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
 }
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,onClick:()->Unit) {
+@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,onClick:()->Unit) {
+    if(tv) {TvActionButton(text,modifier,enabled,secondary,icon,loading,onClick=onClick);return}
     val colors=MaterialTheme.colorScheme
     val shape=MaterialTheme.shapes.medium
     val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        val contentColor=if(tv) androidx.tv.material3.LocalContentColor.current else LocalContentColor.current
+        val contentColor=LocalContentColor.current
         if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=contentColor)
-        Text(text,fontSize=if(tv) 18.sp else 16.sp,lineHeight=24.sp,fontWeight=FontWeight.Medium,color=contentColor,textAlign=androidx.compose.ui.text.style.TextAlign.Center,modifier=Modifier.weight(1f,fill=false))
+        Text(text,fontSize=16.sp,lineHeight=24.sp,fontWeight=FontWeight.Medium,color=contentColor,textAlign=androidx.compose.ui.text.style.TextAlign.Center,modifier=Modifier.weight(1f,fill=false))
     }}
-    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.onPrimaryContainer else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary),inset=(-4).dp,shape=shape)),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
-    else Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
+    Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
 }
 @Composable private fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical=36.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -611,7 +611,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(section=="catalog") item {Text("Метаданные и обложки из TMDB. Поиск раздач работает и без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
         if(section==null) item {SettingsToggle("Демонстрация с локальным видео",c.demo,{changed(c.copy(demo=it))})}
         if(setup&&setupStep==1&&!c.demo) item {Action("Далее · TorrServer",false,Modifier.fillMaxWidth(),enabled=!urlError(c.jackett),icon=Icons.Outlined.ArrowForward) {setupStep=2}}
-        if(section==null&&(!setup||setupStep==2||c.demo)) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
+        if(section==null&&(!setup||setupStep==2||c.demo)) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy) {applySettings()}}
         if(s.message.isNotBlank()) item {Text(s.message,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(section==null) item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
         if(advanced) {
@@ -623,7 +623,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if((section==null||section=="catalog")&&c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
             if(section==null) item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
         }
-        if(section!=null) item {Action(if(s.busy) "Сохранение…" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check) {applySettings()}}
+        if(section!=null) item {Action(if(s.busy) "Сохранение…" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy) {applySettings()}}
         if(section==null) item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {importer.launch(arrayOf("application/json"))}}
         if(section==null) item {TextButton(onClick={if(!urlError(c.jackett)&&(c.torrServer.isBlank()||runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isSuccess)) export.launch("mjwatch-config.json") else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
         if(importError.isNotBlank()) item {Text(importError,color=MaterialTheme.colorScheme.error)}
@@ -781,6 +781,6 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)
-    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary)))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
+    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
     else Surface(onClick=onClick,modifier=modifier.tvFocusRing(true,shape).semantics {this.selected=selected;role=Role.Tab},shape=shape,color=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Icon(icon,label,Modifier.size(24.dp))}}
 }

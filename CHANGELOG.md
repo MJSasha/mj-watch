@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.4
+
+- Match TV action buttons to the supplied MJ Family state reference: 52 dp primary / 48 dp secondary, stable rounded shape, unchanged focus fill with an external ring, darker press and tinted disabled state.
+- Add an explicit TV loading state with a native spinner and disabled activation; connect it to update checking/download and settings saves.
+
 ## 0.8.3
 
 - Add a restrained, theme-aware surface gradient to the automatic-update row, compact update notice and stream-preparation status; keep ordinary controls and surfaces flat.

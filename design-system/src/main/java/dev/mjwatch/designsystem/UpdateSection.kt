@@ -32,8 +32,8 @@ import kotlinx.coroutines.*
     val scope=rememberCoroutineScope()
     var installing by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf("")}
-    @Composable fun UpdateButton(text:String,enabled:Boolean=true,action:()->Unit) {
-        Action(text,tv,Modifier.fillMaxWidth(),enabled=enabled,secondary=text in setOf("GitHub Releases","Загрузить заново","Отменить загрузку"),onClick=action)
+    @Composable fun UpdateButton(text:String,enabled:Boolean=true,loading:Boolean=false,action:()->Unit) {
+        Action(text,tv,Modifier.fillMaxWidth(),enabled=enabled,secondary=text in setOf("GitHub Releases","Загрузить заново","Отменить загрузку"),loading=loading,onClick=action)
     }
     if(!compact||state.available!=null) Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         SettingsGroup(tv,featured=compact) {Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -46,12 +46,13 @@ import kotlinx.coroutines.*
         if(!compact) {
             SettingsGroup(tv,featured=true) {SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},description="При открытии приложения",icon=Icons.Outlined.Update)}
             Text("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.",fontSize=13.sp,lineHeight=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading) {manager.check()}
+            UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading,loading=state.checking) {manager.check()}
             SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}
         }
         state.available?.let {update->
             if(!compact) Text("Доступна ${update.versionName} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             if(state.downloading) {
+                if(tv) UpdateButton("Скачиваем…",enabled=false,loading=true) {}
                 LinearProgressIndicator(progress={ (state.downloaded.toFloat()/update.size).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth())
                 Text("Загружено ${state.downloaded/1024/1024} из ${update.size/1024/1024} МБ")
                 UpdateButton("Отменить загрузку") {manager.cancel()}
