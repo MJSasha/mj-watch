@@ -67,3 +67,11 @@ screenshots and APKs stay out of Git. No release version or signing identity is
 changed. Voice labels are inferred from known studio/type names in release titles;
 unknown voice labels are not guessed. Actual audio tracks remain selectable in
 Media3 after playback starts.
+
+## Resolution
+
+Issues #1–#5 are implemented in
+[47241a2](https://github.com/MJSasha/mj-watch/commit/47241a249e91bcd97a0c0efedfadd2b28743bcd3)
+on `main`. The local checks above passed. Release validation and publication are
+tracked separately by
+[Android build #25](https://github.com/MJSasha/mj-watch/actions/runs/43823948139).
