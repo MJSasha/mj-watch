@@ -42,9 +42,11 @@ import java.util.UUID
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
  val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
- LaunchedEffect(page,s.config.scope){if(load!=null&&s.config.historyEnabled)controller.load(load)}
+ LaunchedEffect(page,s.config.scope){if(load!=null&&s.config.historyEnabled) {
+  do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
+ }}
  val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-  if(managed.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+  if(managed.busy&&page!="server-overview") LinearProgressIndicator(Modifier.fillMaxWidth())
   when(page) {
    "connection-choice"->{
     Text("Как подключиться",fontSize=28.sp,fontWeight=FontWeight.Bold)
@@ -120,7 +122,7 @@ import java.util.UUID
    }
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
-    ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy)
+    ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy,managed.message.isNotBlank(),managed.statusCheckedAt,tv){controller.load("admin/status")}
     if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{

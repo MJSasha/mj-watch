@@ -5,7 +5,7 @@
 - Show the saved season and episode in history and continue-watching cards (issue #14).
 - Use the shared external focus ring around TV poster cards, with stable focus and pressed bounds (issue #15).
 - Open TV library actions after OK is released, preserve the dialog and focus its explicit delete action (issue #16).
-- Replace the server overview text block with themed connection, role, health and active-stream cards (issue #17).
+- Replace the server overview text block with one compact live status strip: connection, role, health, active streams, server version, last check and refresh every 15 seconds (issue #17).
 - Replace the large catalog loading banner with a compact spinner and keep search feedback visible until all search work finishes (issue #18).
 
 ## 0.8.5

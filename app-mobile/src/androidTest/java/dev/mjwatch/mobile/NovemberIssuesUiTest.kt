@@ -1,6 +1,14 @@
 @file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
 
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dev.mjwatch.designsystem.ServerStatusOverview
+import dev.mjwatch.designsystem.WatchTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
@@ -92,6 +100,28 @@ class NovemberIssuesUiTest {
             compose.onNodeWithText("Потоки").assertIsDisplayed()
             capture("server-status-$theme")
         }
+    }
+
+    @Test fun compactTelemetryShowsHealthStreamsAndRefresh() {
+        var theme by mutableStateOf("dark")
+        var refreshes=0
+        val data=org.json.JSONObject().put("databaseHealthy",true).put("torrserverHealthy",true).put("activeStreams",2).put("version","0.1.3")
+        compose.runOnUiThread {compose.activity.setContent {
+            WatchTheme(theme) {Surface(Modifier.fillMaxSize()) {Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Text("Мой сервер",style=MaterialTheme.typography.headlineLarge)
+                ServerStatusOverview("https://watch.example:8443","admin",data,false,false,1,false){refreshes++}
+            }}}
+        }}
+        for(value in listOf("dark","light")) {
+            compose.runOnIdle {theme=value}
+            compose.onNodeWithText("Сервер доступен").assertIsDisplayed()
+            compose.onNodeWithText("Работает").assertIsDisplayed()
+            compose.onNodeWithText("В норме").assertIsDisplayed()
+            compose.onNodeWithText("2").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Обновить статус").performClick()
+            capture("server-telemetry-$value")
+        }
+        compose.runOnIdle {Assert.assertEquals(2,refreshes)}
     }
 
 }

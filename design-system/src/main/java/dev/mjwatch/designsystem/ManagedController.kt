@@ -6,7 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
-data class ManagedState(val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0)
+data class ManagedState(val statusCheckedAt:Long=0,val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0)
 class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val config:()->Config) {
  private val mutable=MutableStateFlow(ManagedState());val state=mutable.asStateFlow()
  val users=UsersController(scope,secrets,config)
@@ -35,7 +35,7 @@ class ManagedController(private val context:android.content.Context,private val 
   // Snapshot establishes epochs before any local writes; old local history is imported only explicitly.
   val savedApi=ManagedApi(saved,secrets,caOverride);savedApi.saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(savedApi,db.syncDao()).connect();if(caOverride!=null)secrets.put("ca:${api.base.origin()}",caOverride);settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
  }
- fun load(path:String)=run {val api=api();val me=api.authorized("me");val data=api.authorized(path);if(config().scope!=api.config.scope)throw CancellationException("Account changed");mutable.update {it.copy(me=me,data=data)}}
+ fun load(path:String)=run {val api=api();val me=api.authorized("me");val data=api.authorized(path);if(config().scope!=api.config.scope)throw CancellationException("Account changed");mutable.update {it.copy(me=me,data=data,statusCheckedAt=if(path=="admin/status")System.currentTimeMillis() else it.statusCheckedAt)}}
  fun action(path:String,method:String,body:JSONObject=JSONObject(),revision:String?=null,reload:String?=null)=run {val api=api();val data=api.authorized(path,method,body,revision);if(config().scope!=api.config.scope)throw CancellationException("Account changed");if(path=="history"&&method=="DELETE"){db.syncDao().clearHistoryOutbox(config().scope);SyncEngine(api,db.syncDao()).connect()};mutable.update {it.copy(data=data,message="Операция подтверждена сервером")};if(reload!=null){val fresh=api.authorized(reload);mutable.update {it.copy(data=fresh)}}}
  fun logout(clearCache:Boolean)=run {
   check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед выходом"}
