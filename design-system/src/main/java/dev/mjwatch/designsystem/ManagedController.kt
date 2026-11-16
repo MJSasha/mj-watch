@@ -6,7 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
-data class ManagedState(val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0)
+data class ManagedState(val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0)
 class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val config:()->Config) {
  private val mutable=MutableStateFlow(ManagedState());val state=mutable.asStateFlow()
  val users=UsersController(scope,secrets,config)
@@ -46,8 +46,66 @@ class ManagedController(private val context:android.content.Context,private val 
  fun syncNow()=run {sync(config())}
  fun resolve(p:OutboxEntry,useLocal:Boolean)=run {SyncEngine(api(),db.syncDao()).resolve(p,useLocal);sync(config())}
  fun importLegacy()=run {val c=config();require(c.historyEnabled);val engine=SyncEngine(api(c),db.syncDao());db.dao().library().first().filter {it.openedAt>0}.forEach {engine.enqueue("opening",it.id,it.syncJson())};db.dao().library().first().filter {it.bookmarked}.forEach {engine.enqueue("favorite",it.id,it.syncJson())};db.dao().progress().first().forEach {engine.enqueue("progress",it.key,it.syncJson())};engine.sync();mutable.update {it.copy(message="Импорт завершён")}}
- fun startPairing(url:String)=run {val c=config().copy(connectionMode="managed",managedUrl=url.trim(),demo=false,serverId="",userId="");val result=api(c).request("pairing","POST",JSONObject().put("device",android.os.Build.MODEL));mutable.update {it.copy(pairing=result)}
-  scope.launch {val expires=System.currentTimeMillis()+result.getInt("expiresIn")*1000L;while(isActive&&System.currentTimeMillis()<expires&&state.value.pairing!=null) {delay(3000);try {val response=api(c).request("pairing/${result.getString("id")}",headers=mapOf("X-Pairing-Secret" to result.getString("pollSecret")));if(response.has("accessToken")){connected(c,response);mutable.update {it.copy(pairing=null)};break}}catch(e:Exception){mutable.update {it.copy(message=safeError(e))};break}};mutable.update {it.copy(pairing=null)}}
+ private var pairingJob:Job?=null
+ private var pairingGeneration=0
+ fun importTvSetup(uri:android.net.Uri) {
+  if(state.value.busy)return
+  cancelPairing()
+  val generation=pairingGeneration
+  mutable.update {it.copy(busy=true,message="",pairingSetup=null)}
+  pairingJob=scope.launch(Dispatchers.IO) {try {
+  val raw=context.contentResolver.openInputStream(uri)?.use {input->
+   val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(4096)
+   while(true){val n=input.read(buffer);if(n<0)break;require(out.size()+n<=65536){"Файл слишком большой"};out.write(buffer,0,n)}
+   out.toString("UTF-8")
+  } ?: error("Не удалось открыть файл настроек")
+  val setup=try{decodeManagedTvSetup(raw)}catch(e:Exception){throw java.io.IOException("Файл настроек TV не распознан. Сохраните его заново на телефоне.")}
+  ensureActive()
+  mutable.update {it.copy(pairingSetup=setup)}
+  }catch(e:CancellationException){throw e}
+  catch(e:Exception){if(generation==pairingGeneration)mutable.update {it.copy(message=safeError(e))}}
+  finally {if(generation==pairingGeneration)mutable.update {it.copy(busy=false)}}}
  }
- fun cancelPairing(){mutable.update {it.copy(pairing=null)}}
+ fun dismissTvSetup(){mutable.update {it.copy(pairingSetup=null)}}
+ fun confirmTvSetup() {
+  val setup=state.value.pairingSetup ?: return
+  secrets.put("ca:${endpoint(setup.url).origin()}",setup.ca)
+  dismissTvSetup();startPairing(setup.url)
+ }
+ fun exportTvSetup(uri:android.net.Uri)=run {
+  val c=config();require(c.managed)
+  val raw=encodeManagedTvSetup(c.managedUrl,secrets.get("ca:${endpoint(c.managedUrl).origin()}"))
+  context.contentResolver.openOutputStream(uri)?.use {it.write(raw.toByteArray(Charsets.UTF_8))} ?: error("Не удалось сохранить файл")
+  mutable.update {it.copy(message="Настройки TV сохранены. Перенесите файл на телевизор и выберите «Импортировать настройки».")}
+ }
+ fun startPairing(url:String) {
+  if(state.value.busy)return
+  cancelPairing()
+  val generation=pairingGeneration
+  mutable.update {it.copy(busy=true,message="",pairing=null)}
+  pairingJob=scope.launch(Dispatchers.IO) {
+   try {
+    check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед сменой подключения"}
+    val c=config().copy(connectionMode="managed",managedUrl=url.trim(),demo=false,serverId="",userId="")
+    val api=api(c)
+    val result=api.request("pairing","POST",JSONObject().put("device",android.os.Build.MODEL))
+    mutable.update {it.copy(pairing=result,busy=false)}
+    val expires=android.os.SystemClock.elapsedRealtime()+result.getInt("expiresIn")*1000L
+    while(isActive&&android.os.SystemClock.elapsedRealtime()<expires) {
+     delay(minOf(3000L,(expires-android.os.SystemClock.elapsedRealtime()).coerceAtLeast(1)))
+     if(android.os.SystemClock.elapsedRealtime()>=expires)break
+     val response=api.request("pairing/${result.getString("id")}",headers=mapOf("X-Pairing-Secret" to result.getString("pollSecret")))
+     if(response.has("accessToken")) {
+      mutable.update {it.copy(busy=true)}
+      connected(c,response)
+      return@launch
+     }
+    }
+    mutable.update {it.copy(message="Код истёк. Получите новый код и введите его на телефоне.")}
+   }catch(e:CancellationException){throw e}
+   catch(e:Exception){if(generation==pairingGeneration)mutable.update {it.copy(message=if(e.message?.contains("TLS")==true) "Не удалось проверить сертификат сервера. На телефоне сохраните настройки TV и импортируйте их здесь, затем сверьте отпечаток." else safeError(e))}}
+   finally {if(generation==pairingGeneration)mutable.update {it.copy(pairing=null,busy=false)}}
+  }
+ }
+ fun cancelPairing(){pairingGeneration++;pairingJob?.cancel();pairingJob=null;mutable.update {it.copy(pairing=null,busy=false)}}
 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2
+
+- Dedicated TV pairing screen: import public connection settings from a phone,
+  explicitly compare the CA fingerprint, then display the code without a username
+  or password on TV. Phone exports only the HTTPS address and public CA.
+- Visible connection errors, retry/cancel, expiration feedback, and cancellation
+  of pairing polling on Back; old polling jobs cannot clear a new code. TLS and
+  hostname verification remain enforced.
+- Update the session regression test to the current player status wording, which
+  blocked the 0.6.1 release despite the intended server-origin rejection.
+
+Validation: docs/testing/TV-PAIRING.md.
+
 ## 0.6.1
 
 - #6: compact loading/buffering status in the player, meaningful connection retry

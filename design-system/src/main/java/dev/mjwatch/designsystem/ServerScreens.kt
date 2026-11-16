@@ -58,7 +58,10 @@ import java.util.UUID
     Action("Удалить прежнюю локальную историю",tv,secondary=true){confirm="Будут удалены прежние открытия и позиции. Избранное сохранится." to {controller.direct(true);model.page("settings-server")}}
    }
    "managed-login"->{
+    var manualLogin by rememberSaveable {mutableStateOf(false)}
+    if(tv&&!manualLogin) {TvPairingScreen(s,model){manualLogin=true}} else {
     var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
+    DisposableEffect(Unit){onDispose{controller.cancelPairing()}}
     val loginContext=LocalContext.current
     var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
     fun fillInvitation(raw:String):Boolean {
@@ -71,6 +74,7 @@ import java.util.UUID
      } catch(e:Exception){importError="Приглашение не распознано. Скопируйте его целиком у владельца сервера.";false}
     }
     Text("Войти на сервер MJWatch",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    OperationMessage(managed.message,error=true)
     Text("Получили приглашение? Скопируйте его у владельца и нажмите кнопку ниже.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     Action("Вставить приглашение",tv,secondary=true,enabled=!managed.busy){
      val clipboard=loginContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -108,6 +112,7 @@ import java.util.UUID
      val origin=runCatching {endpoint(url).origin()}.getOrNull()
      if(origin!=null&&model.secrets.get("ca:$origin").isNotBlank())Text("CA сохранён для $origin. Адрес и порт должны совпадать с приглашением.",color=MaterialTheme.colorScheme.primary)
 
+    }
     }
    }
    "server-overview"->{
@@ -153,7 +158,7 @@ import java.util.UUID
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false,settings=true,onDirty={dirty=it})}
   }
-  if(managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+  if(page!="managed-login"&&managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
  }
  }
  BoxWithConstraints(Modifier.fillMaxSize()) {

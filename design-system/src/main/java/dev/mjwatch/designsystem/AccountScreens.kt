@@ -1,5 +1,7 @@
 package dev.mjwatch.designsystem
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -61,7 +63,15 @@ import org.json.JSONObject
             }
             "managed-tv"->{
                 var code by rememberSaveable {mutableStateOf("")}
-                Text("На телевизоре выберите вход по коду и введите показанные шесть цифр.")
+                val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->if(uri!=null)controller.exportTvSetup(uri)}
+                Text("Первое подключение: сохраните настройки и перенесите файл на TV. На телевизоре выберите «Импортировать настройки» и сверьте отпечаток.")
+                Action("Сохранить настройки TV",tv,secondary=true,enabled=!managed.busy){exporter.launch("mjwatch-tv.json")}
+                val ca=model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}")
+                if(ca.isNotBlank()) {
+                    Text("Отпечаток сертификата сервера",fontWeight=FontWeight.Medium)
+                    Text(managedCaFingerprint(ca),fontSize=16.sp)
+                }
+                Text("Когда телевизор покажет код, введите шесть цифр ниже.")
                 OutlinedTextField(code,{code=it},label={Text("Код телевизора")},singleLine=true,modifier=Modifier.fillMaxWidth())
                 Action("Проверить телевизор",tv,enabled=code.matches(Regex("[0-9]{6}"))&&!managed.busy){controller.action("pairing/lookup","POST",JSONObject().put("code",code))}
                 managed.data?.optJSONObject("pairing")?.takeIf {it.optString("code")==code}?.let {pair->

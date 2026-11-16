@@ -22,3 +22,14 @@ Entities are `opening`, `progress`, `favorite`, `preferences`; keys are scoped b
 Android Room schema 3 migrates 1→2→3 without resetting old records. Cache/outbox/cursor/token keys include serverId:userId. Legacy local history stays until an explicit keep/delete choice; managed import is separate and explicit. Direct openings/progress never write persistent history or queue sync. Favorites remain available separately. Config export schema 2 accepts schema 1 and excludes account IDs, tokens, SSH, CA and TMDB secrets.
 
 Control requests have finite deadlines; media has no total call timeout. A continuing stream checks session/device/user validity every five seconds and survives access-token rotation of its session. New streams need a valid access token. Client refreshes sessions before playback and periodically while active. Limits: two streams per user/four global; bounded concurrent playback preparation/uploads; paginated sync; bounded cache/body sizes. These are protective limits, not throughput benchmarks.
+
+## TV connection settings file
+
+Client-only JSON: `{"type":"mjwatch-tv","schema":1,"url":"https://host:port/","ca":"PEM or empty"}`.
+The file carries public connection settings, never account credentials or an
+invitation. The importer limits it to 64 KiB and validates HTTPS and CA format.
+It previews the origin and requires an explicit CA fingerprint comparison against
+the authenticated phone before storing trust for that exact origin. Empty CA uses
+Android system trust. Import does not approve a TV or create a session: the existing
+pairing code, phone device preview, explicit approval and separate polling secret
+remain required. General config export continues to exclude CA and account secrets.
