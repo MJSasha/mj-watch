@@ -30,7 +30,7 @@ class SessionTest {
     Settings(app).save(Config(torrServer="https://new.invalid"))
     app.startActivity(android.content.Intent(app,dev.mjwatch.playback.PlaybackActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri","https://old.invalid/video.mp4"))
     val device=androidx.test.uiautomator.UiDevice.getInstance(i)
-    Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.textContains("Адрес сервера изменён")),5000))
+    Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Подключение изменено")),5000))
     i.runOnMainSync {androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<dev.mjwatch.playback.PlaybackActivity>().forEach {Assert.assertFalse(it.firstFrameSeen);it.finish()}}
 
  }
