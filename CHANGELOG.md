@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.8
+
+- Keep the existing TV player design and add consistent remote navigation, immediate seeking with hidden controls, and timeline preview confirmed by OK or cancelled by Back.
+- Hide controls after six seconds, retain focus across updates and panels, and exit directly with Back outside modal, preview and episode-offer states. Ignore repeated OK activations and handle hardware media keys through MediaSession.
+- Add episode selection, video quality/speed/fit settings, validated opening/ending markers and a cancellable next-episode offer with a playback-based ten-second countdown. Auto-next defaults to on; automatic marker skipping defaults to off.
+- Preserve paused position and speed across player recreation and in-place track/video changes; save progress approximately every fifteen seconds and before exit or episode changes.
+- Run player unit and fake-engine remote regressions in CI alongside phone/TV runtime tests.
+
 ## 0.8.7
 
 - Resume synced series when the device has no local release URL: reconstruct the magnet from the validated torrent hash/path/size identity in saved progress, then resume the exact episode and position. Existing private links remain preferred.

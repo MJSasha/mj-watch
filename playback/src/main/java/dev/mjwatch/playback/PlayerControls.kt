@@ -25,8 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
-private val PlayerLime=Color(0xFFC7FF68)
-@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={}) {
+internal val PlayerLime=Color(0xFFC7FF68)
+@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0) {
+    if(!mobile) {
+        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction)
+        return
+    }
     val playFocus=remember {FocusRequester()};val timelineFocus=remember {FocusRequester()};val tracksFocus=remember {FocusRequester()}
     var position by remember {mutableLongStateOf(0)};var duration by remember {mutableLongStateOf(0)};var playing by remember {mutableStateOf(false)};var ready by remember {mutableStateOf(false)}
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -78,9 +82,9 @@ private val PlayerLime=Color(0xFFC7FF68)
 }
 }
 
-private fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
+internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
 
-@Composable private fun Modifier.playerFocus():Modifier {
+@Composable internal fun Modifier.playerFocus():Modifier {
     var focused by remember {mutableStateOf(false)}
     return this.onFocusChanged {focused=it.isFocused}.drawBehind {
         if(focused) {

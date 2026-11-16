@@ -69,10 +69,9 @@ class RemoteNavigationUiTest {
         timeline.assertIsFocused()
         val before=timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         timeline.performKeyInput {pressKey(Key.DirectionUp)}
-        compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
-        compose.onNodeWithContentDescription("Дорожки").performKeyInput {pressKey(Key.DirectionDown)}
-        timeline.assertIsFocused()
-        timeline.performKeyInput {pressKey(Key.DirectionDown)}
+        compose.onNodeWithTag("player-play").assertDoesNotExist()
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadDown()
+        compose.waitForIdle()
         compose.onNodeWithTag("player-play").assertIsFocused()
         val after=timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         Assert.assertEquals("Vertical navigation must not seek",before,after,250f)
@@ -80,8 +79,9 @@ class RemoteNavigationUiTest {
         timeline.performKeyInput {pressKey(Key.DirectionRight)}
         compose.waitUntil(5000){timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current>before+1000}
         shot("tv-timeline-focus")
-        timeline.performKeyInput {pressKey(Key.DirectionUp)}
-        compose.onNodeWithContentDescription("Дорожки").performKeyInput {pressKey(Key.DirectionCenter)}
+        timeline.performKeyInput {pressKey(Key.DirectionDown)}
+        compose.onNodeWithTag("player-tracks").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithTag("player-tracks").performKeyInput {pressKey(Key.DirectionCenter)}
         Assert.assertNotNull(UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.textContains("язык не указан")),3000))
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()

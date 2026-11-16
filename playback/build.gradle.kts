@@ -2,12 +2,19 @@ plugins { alias(libs.plugins.android.library); alias(libs.plugins.kotlin.android
 android {
  namespace = "dev.mjwatch.playback"
  compileSdk = 36
- defaultConfig { minSdk = 26; }
+ defaultConfig { minSdk = 26; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { compose = true }
 }
 kotlin { jvmToolchain(21); compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
+ testImplementation("junit:junit:4.13.2")
+ androidTestImplementation(platform(libs.compose.bom))
+ androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+ debugImplementation("androidx.compose.ui:ui-test-manifest")
+ androidTestImplementation("androidx.test:runner:1.7.0")
+ androidTestImplementation("androidx.test.ext:junit:1.3.0")
+
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
  implementation(platform(libs.compose.bom))
  implementation("androidx.compose.ui:ui")
