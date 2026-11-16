@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.designsystem.ServerStatusOverview
 import dev.mjwatch.designsystem.WatchTheme
@@ -109,7 +111,7 @@ class NovemberIssuesUiTest {
         compose.runOnUiThread {compose.activity.setContent {
             WatchTheme(theme) {Surface(Modifier.fillMaxSize()) {Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Text("Мой сервер",style=MaterialTheme.typography.headlineLarge)
-                ServerStatusOverview("https://watch.example:8443","admin",data,false,false,1,false){refreshes++}
+                Box(Modifier.testTag("server-telemetry")) {ServerStatusOverview("https://watch.example:8443","admin",data,false,false,System.currentTimeMillis(),false){refreshes++}}
             }}}
         }}
         for(value in listOf("dark","light")) {
@@ -120,6 +122,9 @@ class NovemberIssuesUiTest {
             compose.onNodeWithText("2").assertIsDisplayed()
             compose.onNodeWithContentDescription("Обновить статус").performClick()
             capture("server-telemetry-$value")
+            val bitmap=compose.onNodeWithTag("server-telemetry").captureToImage().asAndroidBitmap()
+            val file=File(compose.activity.getExternalFilesDir(null),"november-issues/server-strip-$value.png")
+            file.outputStream().use {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
         }
         compose.runOnIdle {Assert.assertEquals(2,refreshes)}
     }
