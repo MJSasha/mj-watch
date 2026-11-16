@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.1
+
+- #6: compact loading/buffering status in the player, meaningful connection retry
+  and error states, explicit retry/back actions; hide unknown-duration controls
+  while preparing video. Slow buffering no longer pauses playback after a minute.
+- #7: independent user/list/device/invitation state; compact user list, dedicated
+  create/detail/invite/device pages, scoped operation errors separate from sync,
+  last-admin protection, named destructive confirmations and invitation replacement.
+- Separate account/device/TV/logout tasks, disable empty legacy imports, add radio
+  selection to preferences and preserve two-pane user management on wide screens/TV.
+
+Validation: docs/testing/ISSUES-6-7.md.
+
 ## 0.6.0
 
 - #1: shared MJ launcher icon with the exact Reader monogram, Watch film-strip

@@ -39,6 +39,14 @@ import kotlinx.coroutines.delay
     if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.primary else colors.onSurfaceVariant,focusedContainerColor=colors.primary,focusedContentColor=colors.onPrimary),modifier=Modifier.heightIn(min=48.dp)) {Text(text,fontSize=14.sp,color=androidx.tv.material3.LocalContentColor.current)}
     else FilterChip(selected=selected,onClick=onClick,label={Text(text,fontSize=14.sp,color=if(selected) colors.primary else colors.onSurfaceVariant)},shape=RoundedCornerShape(12.dp),border=null,colors=FilterChipDefaults.filterChipColors(containerColor=colors.surface,labelColor=colors.onSurfaceVariant,selectedContainerColor=colors.primaryContainer,selectedLabelColor=colors.primary))
 }
+@Composable internal fun PreferenceChoice(text:String,selected:Boolean,tv:Boolean=false,onClick:()->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(tv).selectable(selected=selected,role=Role.RadioButton,onClick=onClick)
+        .semantics {stateDescription=if(selected)"Выбрано" else "Не выбрано"}.padding(horizontal=8.dp,vertical=8.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected=selected,onClick=null)
+        Text(text,modifier=Modifier.weight(1f),color=MaterialTheme.colorScheme.onSurface)
+    }
+}
 @Composable internal fun SectionTitle(text:String,action:String?=null,onClick:()->Unit={}) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
         Text(text,fontSize=21.sp,lineHeight=28.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})

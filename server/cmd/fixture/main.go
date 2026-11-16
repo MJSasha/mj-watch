@@ -27,6 +27,16 @@ func main() {
 	if len(os.Args) != 3 {
 		log.Fatal("fixture requires directory and demo.mp4")
 	}
+	port := os.Getenv("MJWATCH_FIXTURE_PORT")
+	if port == "" {
+		port = "18443"
+	}
+	controlPort := os.Getenv("MJWATCH_FIXTURE_CONTROL_PORT")
+	if controlPort == "" {
+		controlPort = "18444"
+	}
+	listen := "127.0.0.1:" + port
+	controlListen := "127.0.0.1:" + controlPort
 	dir, video := os.Args[1], os.Args[2]
 	os.MkdirAll(dir, 0700)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -93,14 +103,14 @@ func main() {
 				return
 			}
 			out["ca"] = string(ca)
-			out["url"] = "https://127.0.0.1:18443"
+			out["url"] = "https://" + listen
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(out)
 		})
-		if e := http.ListenAndServe("127.0.0.1:18444", control); e != nil {
+		if e := http.ListenAndServe(controlListen, control); e != nil {
 			log.Fatal(e)
 		}
 	}()
-	fmt.Println("Isolated fixture listening on 127.0.0.1:18443 (TLS) and :18444 (test bootstrap)")
-	log.Fatal(http.ListenAndServeTLS("127.0.0.1:18443", config.Certificate, config.PrivateKey, mux))
+	fmt.Printf("Isolated fixture listening on %s (TLS) and %s (test bootstrap)\n", listen, controlListen)
+	log.Fatal(http.ListenAndServeTLS(listen, config.Certificate, config.PrivateKey, mux))
 }

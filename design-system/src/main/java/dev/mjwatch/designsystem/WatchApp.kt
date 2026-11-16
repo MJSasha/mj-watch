@@ -115,7 +115,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 when(state.page) {
                                     "home"->HomeScreen(state,titles,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
-                                    "connection-choice","managed-login","managed-account","server-overview","server-users","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance"->ServerScreen(state,model,tv,registerBack={editorBack=it})
+                                    "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv)
+                                    "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
+                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
@@ -609,18 +611,19 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     var section by rememberSaveable {mutableStateOf("Подключения")}
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var themes by remember {mutableStateOf(false)}
-    if(themes) AlertDialog(onDismissRequest={themes=false},title={Text("Тема")},text={Column {listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,s.config.theme==id) {scope.launch {Settings(context).save(s.config.copy(theme=id))};themes=false}}}},confirmButton={TextButton(onClick={themes=false}) {Text("Закрыть")}})
+    if(themes) AlertDialog(onDismissRequest={themes=false},title={Text("Тема")},text={Column {listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->PreferenceChoice(label,s.config.theme==id) {scope.launch {Settings(context).save(s.config.copy(theme=id))};themes=false}}}},confirmButton={TextButton(onClick={themes=false}) {Text("Закрыть")}})
     val appearance:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Text("Тема",fontSize=20.sp,fontWeight=FontWeight.Bold)
-        listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,s.config.theme==id,tv) {scope.launch {Settings(context).save(s.config.copy(theme=id))}}}
+        listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->PreferenceChoice(label,s.config.theme==id,tv) {scope.launch {Settings(context).save(s.config.copy(theme=id))}}}
     }}
     if(tv) {
         Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
             Column(Modifier.width(tvUnit(320f)),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                listOf("Подключения","Воспроизведение","Оформление","О приложении").forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
+                ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
             }
             Box(Modifier.weight(1f)) {when(section) {
                 "Подключения"->ConnectionLinks(s,model,true)
+                "Аккаунт"->AccountLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true,model)
                 "Оформление"->appearance()
                 else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
@@ -631,6 +634,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         item {SettingsLabel("Подключения")}
         item {ConnectionLinks(s,model,false)}
+        if(s.config.managed) {item {SettingsLabel("Аккаунт")};item {AccountLinks(s,model,false)}}
         item {SettingsLabel("Воспроизведение")}
         item {PlaybackPreferences(false,model)}
         item {SettingsLabel("Оформление")}
@@ -650,14 +654,14 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     var subtitlesOff by remember {mutableStateOf(prefs.getBoolean("subtitles-off",false))}
     var quality by remember {mutableStateOf(prefs.getString("quality","Все") ?: "Все")}
     var qualityDialog by remember {mutableStateOf(false)}
-    if(qualityDialog) AlertDialog(onDismissRequest={qualityDialog=false},title={Text("Качество раздач")},text={Column {listOf("Все","720p","1080p","2160p").forEach {label->Pill(label,quality==label,tv) {quality=label;prefs.edit().putString("quality",label).apply();model.preferencesChanged();qualityDialog=false}}}},confirmButton={TextButton(onClick={qualityDialog=false}) {Text("Закрыть")}})
+    if(qualityDialog) AlertDialog(onDismissRequest={qualityDialog=false},title={Text("Качество раздач")},text={Column {listOf("Все","720p","1080p","2160p").forEach {label->PreferenceChoice(label,quality==label,tv) {quality=label;prefs.edit().putString("quality",label).apply();model.preferencesChanged();qualityDialog=false}}}},confirmButton={TextButton(onClick={qualityDialog=false}) {Text("Закрыть")}})
     var dialog by remember {mutableStateOf(false)}
-    if(dialog) AlertDialog(onDismissRequest={dialog=false},title={Text("Язык аудио")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {listOf(null to "Авто","ru" to "Русский","en" to "Английский","ja" to "Японский").forEach {(id,label)->Pill(label,audio==id,tv) {audio=id;prefs.edit().putString("audio-language",id).apply();model.preferencesChanged();dialog=false}}}},confirmButton={TextButton(onClick={dialog=false}) {Text("Закрыть")}})
+    if(dialog) AlertDialog(onDismissRequest={dialog=false},title={Text("Язык аудио")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {listOf(null to "Авто","ru" to "Русский","en" to "Английский","ja" to "Японский").forEach {(id,label)->PreferenceChoice(label,audio==id,tv) {audio=id;prefs.edit().putString("audio-language",id).apply();model.preferencesChanged();dialog=false}}}},confirmButton={TextButton(onClick={dialog=false}) {Text("Закрыть")}})
     var subtitles by remember {mutableStateOf(prefs.getString("subtitle-language",null))}
     var subtitleDialog by remember {mutableStateOf(false)}
     val subtitleLabel=if(subtitlesOff) "Выключены" else when(subtitles) {"ru"->"Русский";"en"->"Английский";else->"Автоматически"}
     if(subtitleDialog) AlertDialog(onDismissRequest={subtitleDialog=false},title={Text("Субтитры")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        listOf("auto" to "Автоматически","off" to "Выключены","ru" to "Русский","en" to "Английский").forEach {(id,label)->Pill(label,if(id=="off") subtitlesOff else !subtitlesOff&&(subtitles ?: "auto")==id,tv) {
+        listOf("auto" to "Автоматически","off" to "Выключены","ru" to "Русский","en" to "Английский").forEach {(id,label)->PreferenceChoice(label,if(id=="off") subtitlesOff else !subtitlesOff&&(subtitles ?: "auto")==id,tv) {
             subtitlesOff=id=="off";subtitles=id.takeIf {it!="auto"&&it!="off"};prefs.edit().putBoolean("subtitles-off",subtitlesOff).putString("subtitle-language",subtitles).apply();model.preferencesChanged();subtitleDialog=false
         }}
     }},confirmButton={TextButton(onClick={subtitleDialog=false}) {Text("Закрыть")}})
@@ -731,10 +735,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         }
         SettingsDivider()
         SettingsActionRow(Icons.Outlined.Cloud,"Способ подключения",if(s.config.managed) "Сервер MJWatch" else "TorrServer · Без истории",tv){model.page("connection-choice")}
-        if(s.config.managed) {
-            SettingsDivider();SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и синхронизация",managed?.me?.optString("name") ?: "Проверяем подключение",tv){model.page("managed-account")}
-            if(admin){SettingsDivider();SettingsActionRow(Icons.Outlined.AdminPanelSettings,"Управление сервером",s.config.managedUrl,tv){model.page("server-overview")}}
-        }
+
     }
 }
 @Composable private fun UpdateLink(model:WatchModel,tv:Boolean) {

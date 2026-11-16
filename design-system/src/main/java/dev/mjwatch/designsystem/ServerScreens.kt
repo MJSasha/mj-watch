@@ -110,47 +110,11 @@ import java.util.UUID
 
     }
    }
-   "managed-account"->{
-    Text(managed.me?.optString("name") ?: "Аккаунт",fontSize=26.sp,fontWeight=FontWeight.Bold);Text(s.config.managedUrl)
-    Text(managed.message.ifBlank {"Проверяем синхронизацию"});Text("В очереди: ${managed.pending.size}")
-    Action("Синхронизировать",tv,enabled=!managed.busy){controller.syncNow()}
-    val history by model.scopedLibrary.collectAsStateWithLifecycle()
-    managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->
-     val local=JSONObject(pending.json);val remote=runCatching{JSONObject(pending.conflict).optJSONObject("entity")?.optJSONObject("value")}.getOrNull()
-     val title=history.entries.firstOrNull {it.id==local.optString("releaseId")}?.title ?: local.optString("title",local.optString("path",pending.entityKey))
-     SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-      Text("Конфликт · $title")
-      if(pending.kind=="progress"){
-       Text("${android.os.Build.MODEL}: ${local.optLong("positionMs")/1000} с")
-       Text("${remote?.optString("deviceName","Сервер") ?: "Сервер"}: ${remote?.optLong("positionMs")?.div(1000) ?: "нет позиции после очистки или восстановления"}")
-      }else Text("Изменения на этом устройстве отличаются от серверной версии.")
-      Action("Использовать серверную",tv,secondary=true){controller.resolve(pending,false)}
-      Action("Использовать эту",tv){confirm="Отправить изменения этого устройства против актуальной серверной ревизии?" to {controller.resolve(pending,true)}}
-     }}
-    }
-    managed.data?.optJSONArray("devices")?.let {rows->for(index in 0 until rows.length()){val device=rows.getJSONObject(index);SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Devices,device.getString("name"),if(device.optBoolean("revoked")) "Отозвано" else "Отозвать устройство",tv){confirm="Отозвать сессии ${device.getString("name")}?" to {controller.action("devices/${device.getString("id")}","DELETE",reload="devices")}}}}}
-    var code by remember {mutableStateOf("")};ServerField(code,{code=it},"Код телевизора");Action("Проверить телевизор",tv,secondary=true,enabled=code.matches(Regex("[0-9]{6}"))){controller.action("pairing/lookup","POST",JSONObject().put("code",code))}
-    managed.data?.optJSONObject("pairing")?.let {pair->Text("Устройство: ${pair.getString("device")} · Пользователь: ${managed.me?.optString("name")}");Action("Добавить телевизор",tv){confirm="Подтвердить ${pair.getString("device")} для ${managed.me?.optString("name")}?" to {controller.action("pairing/${pair.getString("code")}/approve","POST",JSONObject().put("code",pair.getString("code")),reload="devices");code=""}}}
-    var legacyCount by remember {mutableIntStateOf(0)};LaunchedEffect(Unit){legacyCount=model.dao.library().first().count {it.openedAt>0}}
-    Action("Импорт прежней истории · $legacyCount",tv,secondary=true,enabled=!managed.busy){confirm="Импортировать $legacyCount записей и прежние позиции на ${s.config.managedUrl} пользователю ${managed.me?.optString("name")}?" to {controller.importLegacy()}}
-    Action("Выйти и скрыть локальный кэш",tv,secondary=true){confirm="Выйти? Неотправленная очередь останется изолированной для этого аккаунта." to {controller.logout(false);model.page("connection-choice")}}
-    Action("Выйти и очистить кэш аккаунта",tv,secondary=true){confirm="Удалить локальный кэш и очередь этого аккаунта?" to {controller.logout(true);model.page("connection-choice")}}
-   }
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
     Text(s.config.managedUrl);Text(if(managed.me?.optString("role")=="admin") "Администратор" else "Проверяем права")
-    managed.data?.let {data->Text("TorrServer: ${if(data.optBoolean("torrserverHealthy")) "работает" else "недоступен"}");Text("База: ${if(data.optBoolean("databaseHealthy")) "проверена" else "ошибка"} · Потоков: ${data.optInt("activeStreams")}")}
-    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,"Открыть",tv){model.page(destination)};SettingsDivider()}}
-   }
-   "server-users"->{
-    Text("У каждого своя история",fontSize=24.sp,fontWeight=FontWeight.Bold)
-    var selectedUser by remember {mutableStateOf("")}
-    managed.data?.optJSONArray("devices")?.let {devices->Text("Устройства пользователя");for(index in 0 until devices.length()){val device=devices.getJSONObject(index);SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Devices,device.getString("name"),"Последняя активность: ${java.time.Instant.ofEpochSecond(device.optLong("lastSeen"))}",tv){confirm="Отозвать это устройство?" to {controller.action("admin/users/$selectedUser/devices/${device.getString("id")}","DELETE",reload="admin/users/$selectedUser/devices")}}}}}
-    val rows=managed.data?.optJSONArray("users")
-    if(rows!=null)for(index in 0 until rows.length()){val user=rows.getJSONObject(index);val id=user.getString("id");SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text(user.getString("name"),fontSize=20.sp);Text(user.getString("role")+if(user.optBoolean("blocked")) " · Заблокирован" else "");Action("Устройства",tv,secondary=true){selectedUser=id;controller.load("admin/users/$id/devices")};Action("Отозвать приглашение",tv,secondary=true){confirm="Отозвать ещё не использованное приглашение?" to {controller.action("admin/users/$id/invite","DELETE",reload="admin/users")}};Action("Создать приглашение",tv,secondary=true,enabled=user.getString("role")=="user"){controller.action("admin/users/$id/invite","POST")};Action("Отозвать устройства",tv,secondary=true){confirm="Отозвать все устройства ${user.getString("name")}?" to {controller.action("admin/users/$id/devices","DELETE",reload="admin/users")}};Action(if(user.optBoolean("blocked")) "Разблокировать" else "Заблокировать",tv,secondary=true){confirm="Изменить доступ ${user.getString("name")}?" to {controller.action("admin/users/$id","PATCH",JSONObject().put("blocked",!user.optBoolean("blocked")),reload="admin/users")}};Action("Удалить пользователя",tv,secondary=true){confirm="Удалить пользователя, его историю и отозвать устройства? Уже сохранённые офлайн-данные удалённо стереть нельзя." to {controller.action("admin/users/$id","DELETE",reload="admin/users")}}}}}
-    var inviteCopied by remember(managed.data?.optString("invite")){mutableStateOf(false)}
-    managed.data?.optString("invite")?.takeIf {it.isNotBlank()}?.let {Text("Приглашение готово",fontWeight=FontWeight.Bold);Text("Действует 24 часа для одного нового аккаунта. Передайте его пользователю; в его приложении нужно нажать «Вставить приглашение».");val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager;Action(if(inviteCopied)"Приглашение скопировано" else "Скопировать приглашение",tv,secondary=true){val packet=JSONObject().put("url",s.config.managedUrl).put("invite",it).put("ca",model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"));val clip=android.content.ClipData.newPlainText("Приглашение MJWatch",packet.toString());clip.description.extras=android.os.PersistableBundle().apply{putBoolean("android.content.extra.IS_SENSITIVE",true)};clipboard.setPrimaryClip(clip);inviteCopied=true};runCatching{managedCaFingerprint(model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"))}.getOrNull()?.let{fingerprint->Text("Отпечаток сервера для сверки:",color=MaterialTheme.colorScheme.onSurfaceVariant);SelectionContainerCompat(fingerprint)}}
-    var name by remember {mutableStateOf("")};ServerField(name,{name=it;dirty=true},"Имя нового пользователя");Action("Добавить пользователя",tv,enabled=name.isNotBlank()&&!managed.busy){dirty=false;controller.action("admin/users","POST",JSONObject().put("name",name));name=""};Action("Обновить список",tv,secondary=true){controller.load("admin/users")}
+    managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")}?.let {data->Text("TorrServer: ${if(data.optBoolean("torrserverHealthy")) "работает" else "недоступен"}");Text("База: ${if(data.optBoolean("databaseHealthy")) "проверена" else "ошибка"} · Потоков: ${data.optInt("activeStreams")}")}
+    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{
     var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
@@ -201,7 +165,7 @@ import java.util.UUID
   }else content()
  }
 }
-@Composable private fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
+@Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
  Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
   Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)

@@ -56,7 +56,7 @@ class PlaybackActivity : ComponentActivity() {
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
     private lateinit var dao: WatchDao
-    private lateinit var status: TextView
+    private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true))
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,11 +68,9 @@ class PlaybackActivity : ComponentActivity() {
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build(); dao=db.dao()
         val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
-        status=TextView(this).apply { text="Подготовка видео…"; setTextColor(-1); setBackgroundColor(0xDD0C0E15.toInt()); setPadding(24,24,24,24) }
-        root.addView(status, FrameLayout.LayoutParams(-1,-2,android.view.Gravity.CENTER))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status,onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={finish()},onTracks={tracks(this)},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())})
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -82,11 +80,11 @@ class PlaybackActivity : ComponentActivity() {
             val config=Settings(applicationContext).config.first();playbackConfig=config
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
             if(!uri.startsWith("asset:")&&runCatching {uri.toHttpUrl().origin()==endpoint(if(config.managed) config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true) {
-                status.text="Адрес сервера изменён. Вернитесь к карточке и выберите раздачу заново.";return@launch
+                status=PlaybackStatus("Подключение изменено","Вернитесь к карточке и выберите раздачу заново.");return@launch
             }
             if(config.managed&&!uri.startsWith("asset:")) {
                 val checked=runCatching {withContext(Dispatchers.IO){ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}
-                if(checked.isFailure){status.text="Сессия недоступна. Вернитесь в аккаунт и проверьте подключение.";return@launch}
+                if(checked.isFailure){status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.");return@launch}
                 scope.launch(Dispatchers.IO) {while(isActive){delay(60_000);runCatching {ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}}
             }
             val headers=mutableMapOf<String,String>()
@@ -103,18 +101,18 @@ class PlaybackActivity : ComponentActivity() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT,preferences.getBoolean("subtitles-off",false)).build()
             view.player=player; session=MediaSession.Builder(this@PlaybackActivity,player).build()
             player.addListener(object: Player.Listener {
-                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; status.visibility=android.view.View.GONE }
+                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; status=null }
                 override fun onPlaybackStateChanged(state: Int) {
-                    if(state==Player.STATE_BUFFERING) { status.text="Буферизация… · Назад — отменить"; status.visibility=android.view.View.VISIBLE; startedAt=System.currentTimeMillis() }
-                    if(state==Player.STATE_READY&&firstFrame) status.visibility=android.view.View.GONE
-                    if(state==Player.STATE_ENDED) { save(true); status.text="Просмотр завершён"; status.visibility=android.view.View.VISIBLE }
+                    if(state==Player.STATE_BUFFERING) { status=if(firstFrame)PlaybackStatus("Буферизация","Видео продолжится автоматически",loading=true) else PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true); startedAt=System.currentTimeMillis() }
+                    if(state==Player.STATE_READY&&firstFrame) status=null
+                    if(state==Player.STATE_ENDED) { save(true); status=PlaybackStatus("Просмотр завершён") }
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) { if(!isPlaying) save() }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
                     save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L; handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
-                    else { terminalError=true;status.text=if(error.errorCode in 4000..5999) "Устройство не поддерживает этот формат. Выберите другую дорожку или раздачу." else "Видео недоступно. Назад — другая раздача."; status.visibility=android.view.View.VISIBLE }
+                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L;status=PlaybackStatus("Восстанавливаем соединение","Попытка $retries из 2",loading=true); handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
+                    else { terminalError=true;status=if(error.errorCode in 4000..5999) PlaybackStatus("Формат не поддерживается","Выберите другую дорожку или раздачу.") else PlaybackStatus("Видео недоступно","Проверьте соединение или выберите другую раздачу.",retry=true) }
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
@@ -124,12 +122,17 @@ class PlaybackActivity : ComponentActivity() {
             while(isActive) { delay(10000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>180_000) {terminalError=true;player.stop();status.text="Подготовка остановлена. Выберите другую раздачу."}
-                    else if(elapsed>60_000) { player.pause(); status.text="Видео не отвечает. Назад — другая раздача." }
-                    else if(elapsed>30_000) status.text="Подготовка занимает больше времени · Назад — отменить"
+                    if(elapsed>180_000) {terminalError=true;player.stop();status=PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
+                    else if(elapsed>30_000) status=PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени. Можно подождать или выбрать другую раздачу.",loading=true)
                 }
             }
         }
+    }
+    private fun retryPlayback() {
+        if(!::player.isInitialized||released)return
+        terminalError=false;retries=0;startedAt=System.currentTimeMillis()
+        status=PlaybackStatus("Повторная загрузка","Подключаемся к потоку",loading=true)
+        player.prepare();player.play()
     }
     private fun save(ended:Boolean=false): Job? {
         if(!::player.isInitialized||released||!firstFrame||playbackConfig?.historyEnabled!=true) return null
