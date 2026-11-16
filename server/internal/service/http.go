@@ -30,7 +30,7 @@ type identity struct {
 	Epoch                       int64
 }
 
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 type Server struct {
 	passwordSlots chan struct{}

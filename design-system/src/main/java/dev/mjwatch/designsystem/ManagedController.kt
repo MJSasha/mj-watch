@@ -26,14 +26,14 @@ class ManagedController(private val context:android.content.Context,private val 
   val api=api(c);val result=if(invite.isBlank()) api.request("auth/login","POST",JSONObject().put("name",name).put("password",password).put("device",android.os.Build.MODEL)) else api.request("auth/accept-invite","POST",JSONObject().put("invite",invite).put("password",password).put("device",android.os.Build.MODEL))
   connected(c,result)
  }
- suspend fun connected(c:Config,result:JSONObject,expectedServerId:String="",expectedUserId:String="",expectedName:String="") {
+ suspend fun connected(c:Config,result:JSONObject,expectedServerId:String="",expectedUserId:String="",expectedName:String="",caOverride:String?=null) {
   check(!PlaybackActivity.hasActivePlayback()){ "Остановите воспроизведение перед сменой подключения" }
-  val api=api(c)
+  val api=ManagedApi(c,secrets,caOverride)
   val me=api.request("me",headers=mapOf("Authorization" to "Bearer ${result.getString("accessToken")}"))
   if((expectedServerId.isNotBlank()&&me.getString("serverId")!=expectedServerId)||(expectedUserId.isNotBlank()&&me.getString("userId")!=expectedUserId)||(expectedName.isNotBlank()&&me.getString("name")!=expectedName))throw java.io.IOException("Телефон подтвердил другой аккаунт. Обновите QR и повторите вход.")
   val saved=c.copy(serverId=me.getString("serverId"),userId=me.getString("userId"),metadataProvider="tmdb")
   // Snapshot establishes epochs before any local writes; old local history is imported only explicitly.
-  api(saved).saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(api(saved),db.syncDao()).connect();settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
+  val savedApi=ManagedApi(saved,secrets,caOverride);savedApi.saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(savedApi,db.syncDao()).connect();if(caOverride!=null)secrets.put("ca:${api.base.origin()}",caOverride);settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
  }
  fun load(path:String)=run {val api=api();val me=api.authorized("me");val data=api.authorized(path);if(config().scope!=api.config.scope)throw CancellationException("Account changed");mutable.update {it.copy(me=me,data=data)}}
  fun action(path:String,method:String,body:JSONObject=JSONObject(),revision:String?=null,reload:String?=null)=run {val api=api();val data=api.authorized(path,method,body,revision);if(config().scope!=api.config.scope)throw CancellationException("Account changed");if(path=="history"&&method=="DELETE"){db.syncDao().clearHistoryOutbox(config().scope);SyncEngine(api,db.syncDao()).connect()};mutable.update {it.copy(data=data,message="Операция подтверждена сервером")};if(reload!=null){val fresh=api.authorized(reload);mutable.update {it.copy(data=fresh)}}}

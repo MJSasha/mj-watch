@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.mjwatch.core.*
 import kotlinx.coroutines.flow.first
-import org.json.JSONObject
 
 private data class UserConfirmation(val title:String,val body:String,val button:String,val action:()->Unit)
 
@@ -125,12 +124,16 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                     val invitation=current.invitations[user.id]
                     if(invitation!=null) {
                         Text("Одноразовое. Действует до ${activityTime(invitation.expiresAt/1000)}.")
-                        Text("Отправьте приглашение ${user.name}. На её или его устройстве: Настройки → Способ подключения → Войти на сервер MJWatch → Вставить приглашение.")
+                        Text("Отправьте ссылку ${user.name}. Она откроет MJWatch сразу на экране регистрации — останется придумать пароль.")
                         var copied by remember(invitation.token){mutableStateOf(false)}
                         val context=LocalContext.current
-                        Action(if(copied)"Приглашение для ${user.name} скопировано" else "Скопировать приглашение",tv,enabled=invitation.expiresAt>System.currentTimeMillis()&&!current.busy){
-                            val packet=JSONObject().put("url",s.config.managedUrl).put("invite",invitation.token).put("ca",model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"))
-                            val clip=ClipData.newPlainText("Приглашение для ${user.name}",packet.toString())
+                        val link=remember(invitation.token,s.config.managedUrl){invitationLink(s.config.managedUrl,invitation.token,model.secrets.get("ca:${endpoint(s.config.managedUrl).origin()}"))}
+                        Action("Поделиться ссылкой",tv,enabled=invitation.expiresAt>System.currentTimeMillis()&&!current.busy){
+                            val send=android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_SUBJECT,"Приглашение в MJWatch").putExtra(android.content.Intent.EXTRA_TEXT,"Приглашаю вас в MJWatch. Откройте ссылку и придумайте пароль:\n$link")
+                            context.startActivity(android.content.Intent.createChooser(send,"Отправить приглашение ${user.name}"))
+                        }
+                        Action(if(copied)"Ссылка для ${user.name} скопирована" else "Скопировать ссылку",tv,secondary=true,enabled=invitation.expiresAt>System.currentTimeMillis()&&!current.busy){
+                            val clip=ClipData.newPlainText("Приглашение для ${user.name}",link)
                             clip.description.extras=PersistableBundle().apply {putBoolean("android.content.extra.IS_SENSITIVE",true)}
                             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip);copied=true
                         }

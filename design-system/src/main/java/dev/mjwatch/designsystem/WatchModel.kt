@@ -44,6 +44,8 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     private val mutable=MutableStateFlow(WatchState())
     val state=mutable.asStateFlow()
     val managed=ManagedController(app,viewModelScope,settings,secrets,db,{state.value.config})
+    val invitation=InvitationController(app,viewModelScope,secrets,managed,{state.value.config})
+    fun openInvitation(raw:String){invitation.open(raw);page("invitation-register")}
     var draftConfig:Config?=null; var draftKey="";var draftUser="";var draftPassword="";var draftMetadata=""
     private var cachedConfig:Config?=null;private var cachedRepositories:Pair<ReleaseRepository,StreamGateway>?=null
     private var catalogJob:Job?=null
@@ -56,7 +58,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
             val changed=state.value.config.profileKey!=c.profileKey
             if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="")}}
-            update {it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first) if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
+            update {it.copy(config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first&&it.page!="invitation-register") if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
             if(provider!="${c.profileKey}:${c.metadataProvider}") {provider="${c.profileKey}:${c.metadataProvider}";refreshCatalog()}
             first=false
         }
@@ -74,6 +76,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun discardDraft() {draftConfig=null;draftKey="";draftUser="";draftPassword="";draftMetadata=""}
     fun page(page:String) { cancel(); update { it.copy(page=page,message="") };if(page in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(page)} }
     fun back() {
+        if(state.value.page=="invitation-register"){if(invitation.state.value.busy)return;invitation.dismiss()}
         val s=state.value;cancel()
         val target=when {s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-tv")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="")}

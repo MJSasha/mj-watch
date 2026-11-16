@@ -16,6 +16,7 @@ class MainActivity:ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val model=ViewModelProvider(this)[WatchModel::class.java]
+        if(savedInstanceState==null)handleInvitation(intent,model)
         val scanner=registerForActivityResult(ScanContract()) {result->
             val contents=result.contents
             if(contents!=null)model.managed.qr.scan(contents)
@@ -32,5 +33,9 @@ class MainActivity:ComponentActivity() {
                     .addExtra(Intents.Scan.SHOW_MISSING_CAMERA_PERMISSION_DIALOG,false))
             })
         }
+    }
+    override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
+    private fun handleInvitation(value:android.content.Intent,model:WatchModel){
+        if(value.action==android.content.Intent.ACTION_VIEW){val raw=value.dataString;if(raw!=null)model.openInvitation(raw)}
     }
 }

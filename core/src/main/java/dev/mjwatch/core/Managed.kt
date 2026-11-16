@@ -44,11 +44,11 @@ data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val hi
  @Transaction suspend fun acknowledged(pending:OutboxEntry,entity:SyncEntity) {acknowledge(pending.id);put(entity)}
 }
 /** The private CA is scoped to the managed origin; other integrations keep system trust. */
-fun managedClient(c:Config,secrets:SecretStore):OkHttpClient {
+fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpClient {
  require(c.managed&&endpoint(c.managedUrl).scheme=="https") {"MJWatch требует HTTPS"}
  val origin=endpoint(c.managedUrl).origin()
  val builder=guardedClient(c.copy(jackett="",torrServer="",metadataProvider="none")).newBuilder()
- val ca=secrets.get("ca:$origin")
+ val ca=caOverride ?: secrets.get("ca:$origin")
  if(ca.isNotBlank()) {
   val cert=CertificateFactory.getInstance("X.509").generateCertificate(ca.byteInputStream())
   val store=KeyStore.getInstance(KeyStore.getDefaultType()).apply {load(null);setCertificateEntry("mjwatch",cert)}
@@ -58,12 +58,12 @@ fun managedClient(c:Config,secrets:SecretStore):OkHttpClient {
   builder.sslSocketFactory(ssl.socketFactory,manager)
  }
  return builder.addInterceptor {chain -> val request=chain.request();val token=secrets.get("access:$origin:${c.scope}")
-  chain.proceed(if(request.url.origin()==origin&&request.header("Authorization")==null&&token.isNotBlank()) request.newBuilder().header("Authorization","Bearer $token").build() else request)
+  chain.proceed(if(request.url.origin()==origin&&c.scope.isNotBlank()&&request.header("Authorization")==null&&token.isNotBlank()) request.newBuilder().header("Authorization","Bearer $token").build() else request)
  }.build()
 }
-class ManagedApi(val config:Config,val secrets:SecretStore) {
+class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=null) {
  companion object {private val refreshMutex=Mutex()}
- val client=managedClient(config,secrets)
+ val client=managedClient(config,secrets,caOverride)
  val base=endpoint(config.managedUrl)
  suspend fun request(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null,headers:Map<String,String> = emptyMap()):JSONObject {
   require(!path.startsWith('/')&&!path.contains(".."))

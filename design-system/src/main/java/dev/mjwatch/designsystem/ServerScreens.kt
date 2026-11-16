@@ -68,6 +68,7 @@ import java.util.UUID
     var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
     fun fillInvitation(raw:String):Boolean {
      return try {
+      if(raw.trim().startsWith("https://mjsasha.github.io/")||raw.trim().startsWith("mjwatch://")){decodeInvitationLink(raw.trim());model.openInvitation(raw.trim());return true}
       val parsed=decodeManagedInvitation(raw)
       url=parsed.url;invite=parsed.invite;ca=parsed.ca;password="";name="";advanced=true;dirty=true;packet="";importOpen=false
       val origin=endpoint(parsed.url).origin();val fingerprint=managedCaFingerprint(parsed.ca)

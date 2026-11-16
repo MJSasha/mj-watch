@@ -213,12 +213,12 @@ func run() error {
 	go s.Maintain(context.Background())
 	server := http.Server{Addr: c.Listen, Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(io.Discard, "", 0)}
 	server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-		cert, e := tls.LoadX509KeyPair(c.Certificate, c.PrivateKey)
+		cert, e := loadServerCertificate(c.Certificate, c.PrivateKey)
 		for attempt := 0; e != nil && attempt < 3; attempt++ {
 			time.Sleep(10 * time.Millisecond)
-			cert, e = tls.LoadX509KeyPair(c.Certificate, c.PrivateKey)
+			cert, e = loadServerCertificate(c.Certificate, c.PrivateKey)
 		}
-		return &cert, e
+		return cert, e
 	}}
 	return server.ListenAndServeTLS("", "")
 }

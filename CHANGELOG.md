@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- Replace JSON invitation sharing with a short HTTPS link and Android's share sheet. Tapping it opens password registration directly on cold and warm app starts; address and server trust are filled automatically.
+- Add verified Android App Links and a download/open page for recipients without MJWatch. Invitation fields stay in the URL fragment; the page has no registration form, analytics or calls to the invited server.
+- Bootstrap private-CA trust only when the server's presented CA matches the invitation fingerprint, while preserving TLS chain, expiry and hostname verification. The server 0.1.2 supply includes its public CA in the TLS chain; private keys remain on the server.
+- Keep single-use expiry/revocation checks, legacy invitation imports and existing profiles. Opening a link alone never changes account or trust; the recipient explicitly creates a password before joining.
+
 ## 0.7.1
 
 - #8–9: add Series and load dedicated movie/TV/anime/animation collections instead of filtering the weekly trending page. Cache each section separately; preserve the selected section on Back. Managed categories require server 0.1.1 and explain the required update on older servers.

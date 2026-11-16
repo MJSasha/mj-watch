@@ -38,6 +38,7 @@ class UsersTvUiTest {
         compose.waitUntil(15000){model.managed.state.value.me?.optString("role")=="admin"}
         compose.runOnIdle {model.page("server-users")}
         compose.waitUntil(15000){model.managed.users.state.value.loaded&&!model.managed.users.state.value.busy}
+        compose.onNodeWithTag("users-list").performScrollToNode(hasText("owner"))
         compose.onNodeWithText("owner").performSemanticsAction(SemanticsActions.RequestFocus)
         compose.onNodeWithText("owner").performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(5000){model.state.value.page=="server-user"}

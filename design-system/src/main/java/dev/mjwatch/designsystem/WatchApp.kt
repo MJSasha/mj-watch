@@ -117,6 +117,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         Box(Modifier.weight(1f).fillMaxWidth().focusRequester(screenFocus).focusGroup().then(if(edge) Modifier else Modifier.padding(horizontal=inset))) {
                             saved.SaveableStateProvider(state.page+when(state.page) {"detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases"->state.query+":${state.releaseSeason}:${state.releaseEpisode}";"files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}";else->""}) {
                                 when(state.page) {
+                                    "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,titles,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv,scanTvQr)

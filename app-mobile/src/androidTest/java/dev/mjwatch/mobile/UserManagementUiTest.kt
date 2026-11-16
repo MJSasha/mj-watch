@@ -46,6 +46,7 @@ class UserManagementUiTest {
         compose.runOnIdle {model.page("server-users")}
         val controller=model.managed.users
         compose.waitUntil(15000){controller.state.value.loaded&&!controller.state.value.busy}
+        compose.onNodeWithTag("users-list").performScrollToNode(hasText("owner"))
         compose.onNodeWithText("owner").performClick()
         compose.onNodeWithText("Заблокировать owner").assertIsNotEnabled()
         compose.onNodeWithText("Удалить owner").assertIsNotEnabled()
@@ -70,8 +71,8 @@ class UserManagementUiTest {
         val id=controller.state.value.selectedId!!
         val original=controller.state.value.invitations[id]!!
         Assert.assertTrue(controller.state.value.users.any {it.name=="owner"})
-        compose.onNodeWithText("Скопировать приглашение").performClick()
-        compose.onNodeWithText("Приглашение для $name скопировано").assertExists()
+        compose.onNodeWithText("Скопировать ссылку").performClick()
+        compose.onNodeWithText("Ссылка для $name скопирована").assertExists()
         compose.runOnIdle {controller.load()}
         compose.waitUntil(10000){!controller.state.value.busy}
         Assert.assertEquals(original,controller.state.value.invitations[id])
