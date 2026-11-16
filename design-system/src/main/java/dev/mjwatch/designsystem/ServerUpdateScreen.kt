@@ -42,7 +42,8 @@ import java.util.UUID
  val saved=remember {runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
  val pending=remember {
   runCatching {JSONObject(model.secrets.get(pendingKey))}.getOrNull() ?: runCatching {
-   val selected=bundles.active().manifest().getString("version")
+   val candidates=listOf(bundles.active().manifest().getString("version"),"0.1.2","0.1.1","0.1.0").distinct()
+   val selected=candidates.firstOrNull {model.secrets.get("maintenance:${s.config.scope}:update:$it").isNotBlank()} ?: return@runCatching null
    val legacy=model.secrets.get("maintenance:${s.config.scope}:update:$selected")
    if(!legacy.matches(Regex("[A-Za-z0-9_-]{16,128}")))null else JSONObject().put("operationId",legacy).put("version",selected).put("host",saved?.optString("host") ?: URI(s.config.managedUrl).host).put("port",saved?.optInt("port",22) ?: 22)
   }.getOrNull()
@@ -65,6 +66,7 @@ import java.util.UUID
  var trust by remember {mutableStateOf<HostKeyRequired?>(null)}
  var fingerprint by remember {mutableStateOf("")}
  var confirm by remember {mutableStateOf(false)}
+ var retryAfterRepair by remember {mutableStateOf(false)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,password=password)
  fun recoverPhase() {
   if(model.secrets.get(pendingKey).isBlank()){operation="";phase=""}else phase="unknown"
@@ -145,6 +147,7 @@ import java.util.UUID
   }
   if(!busy)Action("Вернуться в обслуживание",tv,secondary=true){model.page("server-maintenance")}
   if(!busy&&phase=="failed"&&code in listOf("update_failed_binary_rollback_confirmed","not_newer_release","already_installed","incompatible_release","supply_integrity"))Action("Выбрать другой пакет",tv,secondary=true){clearPending();operation="";phase="";step=0;message="";code=""}
+  if(!busy&&phase=="failed"&&code=="health_failed")Action("Причина ошибки исправлена — подготовить обновление заново",tv,secondary=true){retryAfterRepair=true}
   if(code.isNotBlank()) {
    Action(if(details) "Скрыть подробности" else "Подробности ошибки",tv,secondary=true){details=!details}
    if(details){Text("Код: $code\nОперация: $operation\nВерсия: $version");Action("Скопировать диагностику",tv,secondary=true){clipboard.setText(AnnotatedString("code=$code\noperation=$operation\nversion=$version"))}}
@@ -197,6 +200,7 @@ import java.util.UUID
   Action(if(step==3) "Обновить до ${release?.optString("version")}" else "Далее",tv,Modifier.fillMaxWidth(),enabled=canContinue&&!busy){message="";if(step==3)confirm=true else step++}
   if(step>0)Action("Назад",tv,secondary=true,enabled=!busy){step--;message=""}
  }
+ if(retryAfterRepair)AlertDialog(onDismissRequest={retryAfterRepair=false},title={Text("Подготовить новую попытку?")},text={Text("Продолжайте только после исправления причины health_failed на сервере. Мастер заново проверит доступ и создаст резервную копию. Обновление начнётся после отдельного подтверждения.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={retryAfterRepair=false;clearPending();operation="";phase="";step=0;message="";code="";secured=false}){Text("Перейти к подготовке")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={retryAfterRepair=false}){Text("Отмена")}})
  if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Начать обновление?")},text={Text("Будет создана зашифрованная резервная копия и установлена версия ${release?.optString("version")}. Активный просмотр может прерваться.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=false;start()}){Text("Начать обновление")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=false}){Text("Отмена")}})
  trust?.let {key->AlertDialog(onDismissRequest={trust=null},title={Text(if(key.changed)"Ключ SSH изменился" else "Проверьте ключ SSH")},text={Column {Text("Сверьте отпечаток с консолью вашего хостинга. После подтверждения повторите проверку или запуск обновления.");Text(key.fingerprint);if(key.changed)ServerField(fingerprint,{fingerprint=it},"Подтверждённый отпечаток")}},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),enabled=!key.changed||fingerprint==key.fingerprint,onClick={ssh.trust(target(),key.fingerprint);trust=null;if(operation.isNotBlank()){phase="unknown"}else phase="";message="Ключ SSH сохранён"}){Text("Доверять этому ключу")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={trust=null}){Text("Отмена")}})}
 }

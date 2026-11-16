@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-import fcntl, hashlib, json, os, pathlib, re, shutil, subprocess, sys, time
+import fcntl, hashlib, json, os, pathlib, re, shutil, ssl, subprocess, sys, time
 ROOT=pathlib.Path('/var/lib/mjwatch-install')
 CURRENT=''
 def run(*args,input=None):return subprocess.run(args,input=input,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout.strip()
 def write_receipt(path,result):
  tmp=path.with_suffix('.part');tmp.write_text(json.dumps(result));tmp.chmod(0o600);os.replace(tmp,path)
+def health_tls_context(cafile):
+ # Trust only this installation's CA, including pre-0.1.3 CAs without keyUsage.
+ # PROTOCOL_TLS_CLIENT still requires chain, validity and hostname verification.
+ ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ ctx.minimum_version=ssl.TLSVersion.TLSv1_2
+ ctx.load_verify_locations(cafile=cafile)
+ return ctx
+
 def healthy(config):
  for service in ['mjwatch.service','mjwatch-torrserver.service']:run('systemctl','is-active','--quiet',service)
  for attempt in range(30):
@@ -12,7 +20,7 @@ def healthy(config):
    # A real TLS-authenticated request with newly bootstrapped root session.
    token=json.loads(run('/opt/mjwatch/current/mjwatch','bootstrap','/etc/mjwatch/config.json',input=json.dumps(dict(Device='Maintenance check',OperationID='health-'+str(time.time_ns())))))['accessToken']
    host=json.loads((ROOT/'plan.json').read_text())['host'];host='['+host+']' if ':' in host else host
-   request=__import__('urllib.request',fromlist=['Request']);ssl=__import__('ssl');ctx=ssl.create_default_context(cafile='/etc/mjwatch/ca.crt')
+   request=__import__('urllib.request',fromlist=['Request']);ctx=health_tls_context('/etc/mjwatch/ca.crt')
    req=request.Request('https://'+host+config['listen']+'/api/v1/admin/status',headers={'Authorization':'Bearer '+token})
    with request.urlopen(req,context=ctx,timeout=10) as response:result=json.load(response)
    if not result['torrserverHealthy'] or not result['databaseHealthy']:raise RuntimeError('component_health')

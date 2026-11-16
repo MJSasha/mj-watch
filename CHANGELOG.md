@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+- Fix managed maintenance on Python 3.13+ with existing MJWatch CAs that lack `keyUsage`. Use an explicit private-CA TLS client context with required chain, validity, hostname and TLS 1.2+ checks; retain the installed CA and account data.
+- Server 0.1.3 creates new CAs with critical certificate-signing key usage. Existing CAs are never rotated. Add real TLS regression checks for legacy CAs, strict validation of new CAs, wrong CA/hostname/expiry and a guarded one-time repair for installed old updaters.
+- Include the server-update wizard from 0.8.1.
+
 ## 0.8.1
 
 - Replace the long server-update form with a four-step wizard: package, SSH access, backup phrase and final review. Explain every credential, confirm the backup phrase and keep other maintenance operations collapsed.

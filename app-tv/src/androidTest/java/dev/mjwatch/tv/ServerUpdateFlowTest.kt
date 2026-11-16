@@ -77,7 +77,7 @@ class ServerUpdateFlowTest {
   compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
   compose.waitUntil(10000){model.state.value.config.demo}
   compose.runOnIdle{
-   val version=ServerBundles(compose.activity).active().manifest().getString("version")
+   val version="0.1.2"
    model.secrets.put("ssh:${model.state.value.config.scope}",JSONObject().put("host","server.example").put("port",2222).toString())
    model.secrets.put("maintenance:${model.state.value.config.scope}:update:$version","synthetic-previous-operation")
    model.page("server-update")
@@ -95,7 +95,7 @@ class ServerUpdateFlowTest {
   compose.runOnIdle{
    model.secrets.put("serverUpdate:${model.state.value.config.scope}","")
    model.secrets.put("ssh:${model.state.value.config.scope}","")
-   val version=ServerBundles(compose.activity).active().manifest().getString("version")
+   val version="0.1.2"
    model.secrets.put("maintenance:${model.state.value.config.scope}:update:$version","")
   }
  }

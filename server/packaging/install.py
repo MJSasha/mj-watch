@@ -14,6 +14,9 @@ def status(stage,state='running',code=''):
  if state=='running' and (ROOT/'cancel').exists():
   atomic(ROOT/'status.json',dict(stage=stage,state='cancelled',code='cancelled_at_safe_boundary',updated=int(time.time())))
   raise RuntimeError('cancelled_at_safe_boundary')
+def create_ca(tls):
+ run('openssl','req','-x509','-newkey','rsa:3072','-nodes','-days','3650','-subj','/CN=MJWatch Server CA','-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,keyCertSign,cRLSign','-keyout',str(tls/'ca.key'),'-out',str(tls/'ca.crt'))
+
 def free_port(start):
  for port in range(start,start+100):
   try:
@@ -116,7 +119,7 @@ def main():
   config=json.loads(config_path.read_text())
   status('securing')
   tls=pathlib.Path('/etc/mjwatch')
-  if not (tls/'ca.crt').exists():run('openssl','req','-x509','-newkey','rsa:3072','-nodes','-days','3650','-subj','/CN=MJWatch Server CA','-keyout',str(tls/'ca.key'),'-out',str(tls/'ca.crt'))
+  if not (tls/'ca.crt').exists():create_ca(tls)
   if not (tls/'tls.crt').exists():
    run('openssl','req','-new','-newkey','rsa:3072','-nodes','-subj','/CN=MJWatch','-keyout',str(tls/'tls.key'),'-out',str(tls/'tls.csr'))
    try:ipaddress.ip_address(host);san='IP:'+host
