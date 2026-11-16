@@ -101,8 +101,8 @@ import kotlinx.coroutines.delay
             delay(250)
         }
     }
-    LaunchedEffect(visible,ready,requestedFocus) {
-        if(!modal) {
+    LaunchedEffect(visible,ready,requestedFocus,status==null) {
+        if(!modal&&status==null) {
             if(!visible) rootFocus.requestFocus()
             else if(requestedFocus=="back"||!ready) backFocus.requestFocus()
             else playFocus.requestFocus()
@@ -113,7 +113,7 @@ import kotlinx.coroutines.delay
         interact()
         val closing=wasModal&&!modal
         wasModal=modal
-        if(closing&&visible) when(modalReturn) {
+        if(closing&&visible&&status==null) when(modalReturn) {
             "topTracks" -> topTracksFocus.requestFocus()
             "episodes" -> episodesFocus.requestFocus()
             "video" -> videoFocus.requestFocus()

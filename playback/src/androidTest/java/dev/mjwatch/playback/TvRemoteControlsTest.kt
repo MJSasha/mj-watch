@@ -157,4 +157,13 @@ class TvRemoteControlsTest {
         compose.onNodeWithTag("player-prompt").assertDoesNotExist()
     }
 
+    @Test fun loadingCompletionRestoresFocusToAVisiblePlaybackAction() {
+        status=PlaybackStatus("Готовим видео",loading=true)
+        start(true)
+        compose.onNodeWithText("Отменить").assertIsFocused()
+        compose.runOnIdle {status=null}
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("player-play").assertIsFocused()
+    }
+
 }
