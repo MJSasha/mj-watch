@@ -35,7 +35,8 @@ class InvitationUiTest {
    val clipboard=instrumentation.targetContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("fixture",packet))
   }
-  compose.onNodeWithText("Вставить приглашение").performScrollTo().performClick()
+  // Test explicit accessible activation; Android's native clipboard preview can cover a physical tap.
+  compose.onNodeWithText("Вставить приглашение").performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) {it()}
   Assert.assertEquals("",model.secrets.get("ca:https://fixture.invalid:8443"))
   compose.onNodeWithText("Подтвердить").performClick()
   compose.runOnIdle{Assert.assertEquals(ca,model.secrets.get("ca:https://fixture.invalid:8443"));Assert.assertEquals("",model.secrets.get("ca:https://fixture.invalid:443"))}

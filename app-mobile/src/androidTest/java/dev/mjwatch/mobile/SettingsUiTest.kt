@@ -52,7 +52,8 @@ class SettingsUiTest {
     compose.onNode(hasText("Каталог TMDB") and isToggleable()).assertExists()
     compose.onNodeWithText("Адрес TorrServer").assertDoesNotExist()
     screenshot("catalog")
-    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+    compose.onNodeWithContentDescription("Назад").performClick()
+    compose.waitUntil(5000) {model.state.value.page=="settings"}
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Субтитры"))
     compose.onNodeWithText("Субтитры").performClick()
     compose.onNode(hasText("Выключены") and isSelectable()).performClick()

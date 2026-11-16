@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.pm.ApplicationInfo
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
@@ -28,10 +29,12 @@ class SessionTest {
     Assert.assertNull(model.state.value.handle)
     i.runOnMainSync {store.clear()}
     Settings(app).save(Config(torrServer="https://new.invalid"))
-    app.startActivity(android.content.Intent(app,dev.mjwatch.playback.PlaybackActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri","https://old.invalid/video.mp4"))
-    val device=androidx.test.uiautomator.UiDevice.getInstance(i)
-    Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Подключение изменено")),5000))
-    i.runOnMainSync {androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<dev.mjwatch.playback.PlaybackActivity>().forEach {Assert.assertFalse(it.firstFrameSeen);it.finish()}}
+    ActivityScenario.launch<dev.mjwatch.playback.PlaybackActivity>(android.content.Intent(app,dev.mjwatch.playback.PlaybackActivity::class.java).putExtra("uri","https://old.invalid/video.mp4")).use {scenario->
+        val device=androidx.test.uiautomator.UiDevice.getInstance(i)
+        Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Подключение изменено")),5000))
+        scenario.onActivity {Assert.assertFalse(it.firstFrameSeen)}
+    }
+    Unit
 
  }
 }

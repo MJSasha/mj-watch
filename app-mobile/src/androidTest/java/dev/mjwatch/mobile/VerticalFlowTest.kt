@@ -24,8 +24,9 @@ class VerticalFlowTest {
     compose.waitUntil(10000){compose.onAllNodesWithText("Демонстрация, импорт и экспорт").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Демонстрация, импорт и экспорт").performClick()
     compose.waitUntil(10000){compose.onAllNodesWithTag("settings-list").fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithTag("settings-list").performScrollToNode(hasContentDescription("Демонстрация с локальным видео"))
-    compose.onNodeWithContentDescription("Демонстрация с локальным видео").performClick()
+    val demoSwitch=hasText("Демонстрация с локальным видео") and isToggleable()
+    compose.onNodeWithTag("settings-list").performScrollToNode(demoSwitch)
+    compose.onNode(demoSwitch).performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     compose.onNodeWithText("Сохранить и продолжить").performClick()
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
