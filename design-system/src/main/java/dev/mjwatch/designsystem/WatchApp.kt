@@ -56,6 +56,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val state by model.state.collectAsStateWithLifecycle()
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
     val snackbar=remember {SnackbarHostState()}
+    LaunchedEffect(state.page,state.message) {
+        if(state.page=="detail"&&state.message.isNotBlank()) snackbar.showSnackbar(state.message,duration=SnackbarDuration.Long)
+    }
     LaunchedEffect(state.removed) {state.removed?.let {entry->
         if(snackbar.showSnackbar("Удалено из локальной библиотеки","Отменить",duration=SnackbarDuration.Long)==SnackbarResult.ActionPerformed) model.undo(entry,state.removedBookmarks) else model.clearUndo()
     }}
@@ -340,7 +343,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     Text(title,modifier=Modifier.testTag("detail-title"),fontSize=if(tv) 40.sp else if(m!=null) 32.sp else 24.sp,lineHeight=if(tv) 48.sp else if(m!=null) 38.sp else 30.sp,fontWeight=FontWeight.Bold,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=if(hasArt) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface)
                     Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp)
                     if(tv) WatchTheme(if(hasArt)"dark" else s.config.theme) {Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
+                        Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null) model.resume(saved) else choose()}
                         if(saved!=null) Action("Раздачи",true,Modifier.testTag("detail-sources"),secondary=true,onClick=choose)
                     }}
                 }
@@ -350,7 +353,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 Text(title,fontSize=28.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold)
                 Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: r!!.resolution,color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=13.sp)
                 Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Action(saved?.let {"Продолжить · ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
+                    Action(saved?.let {"Продолжить · ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null) model.resume(saved) else choose()}
                     if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources")) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
                 }
             }
@@ -369,7 +372,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             }
         }
         if(!tv&&!compact) Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {bottomHeight=it.height}.background(MaterialTheme.colorScheme.background).padding(20.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),enabled=!s.busy,icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
+            Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),enabled=!s.busy,icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null) model.resume(saved) else choose()}
             if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources").background(MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
         }
     }

@@ -58,6 +58,18 @@ class IssueRegressionsTest {
         assertEquals("Фильм",libraryTitles(records,emptyMap()).single().entry.title)
         assertEquals(2,libraryTitles(records+LibraryEntry("unknown","Без каталога","tracker",4),emptyMap()).size)
     }
+    @Test fun syncedProgressReconstructsReleaseWithoutPrivateUrls() {
+        val hash="08ada5a7a6183aae1e09d831df6748d566095a10"
+        val path="Season 2/Show.S02E03.mkv"
+        val saved=Progress(contentKey(hash,path,12345),"release",17,path,4000,12000,1,false)
+        val release=saved.resumeRelease("Show","History")!!
+        assertEquals(saved.releaseId,release.id)
+        assertEquals("magnet:?xt=urn:btih:$hash",release.magnet)
+        assertEquals(hash,release.hash)
+        assertNull(saved.copy(key="release|$path").resumeRelease("Show","History"))
+        assertNull(saved.copy(path="different.mkv").resumeRelease("Show","History"))
+        assertNull(saved.copy(key="$hash|$path|-1").resumeRelease("Show","History"))
+    }
     @Test fun historyEpisodeLabelUsesSavedFile() {
         fun label(path:String)=Progress("key","release",1,path,1000,2000,1,false).episodeLabel()
         assertEquals("Сезон 2 · Серия 3",label("Show.S02E03.mkv"))

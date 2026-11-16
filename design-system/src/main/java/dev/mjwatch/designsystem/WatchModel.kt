@@ -170,13 +170,17 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun resume(saved:Progress) {
         android.util.Log.d("MJWatch","Resume requested")
         if(state.value.busy) return
-        cancel();val token=generation;val context=state.value.selectedMetadata;val focus=state.value.focusKey
+        cancel();val token=generation;val c=state.value.config;val context=state.value.selectedMetadata;val focus=state.value.focusKey
         update {it.copy(busy=true,message="")}
         work=viewModelScope.launch {
             try {
-                val raw=withContext(Dispatchers.IO) {secrets.get("release:${state.value.config.scope}:${saved.releaseId}")}
-                require(raw.isNotBlank()) {"Сохранённая раздача недоступна. Выберите другую."}
-                if(token==generation) {open(releaseFromJson(raw),focusKey=focus,metadata=context);update {it.copy(resumePath=saved.path)};android.util.Log.d("MJWatch","Resume staged");prepare()}
+                val release=withContext(Dispatchers.IO) {
+                    val raw=secrets.get("release:${c.scope}:${saved.releaseId}")
+                    raw.takeIf {it.isNotBlank()}?.let {runCatching {releaseFromJson(it)}.getOrNull()}
+                        ?: saved.resumeRelease(context?.title ?: state.value.selected?.title ?: saved.releaseId,"История просмотра")
+                }
+                checkNotNull(release) {"Сохранённая раздача недоступна. Выберите другую."}
+                if(token==generation) {open(release,focusKey=focus,metadata=context);update {it.copy(resumePath=saved.path)};android.util.Log.d("MJWatch","Resume staged");prepare()}
             } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
         }
     }

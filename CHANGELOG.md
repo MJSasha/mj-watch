@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.7
+
+- Resume synced series when the device has no local release URL: reconstruct the magnet from the validated torrent hash/path/size identity in saved progress, then resume the exact episode and position. Existing private links remain preferred.
+- Show loading in the continue button and a visible detail-screen error when an old record cannot be restored, instead of silently doing nothing.
+- Add phone and TV regressions for normal resume, missing local links and unavailable legacy records.
+
 ## 0.8.6
 
 - Show the saved season and episode in history and continue-watching cards (issue #14).
