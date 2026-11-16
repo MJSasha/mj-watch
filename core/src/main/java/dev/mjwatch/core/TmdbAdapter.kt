@@ -6,13 +6,27 @@ import okhttp3.Request
 import org.json.JSONObject
 /** TMDB API v3. Receives only title queries; no release URLs or tracker credentials. */
 class TmdbAdapter(private val token:String,private val client:OkHttpClient):MetadataAdapter {
-    private suspend fun request(path:String,query:String?=null):List<Metadata> {
+    private suspend fun request(path:String,query:String?=null,section:CatalogSection?=null,kind:String?=null):List<Metadata> {
         val url=endpoint("https://api.themoviedb.org").child("3/$path").newBuilder().addQueryParameter("language","ru-RU")
-            .apply {if(query!=null) addQueryParameter("query",query).addQueryParameter("include_adult","false")}.build()
-        return parse(String(client.bytes(Request.Builder().url(url).header("Authorization","Bearer $token").build())))
+            .apply {if(query!=null) addQueryParameter("query",query).addQueryParameter("include_adult","false")}
+            .apply {
+                if(section!=null) {
+                    addQueryParameter("include_adult","false");addQueryParameter("sort_by","popularity.desc")
+                    if(section in setOf(CatalogSection.MOVIES,CatalogSection.SERIES))addQueryParameter("without_genres","16")
+                    else addQueryParameter("with_genres","16")
+                    if(section==CatalogSection.ANIME)addQueryParameter("with_original_language","ja")
+                }
+            }.build()
+        return parse(String(client.bytes(Request.Builder().url(url).header("Authorization","Bearer $token").build())),kind)
     }
     override suspend fun search(query:String)=request("search/multi",query)
     override suspend fun home()=request("trending/all/week")
+    override suspend fun browse(section:CatalogSection):List<Metadata> = when(section) {
+        CatalogSection.FOR_YOU->home()
+        CatalogSection.MOVIES->request("discover/movie",section=section,kind="movie")
+        CatalogSection.SERIES->request("discover/tv",section=section,kind="tv")
+        else->(request("discover/movie",section=section,kind="movie")+request("discover/tv",section=section,kind="tv")).distinctBy {it.id}
+    }
     override suspend fun details(id:String):Metadata? {
         require(id.matches(Regex("tmdb:(movie|tv):[0-9]+")))
         val (_,kind,number)=id.split(':')
@@ -21,9 +35,9 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
         return parse(JSONObject().put("results",org.json.JSONArray().put(item)).toString()).singleOrNull()
     }
     companion object {
-        fun parse(raw:String):List<Metadata> {
+        fun parse(raw:String,defaultKind:String?=null):List<Metadata> {
             val results=JSONObject(raw).getJSONArray("results");require(results.length()<=500)
-            return (0 until results.length()).mapNotNull {i -> val item=results.getJSONObject(i);val kind=item.optString("media_type")
+            return (0 until results.length()).mapNotNull {i -> val item=results.getJSONObject(i);val kind=item.optString("media_type").ifBlank {defaultKind.orEmpty()}
                 if(kind !in setOf("movie","tv")) null else {
                     fun image(key:String)=item.optString(key).takeIf {it.startsWith('/')&&it.length<1024}?.let {"https://image.tmdb.org/t/p/${if(key=="backdrop_path") "w1280" else "w500"}$it"}
                     val genreIds=item.optJSONArray("genre_ids")
@@ -49,7 +63,7 @@ class MetadataRepository(private val adapter:MetadataAdapter,private val dao:Wat
         return adapter.details(id)?.also {dao.put(CachedMetadata(key,it.json(),System.currentTimeMillis()))}
     }
     suspend fun search(query:String)=load("${if(namespace.isBlank()) "" else "$namespace:"}search:$query") {adapter.search(query)}
-    suspend fun home(force:Boolean=false)=load("${if(namespace.isBlank()) "" else "$namespace:"}home",force) {adapter.home()}
+    suspend fun home(force:Boolean=false,section:CatalogSection=CatalogSection.FOR_YOU)=load("${if(namespace.isBlank()) "" else "$namespace:"}home${if(section==CatalogSection.FOR_YOU)"" else ":${section.key}"}",force) {adapter.browse(section)}
     private suspend fun load(query:String,force:Boolean=false,request:suspend ()->List<Metadata>):MetadataResult {
         val row=dao.metadata("query:$query")
         if(!force&&row!=null&&System.currentTimeMillis()-row.updatedAt<86_400_000) return MetadataResult(dao.cachedMetadata(query),true)

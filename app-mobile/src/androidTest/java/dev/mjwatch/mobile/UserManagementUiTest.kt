@@ -77,6 +77,7 @@ class UserManagementUiTest {
         Assert.assertEquals(original,controller.state.value.invitations[id])
         shot("named-invitation")
         compose.runOnIdle {model.back()}
+        shot("user-overview")
         compose.onNodeWithText("Устройства $name").performClick()
         compose.waitUntil(10000){controller.state.value.devices[id]!=null&&!controller.state.value.busy}
         compose.onNodeWithText("Устройств пока нет").assertExists()

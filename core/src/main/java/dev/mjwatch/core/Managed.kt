@@ -107,6 +107,11 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
  }}}
  override suspend fun search(query:String)=parse(api.authorized("metadata/search?query="+java.net.URLEncoder.encode(query,"UTF-8")))
  override suspend fun home()=parse(api.authorized("metadata/home"))
+ override suspend fun browse(section:CatalogSection):List<Metadata> {
+  val response=api.authorized("metadata/home?category=${section.key}")
+  check(section==CatalogSection.FOR_YOU||response.optString("category")==section.key){"Для разделов каталога обновите сервер MJWatch в разделе «Управление сервером»."}
+  return parse(response)
+ }
  override suspend fun details(id:String):Metadata? {
   require(id.matches(Regex("tmdb:(movie|tv):[0-9]+")))
   val (_,kind,number)=id.split(':')

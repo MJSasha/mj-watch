@@ -249,6 +249,16 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			q.Set("include_adult", "false")
 		case path == "metadata/home":
 			api = "trending/all/week"
+			category := r.URL.Query().Get("category")
+			switch category {
+			case "", "all":
+			case "movies", "series", "anime", "cartoons":
+				api = "catalog/" + category
+			default:
+				fail(w, 400, "invalid_category")
+				return
+			}
+			q.Set("category", category)
 		case detailPath.MatchString(path):
 			api = strings.ReplaceAll(strings.ReplaceAll(strings.TrimPrefix(path, "metadata/"), "/seasons/", "/season/"), "/episodes/", "/episode/")
 		default:
@@ -293,7 +303,12 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			fail(w, 409, "credential_missing")
 			return
 		}
-		data, mime, status, e = s.tmdbRequest(r.Context(), api, q, credential)
+		if strings.HasPrefix(api, "catalog/") {
+			data, mime, status, e = s.catalogRequest(r.Context(), strings.TrimPrefix(api, "catalog/"), q.Get("language"), credential)
+		} else {
+			q.Del("category")
+			data, mime, status, e = s.tmdbRequest(r.Context(), api, q, credential)
+		}
 	}
 	if e != nil {
 		if status == 429 {

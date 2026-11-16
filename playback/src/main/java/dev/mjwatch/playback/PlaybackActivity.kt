@@ -145,7 +145,7 @@ class PlaybackActivity : ComponentActivity() {
         val names=mutableListOf("Субтитры выключены"); val choices=mutableListOf<Pair<Tracks.Group,Int>?>(null)
         player.currentTracks.groups.filter { it.type==C.TRACK_TYPE_AUDIO || it.type==C.TRACK_TYPE_TEXT }.forEach { group ->
             for(i in 0 until group.length) if(group.isTrackSupported(i)) {
-                val f=group.getTrackFormat(i); names+="${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${f.label ?: f.language ?: "Не указано"}${if(group.isTrackSelected(i)) " ✓" else ""}"; choices+=group to i
+                val f=group.getTrackFormat(i); names+="${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${trackName(f.label,f.language)}${if(group.isTrackSelected(i)) " ✓" else ""}"; choices+=group to i
             }
         }
         panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
@@ -186,4 +186,9 @@ class PlaybackActivity : ComponentActivity() {
         }
         return super.dispatchKeyEvent(event)
     }
+}
+
+internal fun trackName(label:String?,language:String?):String {
+    val name=language?.takeIf {it.isNotBlank()&&it!="und"}?.let {java.util.Locale.forLanguageTag(it).getDisplayLanguage(java.util.Locale.forLanguageTag("ru"))}?.takeIf {it.isNotBlank()}
+    return listOfNotNull(label?.takeIf {it.isNotBlank()&&it!="und"},name).distinct().joinToString(" · ").ifBlank {"язык не указан"}
 }

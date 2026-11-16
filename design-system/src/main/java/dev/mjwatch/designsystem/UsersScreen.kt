@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -38,8 +39,16 @@ private data class UserConfirmation(val title:String,val body:String,val button:
         modifier=Modifier.bringIntoViewRequester(location).testTag("operation-message").semantics {liveRegion=if(error)LiveRegionMode.Assertive else LiveRegionMode.Polite})
 }
 @Composable private fun UserHeading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable private fun DangerAction(text:String,tv:Boolean,enabled:Boolean=true,action:()->Unit) {
-    TextButton(onClick=action,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(tv),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){Text(text)}
+@Composable private fun DangerAction(text:String,tv:Boolean,enabled:Boolean=true,description:String="",action:()->Unit) {
+    Surface(onClick=action,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp).tvFocusRing(tv),color=MaterialTheme.colorScheme.surface) {
+        Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Outlined.WarningAmber,null,tint=MaterialTheme.colorScheme.error.copy(alpha=if(enabled)1f else .38f))
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text(text,color=MaterialTheme.colorScheme.error.copy(alpha=if(enabled)1f else .38f))
+                if(description.isNotBlank())Text(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 @Composable internal fun UsersScreen(s:WatchState,model:WatchModel,tv:Boolean) {
@@ -63,6 +72,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
         val scroll=rememberLazyListState()
         Column(Modifier.fillMaxHeight().padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             UserHeading("Пользователи"+(if(current.loaded)" · ${current.users.size}" else ""))
+            Text("Выберите человека, чтобы пригласить его, посмотреть устройства или изменить доступ.",color=MaterialTheme.colorScheme.onSurfaceVariant)
             Action("Добавить пользователя",tv,Modifier.fillMaxWidth(),enabled=!current.busy,icon=Icons.Outlined.PersonAdd){controller.clearMessage();model.page("server-user-create")}
             Action("Обновить список",tv,secondary=true,enabled=!current.busy){controller.load()}
             if(current.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -138,22 +148,34 @@ private data class UserConfirmation(val title:String,val body:String,val button:
             }
             else->if(user==null) {Text("Выберите пользователя из списка.");if(!current.loaded)Text("Загружаем пользователей…")}
             else {
-                UserHeading(user.name)
-                Text(user.roleLabel+if(user.id==s.config.userId)" · Это вы" else "")
-                Text(if(user.blocked)"Доступ заблокирован" else "Доступ разрешён")
+                SettingsGroup(tv) {
+                    Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Outlined.Person,null,Modifier.size(32.dp),tint=MaterialTheme.colorScheme.primary)
+                        UserHeading(user.name)
+                        Text(user.roleLabel+if(user.id==s.config.userId)" · Это вы" else "",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if(user.blocked)"Доступ заблокирован" else "Доступ разрешён",fontWeight=FontWeight.Medium)
+                    }
+                }
                 OperationMessage(message,current.error)
-                if(user.role=="user")Action("Приглашение для ${user.name}",tv,secondary=true){controller.clearMessage();model.page("server-user-invite")}
-                Action("Устройства ${user.name}",tv,secondary=true){controller.clearMessage();model.page("server-user-devices")}
+                Text("Вход и устройства",fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
+                SettingsGroup(tv) {
+                    if(user.role=="user") {
+                        SettingsActionRow(Icons.Outlined.MailOutline,"Приглашение для ${user.name}","Получить и отправить одноразовое приглашение для входа",tv){controller.clearMessage();model.page("server-user-invite")}
+                        SettingsDivider()
+                    }
+                    SettingsActionRow(Icons.Outlined.Devices,"Устройства ${user.name}","Посмотреть подключения и отключить отдельное устройство",tv){controller.clearMessage();model.page("server-user-devices")}
+                }
                 Spacer(Modifier.height(8.dp));Text("Управление доступом",fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
+                Text("Эти действия влияют на вход пользователя. Перед выполнением появится подтверждение.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 val protected=isLastAdmin(user,current.users)
                 if(protected)Text("Это последний администратор сервера. Его нельзя заблокировать или удалить.")
-                DangerAction("Отозвать все устройства ${user.name}",tv,enabled=!current.busy){confirm("Отключить все устройства ${user.name}?","Все сеансы будут отозваны. Для просмотра потребуется повторный вход.","Отключить все"){controller.revokeDevices(user.id)}}
-                DangerAction(if(user.blocked)"Разблокировать ${user.name}" else "Заблокировать ${user.name}",tv,enabled=current.loaded&&!current.busy&&!protected){
+                DangerAction("Отозвать все устройства ${user.name}",tv,enabled=!current.busy,description="Выйти из аккаунта на всех устройствах. История сохранится."){confirm("Отключить все устройства ${user.name}?","Все сеансы будут отозваны. Для просмотра потребуется повторный вход.","Отключить все"){controller.revokeDevices(user.id)}}
+                DangerAction(if(user.blocked)"Разблокировать ${user.name}" else "Заблокировать ${user.name}",tv,enabled=current.loaded&&!current.busy&&!protected,description=if(user.blocked)"Снова разрешить вход на сервер." else "Временно запретить вход. История сохранится."){
                     confirm(if(user.blocked)"Разблокировать ${user.name}?" else "Заблокировать ${user.name}?",
                         if(user.blocked)"Пользователь снова сможет войти. Прежние сеансы не восстанавливаются." else "${user.name} не сможет входить на сервер. Доступ устройств будет отозван. История сохранится. После разблокировки понадобится повторный вход.",
                         if(user.blocked)"Разблокировать" else "Заблокировать"){controller.changeAccess(user)}
                 }
-                DangerAction("Удалить ${user.name}",tv,enabled=current.loaded&&!current.busy&&!protected){confirm("Удалить ${user.name}?","Будут удалены аккаунт и его история, доступ устройств будет отозван. Сохранённые на устройствах офлайн-данные удалённо не стираются. Отменить удаление нельзя.","Удалить ${user.name}"){controller.changeAccess(user,delete=true){model.page("server-users")}}}
+                DangerAction("Удалить ${user.name}",tv,enabled=current.loaded&&!current.busy&&!protected,description="Удалить аккаунт и его историю без возможности восстановления."){confirm("Удалить ${user.name}?","Будут удалены аккаунт и его история, доступ устройств будет отозван. Сохранённые на устройствах офлайн-данные удалённо не стираются. Отменить удаление нельзя.","Удалить ${user.name}"){controller.changeAccess(user,delete=true){model.page("server-users")}}}
             }
         }
     }}

@@ -89,13 +89,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 }
             }}) {padding->
                 Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).imePadding()) {
-                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(88f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
                         Spacer(Modifier.height(if(tv) 24.dp else 28.dp))
                         railItems.forEach {d->
                             if(d.id=="settings") Spacer(Modifier.weight(1f))
                             val selected=if(state.page.startsWith("settings-")||state.page=="connections") d.id=="settings" else state.page==d.id||(!top&&state.originPage==d.id)
-                            RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).size(48.dp).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
+                            RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(if(tv) Modifier.size(width=tvUnit(96f),height=72.dp) else Modifier.size(48.dp)).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
                         }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -110,7 +110,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
                         val edge=state.page in setOf("home","detail")||state.page=="releases"&&!tv||state.page=="settings"&&!state.configured
-                        Box(Modifier.weight(1f).fillMaxWidth().then(if(edge) Modifier else Modifier.padding(horizontal=inset))) {
+                        val screenFocus=remember {FocusRequester()}
+                        LaunchedEffect(state.page,tv) {
+                            if(tv&&state.page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
+                        }
+                        Box(Modifier.weight(1f).fillMaxWidth().focusRequester(screenFocus).focusGroup().then(if(edge) Modifier else Modifier.padding(horizontal=inset))) {
                             saved.SaveableStateProvider(state.page+when(state.page) {"detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases"->state.query+":${state.releaseSeason}:${state.releaseEpisode}";"files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}";else->""}) {
                                 when(state.page) {
                                     "home"->HomeScreen(state,titles,progress,model,tv)
@@ -151,7 +155,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
     val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=if(!enabled) colors.onSurface.copy(alpha=.38f) else if(secondary) colors.onSurface else colors.onPrimary);Text(text,fontSize=16.sp,fontWeight=FontWeight.Medium,color=if(!enabled) colors.onSurface.copy(alpha=.38f) else if(secondary) colors.onSurface else colors.onPrimary)}}
-    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(26.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.primary else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary),inset=(-4).dp,shape=RoundedCornerShape(26.dp)))) {content()}
+    if(tv) androidx.tv.material3.Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=48.dp),shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(26.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary,focusedContainerColor=if(secondary) colors.primaryContainer else colors.primary,focusedContentColor=if(secondary) colors.primary else colors.onPrimary),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(3.dp,colors.onSurface),inset=(-6).dp,shape=RoundedCornerShape(26.dp)))) {content()}
     else Button(onClick=onClick,enabled=enabled,modifier=modifier.heightIn(min=52.dp),shape=RoundedCornerShape(26.dp),colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surfaceContainerHigh else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)) {content()}
 }
 @Composable private fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
@@ -179,24 +183,24 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 @Composable private fun HomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
-    var category by rememberSaveable {mutableStateOf("Для вас")};var featured by remember {mutableStateOf<Metadata?>(null)}
-    val catalogue=s.catalog.filter {m->when(category) {"Фильмы"->m.kind=="movie"&&!m.animation;"Аниме"->m.animation&&m.originalLanguage=="ja";"Мультфильмы"->m.animation&&m.originalLanguage!=null&&m.originalLanguage!="ja";else->true}}
+    val category=s.catalogSection.label;var featured by remember(s.catalogSection) {mutableStateOf<Metadata?>(null)}
+    val catalogue=s.catalog
     val hero=catalogue.firstOrNull {it.id==featured?.id} ?: catalogue.firstOrNull()
     val cinematic=hero!=null||s.config.demo
     val inset=if(tv) tvUnit(40f) else 20.dp
     val heroFocus=remember {FocusRequester()}
     LaunchedEffect(s.focusKey,cinematic) {if(tv&&cinematic&&(s.focusKey.isEmpty()||s.focusKey.startsWith("hero:"))) {delay(100);heroFocus.requestFocus()}}
-    Box(Modifier.fillMaxSize()) {
+    WatchTheme(if(tv&&cinematic) "dark" else s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if(tv&&cinematic) Box(Modifier.fillMaxWidth().height(tvUnit(475f))) {Artwork(hero,s.config,Modifier.fillMaxSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.fillMaxSize(),true);ArtScrim(Modifier.fillMaxSize())}
         LazyColumn(Modifier.testTag("home-list"),verticalArrangement=Arrangement.spacedBy(if(tv) 12.dp else 16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
                 if(tv) {
-                    Box(Modifier.fillMaxWidth().heightIn(min=tvUnit(390f)).padding(horizontal=inset)) {
+                    Box(Modifier.fillMaxWidth().heightIn(min=tvUnit(if(cinematic)390f else 100f)).padding(horizontal=inset)) {
                         Row(Modifier.fillMaxWidth().padding(top=tvUnit(30f)),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                            WatchTabs(listOf("Для вас","Фильмы","Аниме","Мультфильмы"),category,true) {category=it}
+                            WatchTabs(CatalogSection.entries.map {it.label},category,true) {label->model.catalogSection(CatalogSection.entries.first {it.label==label})}
                             if(s.config.demo) Badge("ДЕМО",true)
                         }
-                        Column(Modifier.align(Alignment.BottomStart).padding(bottom=tvUnit(26f)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        if(cinematic)Column(Modifier.align(Alignment.BottomStart).padding(bottom=tvUnit(26f)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "ВАШ СЛЕДУЮЩИЙ ВЕЧЕР",fontSize=11.sp,letterSpacing=1.4.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(hero?.title ?: "Тихая орбита",fontSize=40.sp,lineHeight=48.sp,fontWeight=FontWeight.Bold)
                             Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -208,8 +212,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     }
                 } else {
                     Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("Для вас","Фильмы","Аниме","Мультфильмы").forEach {label->Pill(label,category==label) {category=label}}}
-                        Box(Modifier.fillMaxWidth().heightIn(min=374.dp).clip(RoundedCornerShape(24.dp))) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
+                        if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=374.dp).clip(RoundedCornerShape(24.dp))) {
                             Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.matchParentSize())
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",fontSize=11.sp,letterSpacing=1.5.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
@@ -221,8 +225,16 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     }
                 }
             }
-            if(!cinematic) item {Box(Modifier.padding(horizontal=inset)) {Empty("Кино. На вашем экране.","Найдите раздачу по названию. Каталог и постеры можно подключить в настройках.",tv,"Поиск раздач") {model.page("search")}}}
+            if(!cinematic&&s.config.metadataProvider!="tmdb") item {Box(Modifier.padding(horizontal=inset)) {Empty("Кино. На вашем экране.","Найдите раздачу по названию. Каталог и постеры можно подключить в настройках.",tv,"Поиск раздач") {model.page("search")}}}
             if(s.catalogBusy&&s.catalog.isEmpty()&&!s.config.demo) item {Box(Modifier.padding(horizontal=inset).fillMaxWidth().height(240.dp).background(MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp)),contentAlignment=Alignment.Center) {CircularProgressIndicator()}}
+            if(!s.catalogBusy&&catalogue.isEmpty()&&s.config.metadataProvider=="tmdb"&&!s.config.demo) item {
+                Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Heading(if(s.catalogMessage.isNotBlank())"Не удалось загрузить раздел" else "В разделе пока нет карточек")
+                    Text("Раздел «$category». Попробуйте обновить каталог или найдите название через поиск.")
+                    Action("Обновить раздел",tv){model.refreshCatalog(true)}
+                    Action("Поиск",tv,secondary=true){model.page("search")}
+                }
+            }
             val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
             if(continuing.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle(if(tv) "Продолжить просмотр" else "Продолжить",if(tv) "Вся история" else "") {model.page("history")}}}
@@ -242,7 +254,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(tv) item {Text("OK · Открыть     Удерживать OK · Действия",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth().padding(horizontal=inset),textAlign=androidx.compose.ui.text.style.TextAlign.End)}
         }
     }
-}
+}}}
 @Composable private fun SearchScreen(s:WatchState,model:WatchModel,tv:Boolean,listState:LazyListState) {
     val keyboard=LocalSoftwareKeyboardController.current
     val fieldFocus=remember {FocusRequester()}
@@ -320,10 +332,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 if(!compact) Column(Modifier.padding(inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text(title,modifier=Modifier.testTag("detail-title"),fontSize=if(tv) 40.sp else if(m!=null) 32.sp else 24.sp,lineHeight=if(tv) 48.sp else if(m!=null) 38.sp else 30.sp,fontWeight=FontWeight.Bold,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=if(hasArt) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface)
                     Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp)
-                    if(tv) Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    if(tv) WatchTheme(if(hasArt)"dark" else s.config.theme) {Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow) {if(saved!=null) model.resume(saved) else choose()}
                         if(saved!=null) Action("Раздачи",true,Modifier.testTag("detail-sources"),secondary=true,onClick=choose)
-                    }
+                    }}
                 }
             }
             }
@@ -355,6 +367,15 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
+@Composable private fun ReleaseFilterChoices(title:String,options:List<String>,selected:String,tv:Boolean,onSelect:(String)->Unit) {
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text(title,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            options.forEach {label->Pill(if(label=="2160p")"4K" else label,selected==label,tv){onSelect(label)}}
+        }
+    }
+}
+
 @Composable private fun ReleasesScreen(s:WatchState,model:WatchModel,tv:Boolean) {
     if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Ищем раздачи…");Action("Отменить",tv) {model.back()}};return}
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
@@ -375,33 +396,37 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             when(seeds) {"Есть сиды" -> r.seeds?.let {it>0}==true;"0 сидов" -> r.seeds==0;"Сиды не указаны" -> r.seeds==null;else -> true}&&
             when(language) {"Русский (название)" -> russian;"Русский не указан" -> !russian;else -> true}
     }
-    if(filters) AlertDialog(onDismissRequest={filters=false},title={Text("Фильтры")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text("Качество");listOf("Все","2160p","1440p","1080p","1080i","720p","576p","480p","360p","Не указано").forEach {label->Pill(label,filter==label,tv){filter=label}}
-        if(seasons.isNotEmpty()) {Text("Сезон");Pill("Все сезоны",season==null,tv){season=null};seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number}}}
-        Text("Озвучка по названию");Pill("Любая озвучка",voice==null,tv){voice=null};voices.forEach {label->Pill(label,voice==label,tv){voice=label}}
-        if(voices.isEmpty())Text("Источник не указал распознаваемую озвучку. Дорожки можно проверить в плеере.")
-        Text("Источник");(listOf("Все источники")+candidates.map {it.source}.distinct()).forEach {label->Pill(label,source==label,tv) {source=label}}
-        Text("Сиды");listOf("Любые сиды","Есть сиды","0 сидов","Сиды не указаны").forEach {label->Pill(label,seeds==label,tv) {seeds=label}}
-        Text("Язык по названию");listOf("Любой язык","Русский (название)","Русский не указан").forEach {label->Pill(label,language==label,tv) {language=label}}
-    }},confirmButton={TextButton(onClick={filters=false}) {Text("Готово")}})
+    val activeFilters=listOf(filter!="Все",season!=null,voice!=null,source!="Все источники",seeds!="Любые сиды",language!="Любой язык").count {it}
+    fun resetFilters() {filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"}
+    if(filters) AlertDialog(onDismissRequest={filters=false},title={Text("Фильтры раздач")},text={
+        Column(Modifier.heightIn(max=440.dp).verticalScroll(rememberScrollState()).testTag("release-filters"),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+            ReleaseFilterChoices("Качество",listOf("Все")+candidates.map {it.resolution}.distinct().sorted(),filter,tv){filter=it}
+            if(seasons.isNotEmpty())ReleaseFilterChoices("Сезон",listOf("Все сезоны")+seasons.map {"Сезон $it"},season?.let {"Сезон $it"} ?: "Все сезоны",tv){label->season=seasons.firstOrNull {"Сезон $it"==label}}
+            if(voices.isNotEmpty())ReleaseFilterChoices("Озвучка",listOf("Любая озвучка")+voices,voice ?: "Любая озвучка",tv){voice=it.takeUnless {it=="Любая озвучка"}}
+            ReleaseFilterChoices("Источник",listOf("Все источники")+candidates.map {it.source}.distinct(),source,tv){source=it}
+            ReleaseFilterChoices("Сиды",listOf("Любые сиды","Есть сиды","0 сидов","Сиды не указаны"),seeds,tv){seeds=it}
+            ReleaseFilterChoices("Язык",listOf("Любой язык","Русский (название)","Русский не указан"),language,tv){language=it}
+            Text("Озвучка и язык определены по названию раздачи. Точные дорожки доступны в плеере.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    },confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={filters=false}) {Text("Показать результаты (${releases.size})")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={resetFilters()}) {Text("Сбросить всё")}})
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!tv) Heading("Выберите раздачу")
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
             listOf("Все","1080p","2160p","720p","Не указано").forEach {label->Pill(if(label=="2160p") "4K" else label,filter==label,tv) {filter=label}}
-            IconButton(onClick={filters=true},modifier=Modifier.tvFocusRing(tv)) {Icon(Icons.Outlined.Tune,"Все фильтры")}
+        }
+        Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+            Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,secondary=true,icon=Icons.Outlined.Tune){filters=true}
+            if(activeFilters>0)TextButton(onClick={resetFilters()},modifier=Modifier.tvFocusRing(tv)){Text("Сбросить всё")}
         }
         if(seasons.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             Pill("Все сезоны",season==null,tv){season=null}
             seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number}}
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Pill(voice ?: "Любая озвучка",voice==null,tv){filters=true}
-            if(voice!=null)Pill("Сбросить озвучку",false,tv){voice=null}
-        }
+        if(voice!=null||source!="Все источники"||seeds!="Любые сиды"||language!="Любой язык")Text(listOfNotNull(voice,source.takeUnless {it=="Все источники"},seeds.takeUnless {it=="Любые сиды"},language.takeUnless {it=="Любой язык"}).joinToString(" · "),style=MaterialTheme.typography.bodySmall)
         Text("${releases.size} раздач · свойства указаны источником",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.weight(1f).testTag("release-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
             items(releases,key={it.id}) {r->ReleaseCard(r,tv,focus=tv&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season)}}
-            if(releases.isEmpty()) item {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"}}
+            if(releases.isEmpty()) item {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}
         }
         val selected=releases.firstOrNull {it.id==selectedId}
         if(!tv&&selected!=null) Action("Смотреть · ${selected.resolution}",false,Modifier.fillMaxWidth().padding(bottom=16.dp).testTag("source-continue"),icon=Icons.Outlined.PlayArrow) {model.playRelease(selected,season)}
@@ -459,10 +484,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number;episode=null;selection=null}}
             }
             if(episode!=null)Pill("Серия $episode · показать все серии",true,tv){episode=null;selection=null}
+            if(tv)Text("OK — выбрать серию · повторный OK — смотреть",color=MaterialTheme.colorScheme.onSurfaceVariant)
             Pill("Все файлы и sample",showAll,tv) {showAll=!showAll}
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
                 if(visibleFiles.isEmpty())item {Text("Нет файлов для выбранного сезона или серии. Покажите все сезоны и серии.")}
-                items(visibleFiles,key={it.serverFileId}) {f->FileCard(f,tv,selection==f.serverFileId,focus=tv&&f.serverFileId==(selection ?: visibleFiles.firstOrNull {it.video&&!it.sample}?.serverFileId)) {if(f.video) selection=f.serverFileId}}
+                items(visibleFiles,key={it.serverFileId}) {f->FileCard(f,tv,selection==f.serverFileId,focus=tv&&f.serverFileId==(selection ?: visibleFiles.firstOrNull {it.video&&!it.sample}?.serverFileId)) {if(f.video) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}}}
             }
             if(!tv) controls()
         }
@@ -682,6 +708,9 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     }
 }
 @Composable private fun PreparingScreen(s:WatchState,model:WatchModel,tv:Boolean) {
+    val recoveryFocus=remember {FocusRequester()}
+    val missingInput=s.message.contains("Нет magnet",ignoreCase=true)
+    LaunchedEffect(s.busy) {if(tv&&!s.busy){delay(150);recoveryFocus.requestFocus()}}
     var elapsed by remember {mutableIntStateOf(0)}
     LaunchedEffect(s.busy) {while(s.busy) {delay(1000);elapsed++}}
     val artwork:@Composable ()->Unit={Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(if(tv) 1.4f else 2f).clip(RoundedCornerShape(20.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)}
@@ -699,8 +728,8 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
             Text("Прошло $elapsed с. Подготовку можно отменить.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(!s.busy&&s.message.isNotBlank()) Text(s.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
-        if(!s.busy) {Icon(Icons.Outlined.CloudOff,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.error);Action("Повторить",tv,icon=Icons.Outlined.Refresh) {model.prepare()};Action("Подключения",tv,secondary=true,icon=Icons.Outlined.Settings) {model.page("connections")}}
-        Action(if(s.busy) "Отменить" else "К раздачам",tv,if(tv) Modifier else Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Close) {model.back()}
+        if(!s.busy) {Icon(Icons.Outlined.CloudOff,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.error);if(!missingInput)Action("Повторить",tv,Modifier.focusRequester(recoveryFocus),icon=Icons.Outlined.Refresh) {model.prepare()};Action("Подключения",tv,secondary=true,icon=Icons.Outlined.Settings) {model.page("connections")}}
+        Action(if(s.busy) "Отменить" else "К раздачам",tv,(if(tv&&missingInput) Modifier.focusRequester(recoveryFocus) else Modifier).then(if(tv) Modifier else Modifier.fillMaxWidth()),secondary=true,icon=Icons.Outlined.Close) {model.back()}
     }}
     if(tv) Row(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top=24.dp),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
         if(s.busy) {Box(Modifier.weight(1.1f)) {content()};Box(Modifier.weight(.9f)) {artwork()}} else {Box(Modifier.weight(.8f)) {artwork()};Box(Modifier.weight(1.2f)) {content()}}
@@ -744,6 +773,6 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)
-    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary)))) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current)}
+    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,colors.primary)))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
     else Surface(onClick=onClick,modifier=modifier.tvFocusRing(true,shape).semantics {this.selected=selected;role=Role.Tab},shape=shape,color=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Icon(icon,label,Modifier.size(24.dp))}}
 }

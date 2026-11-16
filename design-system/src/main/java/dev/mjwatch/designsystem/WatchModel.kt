@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.*
 import okhttp3.Credentials
 
 data class WatchState(val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
-    val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
+    val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
     val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     val updates=UpdateManager(app,viewModelScope)
@@ -88,12 +88,17 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         return (r to if(c.managed) ManagedGateway(ManagedApi(c,secrets),r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
     private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
+    fun catalogSection(section:CatalogSection) {
+        if(state.value.catalogSection==section)return
+        update {it.copy(catalogSection=section,catalog=emptyList(),focusKey="")}
+        refreshCatalog()
+    }
     fun refreshCatalog(force:Boolean=false) {
         catalogJob?.cancel()
         if(state.value.config.metadataProvider!="tmdb") {update {it.copy(catalog=emptyList(),catalogBusy=false,catalogMessage="")};return}
         update {it.copy(catalogBusy=true,catalogMessage="")}
         catalogJob=viewModelScope.launch {try {
-            val result=withContext(Dispatchers.IO) {metadataRepository().home(force)}
+            val result=withContext(Dispatchers.IO) {metadataRepository().home(force,state.value.catalogSection)}
             update {it.copy(catalog=result.items,catalogBusy=false,catalogMessage=if(result.cached) "Каталог из кеша" else "")}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
     }

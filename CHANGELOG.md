@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+- #8–9: add Series and load dedicated movie/TV/anime/animation collections instead of filtering the weekly trending page. Cache each section separately; preserve the selected section on Back. Managed categories require server 0.1.1 and explain the required update on older servers.
+- #10: group the user summary, invitation/device actions and access management, add icons and consequences, retain named confirmations and last-administrator protection.
+- #11: group release filters into wrapping choices with available qualities, a live result count, active-filter count and one reset action.
+- #12: separate TV timeline navigation from seeking, strengthen action focus, keep cinematic home readable in light theme, label the navigation rail, focus connection content, launch a selected file with a second OK, and replace `und` with a readable track label.
+
 ## 0.7.0
 
 - TV connects through an automatically generated QR, with no server address,
