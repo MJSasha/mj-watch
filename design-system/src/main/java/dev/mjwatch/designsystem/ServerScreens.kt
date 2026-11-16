@@ -120,8 +120,7 @@ import java.util.UUID
    }
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
-    Text(s.config.managedUrl);Text(if(managed.me?.optString("role")=="admin") "Администратор" else "Проверяем права")
-    managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")}?.let {data->Text("TorrServer: ${if(data.optBoolean("torrserverHealthy")) "работает" else "недоступен"}");Text("База: ${if(data.optBoolean("databaseHealthy")) "проверена" else "ошибка"} · Потоков: ${data.optInt("activeStreams")}")}
+    ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy)
     if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{

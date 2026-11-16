@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.*
 import coil.compose.AsyncImage
 import dev.mjwatch.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable internal fun tvUnit(value:Float):Dp=(value*LocalConfiguration.current.screenWidthDp/1280f).dp
 @Composable internal fun Wordmark() {
@@ -76,7 +78,23 @@ import kotlinx.coroutines.delay
 }
 @Composable internal fun NativeCard(tv:Boolean,modifier:Modifier=Modifier,selected:Boolean=false,onLongClick:(()->Unit)?=null,onClick:()->Unit,content:@Composable ()->Unit) {
     val shape=RoundedCornerShape(16.dp);val colors=MaterialTheme.colorScheme
-    if(tv) androidx.tv.material3.Card(onClick=onClick,onLongClick=onLongClick,modifier=modifier,scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=colors.primaryContainer),border=androidx.tv.material3.CardDefaults.border(focusedBorder=tvFocusBorder(16.dp))) {content()}
+    val scope=rememberCoroutineScope()
+    var remoteHeld by remember {mutableStateOf(false)}
+    var pendingLongClick by remember {mutableStateOf(false)}
+    val remoteModifier=if(tv&&onLongClick!=null) Modifier.onPreviewKeyEvent {event->
+        if(event.key !in listOf(Key.DirectionCenter,Key.Enter,Key.NumPadEnter)) false
+        else if(event.type==KeyEventType.KeyDown) {remoteHeld=true;false}
+        else if(event.type==KeyEventType.KeyUp) {
+            remoteHeld=false
+            if(pendingLongClick) {
+                pendingLongClick=false
+                // Let the card consume its release before a dialog takes focus.
+                scope.launch {withFrameNanos {};onLongClick()}
+            }
+            false
+        } else false
+    } else Modifier
+    if(tv) androidx.tv.material3.Card(onClick={if(!pendingLongClick)onClick()},onLongClick=onLongClick?.let {action->{if(remoteHeld)pendingLongClick=true else action()}},modifier=modifier.then(remoteModifier),scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=colors.primaryContainer),border=androidx.tv.material3.CardDefaults.border(focusedBorder=tvFocusBorder(16.dp))) {content()}
     else Card(modifier=modifier.combinedClickable(onClick=onClick,onLongClick=onLongClick),shape=shape,colors=CardDefaults.cardColors(containerColor=if(selected) colors.primaryContainer else colors.surface),border=if(selected) BorderStroke(1.dp,colors.primary) else null) {content()}
 }
 @Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false) {
@@ -133,5 +151,11 @@ internal object TVBringIntoView:androidx.compose.foundation.gestures.BringIntoVi
         offset<0f->offset
         offset+size>containerSize->offset+size-containerSize
         else->0f
+    }
+}
+
+@Composable internal fun LoadingIndicator(label:String,modifier:Modifier=Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical=16.dp),contentAlignment=Alignment.Center) {
+        CircularProgressIndicator(Modifier.size(28.dp).semantics {contentDescription=label},strokeWidth=3.dp)
     }
 }

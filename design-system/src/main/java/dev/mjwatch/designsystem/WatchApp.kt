@@ -233,7 +233,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 }
             }
             if(!cinematic&&s.config.metadataProvider!="tmdb") item {Box(Modifier.padding(horizontal=inset)) {Empty("Кино. На вашем экране.","Найдите раздачу по названию. Каталог и постеры можно подключить в настройках.",tv,"Поиск раздач") {model.page("search")}}}
-            if(s.catalogBusy&&s.catalog.isEmpty()&&!s.config.demo) item {Box(Modifier.padding(horizontal=inset).fillMaxWidth().height(240.dp).background(MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp)),contentAlignment=Alignment.Center) {CircularProgressIndicator()}}
+            if(s.catalogBusy&&s.catalog.isEmpty()&&!s.config.demo) item {LoadingIndicator("Загрузка каталога",Modifier.padding(horizontal=inset))}
             if(!s.catalogBusy&&catalogue.isEmpty()&&s.config.metadataProvider=="tmdb"&&!s.config.demo) item {
                 Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Heading(if(s.catalogMessage.isNotBlank())"Не удалось загрузить раздел" else "В разделе пока нет карточек")
@@ -273,7 +273,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide(); model.search(s.query)}),modifier=Modifier.fillMaxWidth().focusRequester(fieldFocus),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
-    if(s.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if(s.busy) LoadingIndicator("Поиск…")
     if(s.metadata.isNotEmpty()) WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
     LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
@@ -303,12 +303,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
     LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
     val modifier=Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus}
-    val content:@Composable ()->Unit={Column {
-        MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)))
-        Column(Modifier.padding(vertical=10.dp,horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,maxLines=2);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",color=MaterialTheme.colorScheme.onSurfaceVariant)}
-    }}
-    if(tv) androidx.tv.material3.Card(onClick=onClick,modifier=modifier,scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f),colors=androidx.tv.material3.CardDefaults.colors(containerColor=MaterialTheme.colorScheme.background,focusedContainerColor=MaterialTheme.colorScheme.background),border=androidx.tv.material3.CardDefaults.border(focusedBorder=androidx.tv.material3.Border(BorderStroke(2.dp,MaterialTheme.colorScheme.primary),inset=(-4).dp))) {content()}
-    else Card(onClick=onClick,modifier=modifier,colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.background)) {content()}
+    NativeCard(tv,modifier,onClick=onClick) {
+        Column {
+            MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)))
+            Column(Modifier.padding(vertical=10.dp,horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,maxLines=2);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        }
+    }
 }
 @Composable private fun DetailScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean,compact:Boolean=false) {
     val r=s.selected;val m=s.selectedMetadata
@@ -384,7 +384,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 }
 
 @Composable private fun ReleasesScreen(s:WatchState,model:WatchModel,tv:Boolean) {
-    if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Ищем раздачи…");Action("Отменить",tv) {model.back()}};return}
+    if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LoadingIndicator("Ищем раздачи…");Action("Отменить",tv,secondary=true) {model.back()}};return}
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
     var filter by rememberSaveable {mutableStateOf(preferences.getString("quality","Все") ?: "Все")}
     var selectedId by rememberSaveable {mutableStateOf(s.selected?.id)}
@@ -524,7 +524,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false) {
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
-    if(menu) AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text("Действие с записью библиотеки")},confirmButton={TextButton(onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Text(if(bookmarkOnly) "Убрать из избранного" else "Удалить из истории")}},dismissButton={TextButton(onClick={menu=false}) {Text("Отмена")}})
+    if(menu) {
+        val confirmFocus=remember {FocusRequester()}
+        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text("Действие с записью библиотеки")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};Action(if(bookmarkOnly) "Убрать из избранного" else "Удалить из истории",tv,Modifier.focusRequester(confirmFocus)) {model.remove(item.records,bookmarkOnly);menu=false}},dismissButton={Action("Отмена",tv,secondary=true) {menu=false}})
+    }
     val p=item.progress(progress)
     val cardState by model.state.collectAsState()
     val config=cardState.config
@@ -532,10 +535,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     NativeCard(tv,Modifier.fillMaxWidth(),onLongClick={menu=true},onClick={model.restore(e)}) {
         if(wide) Column {
             Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
-            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
+            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {p.episodeLabel()?.let {Text(it,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
         } else Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
             Artwork(metadata,config,Modifier.width(68.dp).height(88.dp).clip(RoundedCornerShape(10.dp)),demo=e.id.startsWith("demo:"))
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
+                p.episodeLabel()?.let {Text(it,fontSize=13.sp,color=MaterialTheme.colorScheme.primary)}
                 Text("${time(p.positionMs)}${p.durationMs?.let {" / ${time(it)}"} ?: ""}",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}
             }}
@@ -550,7 +554,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val filtered=entries.filter { e -> when(tab) { "Буду смотреть" -> e.entry.bookmarked; "Продолжить" -> e.entry.openedAt>0&&progress.any { it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0 }; else -> e.entry.openedAt>0 } }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         WatchTabs(listOf("Продолжить","Буду смотреть","История"),tab,tv) {tab=it}
-        LazyColumn(verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        LazyColumn(contentPadding=PaddingValues(8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
             items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,bookmarkOnly=tab=="Буду смотреть")}
         }

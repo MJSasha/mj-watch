@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.6
+
+- Show the saved season and episode in history and continue-watching cards (issue #14).
+- Use the shared external focus ring around TV poster cards, with stable focus and pressed bounds (issue #15).
+- Open TV library actions after OK is released, preserve the dialog and focus its explicit delete action (issue #16).
+- Replace the server overview text block with themed connection, role, health and active-stream cards (issue #17).
+- Replace the large catalog loading banner with a compact spinner and keep search feedback visible until all search work finishes (issue #18).
+
 ## 0.8.5
 
 - Add previous/next episode controls to the phone and TV players, including media remote keys. Use all playable files from the selected release in season/episode order, exclude samples, preserve server file IDs and save each episode separately.

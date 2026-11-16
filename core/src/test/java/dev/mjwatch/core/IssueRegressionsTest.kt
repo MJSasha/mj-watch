@@ -58,6 +58,13 @@ class IssueRegressionsTest {
         assertEquals("Фильм",libraryTitles(records,emptyMap()).single().entry.title)
         assertEquals(2,libraryTitles(records+LibraryEntry("unknown","Без каталога","tracker",4),emptyMap()).size)
     }
+    @Test fun historyEpisodeLabelUsesSavedFile() {
+        fun label(path:String)=Progress("key","release",1,path,1000,2000,1,false).episodeLabel()
+        assertEquals("Сезон 2 · Серия 3",label("Show.S02E03.mkv"))
+        assertEquals("Сезон 2 · Серия 10",label("Season 2/10.mkv"))
+        assertEquals("Серия 7",label("Серия 07.mp4"))
+        assertNull(label("Movie.2026.mkv"))
+    }
     @Test fun parserEditorPreservesManagedAccountAndHasUsableDefault() {
         val current=Config(connectionMode="managed",managedUrl="https://watch.example",serverId="server",userId="user",metadataProvider="tmdb")
         val saved=current.withSearchSettings(Config(jackett=" https://custom.example ",releaseApi="jacred"))

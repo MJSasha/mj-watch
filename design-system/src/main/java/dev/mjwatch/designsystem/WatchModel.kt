@@ -117,9 +117,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                 }
                 try {
                     val result=withContext(Dispatchers.IO) {repositories().first.search(query.trim())}
-                    if(token==generation) update {it.copy(results=result.releases,more=result.more,failures=result.failures,busy=false,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
+                    if(token==generation) update {it.copy(results=result.releases,more=result.more,failures=result.failures,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(message=safeError(e))}}
             }
+            if(token==generation) update {it.copy(busy=false)}
         }
     }
 
