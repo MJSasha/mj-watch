@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -28,9 +29,9 @@ import org.json.JSONObject
     }
 }
 
-@Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
-    val mobileTarget=s.page=="managed-mobile"
+@Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
     val controller=model.managed
+    val qr by controller.qr.phone.collectAsState()
     val raw by controller.state.collectAsState()
     val managed=raw.takeIf {it.scope==s.config.scope} ?: ManagedState()
     var confirm by remember(s.page) {mutableStateOf<Pair<String,()->Unit>?>(null)}
@@ -46,7 +47,14 @@ import org.json.JSONObject
         Text("Локальные история, избранное и неотправленные изменения аккаунта будут удалены. Данные на сервере сохранятся.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false;controller.logout(!keepData);model.page("connection-choice")}){Text("Выйти")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false}){Text("Отмена")}})
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        Text(when(s.page){"managed-devices"->"Мои устройства";"managed-mobile"->"Добавить телефон или планшет";"managed-tv"->"Добавить телевизор";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text(when(s.page){"managed-devices"->"Мои устройства";"managed-pairing"->"Подключить устройство";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})
+            if(scanQr!=null&&s.page in setOf("managed-account","managed-pairing")) FilledTonalIconButton(
+                onClick={model.page("managed-pairing");scanQr()},
+                enabled=!managed.busy&&qr.stage !in setOf("sending","waiting","approving"),
+                modifier=Modifier.size(48.dp)
+            ) {Icon(Icons.Outlined.QrCodeScanner,"Сканировать QR")}
+        }
         if(managed.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessage(managed.message)
         when(s.page) {
@@ -62,11 +70,9 @@ import org.json.JSONObject
                 }}}
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
-            "managed-tv","managed-mobile"->{
-                val qr by controller.qr.phone.collectAsState()
+            "managed-pairing"->{
                 DisposableEffect(Unit){onDispose{controller.qr.cancelPhone()}}
-                Text(if(mobileTarget) "На новом телефоне: Войти на сервер MJWatch → Войти по QR с другого устройства. Отсканируйте показанный QR. Адрес и сертификат передадутся автоматически." else "Откройте подключение MJWatch на TV и отсканируйте QR. Адрес и сертификат передадутся автоматически.")
-                if(scanTvQr!=null)Action(if(mobileTarget) "Сканировать QR нового устройства" else "Сканировать QR телевизора",tv,enabled=qr.stage !in setOf("sending","waiting","approving"),onClick=scanTvQr)
+                Text("Откройте QR входа на новом устройстве и отсканируйте его кнопкой вверху. Подходит для телевизора, телефона и планшета.")
                 if(qr.stage in setOf("sending","waiting","approving")) {
                     CircularProgressIndicator()
                     Text(when(qr.stage){"sending"->"Передаём настройки на устройство…";"approving"->"Подтверждаем устройство…";else->"На новом устройстве выберите «Подключить»."},modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
@@ -75,12 +81,12 @@ import org.json.JSONObject
                     Text("Устройство: ${qr.device}",fontWeight=FontWeight.Medium)
                     Text("Аккаунт: ${qr.account}")
                     val shown=qr
-                    Action(if(mobileTarget) "Подключить устройство" else "Подключить телевизор",tv){controller.qr.approvePhone(shown)}
+                    Action("Подключить устройство",tv){controller.qr.approvePhone(shown)}
                 }
                 OperationMessage(qr.message,error=qr.stage=="error")
-                if(qr.stage.isNotBlank()&&qr.stage!="approved")Action(if(mobileTarget) "Отменить подключение устройства" else "Отменить подключение TV",tv,secondary=true){controller.qr.cancelPhone()}
+                if(qr.stage.isNotBlank()&&qr.stage!="approved")Action("Отменить подключение",tv,secondary=true){controller.qr.cancelPhone()}
                 var legacy by rememberSaveable {mutableStateOf(false)}
-                if(!mobileTarget)Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
+                Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
                 if(legacy) {
                 var code by rememberSaveable {mutableStateOf("")}
                 val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->if(uri!=null)controller.exportTvSetup(uri)}
@@ -106,9 +112,7 @@ import org.json.JSONObject
                 Action("Синхронизировать",tv,enabled=!managed.busy){controller.syncNow()}
                 SettingsGroup(tv) {
                     SettingsActionRow(Icons.Outlined.Devices,"Мои устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
-                    SettingsDivider()
-                    SettingsActionRow(Icons.Outlined.Tv,"Добавить телевизор","Сканировать QR с экрана TV",tv){model.page("managed-tv")}
-                    if(scanTvQr!=null) {SettingsDivider();SettingsActionRow(Icons.Outlined.Smartphone,"Добавить телефон или планшет","Войти на новом устройстве по QR",tv){model.page("managed-mobile")}}
+                    if(scanQr==null) {SettingsDivider();SettingsActionRow(Icons.Outlined.DevicesOther,"Подключить устройство","По коду подключения",tv){model.page("managed-pairing")}}
                 }
                 val history by model.scopedLibrary.collectAsState()
                 managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->

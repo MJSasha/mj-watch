@@ -31,10 +31,10 @@ class QrCameraTest {
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(15000){model.state.value.config.historyEnabled}
         val before=runBlocking(Dispatchers.IO) {managedDevices(ManagedApi(model.state.value.config,model.secrets).authorized("devices")).map {it.id}.toSet()}
-        compose.runOnIdle {model.page("managed-tv")}
+        compose.runOnIdle {model.page("managed-pairing")}
         compose.onNodeWithText("Сохранить настройки TV").assertDoesNotExist()
         compose.onNodeWithText("Код телевизора").assertDoesNotExist()
-        compose.onNodeWithText("Сканировать QR телевизора").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Сканировать QR").performScrollTo().performClick()
         val i=InstrumentationRegistry.getInstrumentation();val device=UiDevice.getInstance(i)
         device.wait(Until.findObject(By.res("com.android.permissioncontroller:id/permission_allow_foreground_only_button")),6000)?.click()
         compose.waitUntil(150000){model.managed.qr.phone.value.stage in setOf("preview","error")}
@@ -42,7 +42,7 @@ class QrCameraTest {
         compose.onNodeWithText("Аккаунт: owner").assertExists()
         val dir=File(i.targetContext.getExternalFilesDir(null),"qr-proof").apply {mkdirs()}
         Assert.assertTrue(device.takeScreenshot(File(dir,"phone-preview.png")))
-        compose.onNodeWithText("Подключить телевизор").performScrollTo().performClick()
+        compose.onNodeWithText("Подключить устройство").performScrollTo().performClick()
         compose.waitUntil(15000){model.managed.qr.phone.value.stage in setOf("approved","error")}
         Assert.assertEquals(model.managed.qr.phone.value.message,"approved",model.managed.qr.phone.value.stage)
         runBlocking(Dispatchers.IO) {

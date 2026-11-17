@@ -6,7 +6,7 @@ default. It is an extension of the managed flow, not an existing T09 mockup.
 ## User flow
 
 Open managed connection on TV. A QR appears without entering a server address.
-On an authenticated phone: Account → Add TV → Scan QR. The phone's portrait
+On an authenticated phone: Account → scanner icon. The phone's portrait
 camera scanner reads the TV's one-time connection invitation. TV names the
 account and HTTPS origin and requires “Connect”. The phone then displays the
 actual device returned by the managed server and requires “Connect TV”. The TV
@@ -102,6 +102,12 @@ Build/lint/unit commands follow TV-PAIRING.md. Proof is stored under ignored
 
 ## Mobile sign-in (0.8.11)
 
-On the new phone/tablet choose **Войти на сервер MJWatch → Войти по QR с другого устройства**. Password/invitation sign-in remains the default. On an authenticated phone choose **Аккаунт → Добавить телефон или планшет → Сканировать QR нового устройства**. Both devices must share a private Wi-Fi/LAN with peer access. Accept the named account/server on the new device, then approve the server device preview on the authenticated phone. The new phone receives its own session through the existing protected pairing poll. No password or existing session token is copied. The QR expires after five minutes; refresh/rejection/Back close the prior inbox and stop polling.
+On the new phone/tablet choose **Войти на сервер MJWatch → Войти по QR с другого устройства**. Password/invitation sign-in remains the default. On an authenticated phone choose **Аккаунт → значок QR-сканера**. Both devices must share a private Wi-Fi/LAN with peer access. Accept the named account/server on the new device, then approve the server device preview on the authenticated phone. The new phone receives its own session through the existing protected pairing poll. No password or existing session token is copied. The QR expires after five minutes; refresh/rejection/Back close the prior inbox and stop polling.
 
 The QR protocol/URI remain compatible with the TV flow. Mobile uses a vertical QR layout and ordinary touch controls. Back returns to the password form and preserves entered text. The `MobileQrLoginTest` ordinary regression covers the optional entry point, rejection, key replacement and Back cleanup; `-e mobileQrFixture true` additionally verifies HTTPS pairing and a distinct mobile device session against an isolated fixture on ports 18643/18644.
+
+## Unified scanner and styled QR (0.8.12)
+
+The account header has one 48 dp scanner icon (accessible name “Сканировать QR”). It opens the camera immediately and uses one device confirmation screen for TV, phone and tablet. Manual code/file setup remains below “Ввести код вручную”; TV does not gain a camera dependency. QR instructions point to this shared icon.
+
+Connection codes use the existing ZXing encoder with Q error correction and a four-module quiet zone. Rounded dark modules/finders and a small MJ mark on the family lime accent are rendered locally; QR contents and lifetime are unchanged. `MobileQrLoginTest` decodes the actual displayed image at native, 280, 216 and 160 pixel sizes and checks that only one icon exists and dispatches the scanner once per activation.

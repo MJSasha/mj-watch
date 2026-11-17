@@ -1,6 +1,14 @@
+@file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
 
+import android.graphics.Bitmap
+import androidx.activity.compose.setContent
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
+import com.google.zxing.*
+import com.google.zxing.common.HybridBinarizer
+import dev.mjwatch.designsystem.WatchApp
+import java.io.File
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -31,11 +39,20 @@ class MobileQrLoginTest {
         val model=open()
         compose.onNodeWithContentDescription("HTTPS-адрес MJWatch").performTextReplacement("https://saved.example")
         compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.waitUntil(5000) {compose.onNodeWithText("Войти по QR",substring=false).isDisplayed()}
         compose.onNodeWithText("Войти по QR",substring=false).assertIsDisplayed()
         compose.waitUntil(10000) {model.managed.qr.tv.value.let {it.link!=null||it.message.isNotBlank()}}
         Assert.assertNotNull(model.managed.qr.tv.value.message,model.managed.qr.tv.value.link)
-        compose.onNodeWithContentDescription("QR для входа на новом устройстве").assertIsDisplayed()
+        val image=compose.onNodeWithContentDescription("QR для входа на новом устройстве").assertIsDisplayed().captureToImage().asAndroidBitmap()
         val first=requireNotNull(model.managed.qr.tv.value.link)
+        val dir=File(compose.activity.getExternalFilesDir(null),"qr-style").apply {mkdirs()}
+        File(dir,"connection-qr.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)}
+        for(size in listOf(image.width,280,216,160)) {
+            val scaled=Bitmap.createScaledBitmap(image,size,size,true)
+            val pixels=IntArray(size*size);scaled.getPixels(pixels,0,size,0,0,size,size)
+            val decoded=try {MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(size,size,pixels)))).text} catch(e:ReaderException) {throw AssertionError("Styled QR did not decode at $size px",e)}
+            Assert.assertEquals("Styled QR at $size px",first.encode(),decoded)
+        }
         val peer=TvQrPhone(first)
         runBlocking(Dispatchers.IO) {peer.send(encodeManagedTvSetup("https://fixture.invalid",""),"Test account","server","user")}
         compose.waitUntil(5000) {model.managed.qr.tv.value.proposal!=null}
@@ -49,6 +66,20 @@ class MobileQrLoginTest {
         compose.onNodeWithContentDescription("HTTPS-адрес MJWatch").assertTextContains("https://saved.example")
         Assert.assertFalse(model.state.value.config.historyEnabled)
     }
+    @Test fun oneScannerIconHandlesEveryDevice() {
+        val model=open()
+        var scans=0
+        compose.runOnUiThread {compose.activity.setContent {WatchApp(model,false,scanQr={scans++})}}
+        compose.runOnIdle {model.page("managed-account")}
+        compose.onAllNodesWithContentDescription("Сканировать QR").assertCountEquals(1)
+        compose.onNodeWithText("Добавить телевизор").assertDoesNotExist()
+        compose.onNodeWithText("Добавить телефон или планшет").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Сканировать QR").performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.runOnIdle {Assert.assertEquals(1,scans);Assert.assertEquals("managed-pairing",model.state.value.page)}
+        compose.onAllNodesWithContentDescription("Сканировать QR").assertCountEquals(1)
+        compose.onNodeWithContentDescription("Сканировать QR").performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.runOnIdle {Assert.assertEquals(2,scans)}
+    }
     @Test fun approvedQrCreatesSeparateMobileSession() {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("mobileQrFixture")=="true")
         val model=open()
@@ -57,6 +88,7 @@ class MobileQrLoginTest {
         val api=ManagedApi(actor,model.secrets,fixture.getString("ca"))
         api.saveTokens(fixture)
         compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.waitUntil(5000) {compose.onNodeWithText("Войти по QR",substring=false).isDisplayed()}
         compose.onNodeWithText("Войти по QR",substring=false).assertIsDisplayed()
         compose.waitUntil(10000) {model.managed.qr.tv.value.let {it.link!=null||it.message.isNotBlank()}}
         Assert.assertNotNull(model.managed.qr.tv.value.message,model.managed.qr.tv.value.link)
@@ -76,9 +108,10 @@ class MobileQrLoginTest {
         Assert.assertNotEquals(fixture.getString("deviceId"),me.getString("deviceId"))
         compose.waitUntil(5000) {model.managed.qr.tv.value.link==null}
         compose.runOnIdle {model.page("managed-account")}
-        compose.onNodeWithText("Добавить телефон или планшет").performScrollTo().performClick()
-        compose.onNodeWithText("Сканировать QR нового устройства").assertIsDisplayed().assertIsEnabled()
+        compose.onAllNodesWithContentDescription("Сканировать QR").assertCountEquals(1)
+        compose.runOnIdle {model.page("managed-pairing")}
+        compose.onNodeWithContentDescription("Сканировать QR").assertIsDisplayed().assertIsEnabled()
         compose.runOnIdle {model.managed.qr.scan("invalid")}
-        compose.onNodeWithText("Сканировать QR нового устройства").assertIsEnabled()
+        compose.onNodeWithContentDescription("Сканировать QR").assertIsEnabled()
     }
 }

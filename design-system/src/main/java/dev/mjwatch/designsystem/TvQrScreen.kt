@@ -1,8 +1,11 @@
 package dev.mjwatch.designsystem
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,8 +21,6 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
 import dev.mjwatch.core.*
 
 @Composable internal fun TvQrScreen(model:WatchModel,tv:Boolean=true,manual:()->Unit) {
@@ -48,17 +49,14 @@ import dev.mjwatch.core.*
     } else {
         val link=qr.link
         if(link!=null) {
-            val bitmap=remember(link) {
-                val matrix=QRCodeWriter().encode(link.encode(),BarcodeFormat.QR_CODE,768,768)
-                Bitmap.createBitmap(768,768,Bitmap.Config.ARGB_8888).apply {setPixels(IntArray(768*768){i->if(matrix[i%768,i/768])android.graphics.Color.BLACK else android.graphics.Color.WHITE},0,768,0,0,768,768)}.asImageBitmap()
-            }
+            val bitmap=remember(link) {connectionQrBitmap(link.encode()).asImageBitmap()}
             val refreshFocus=remember {FocusRequester()}
             LaunchedEffect(Unit) {if(tv) {withFrameNanos {};refreshFocus.requestFocus()}}
             val image:@Composable ()->Unit={
-                Image(bitmap,if(tv) "QR для подключения телевизора" else "QR для входа на новом устройстве",Modifier.size((LocalConfiguration.current.screenHeightDp*.4f).coerceIn(160f,280f).dp).background(Color.White).testTag("tv-connect-qr"))
+                Image(bitmap,if(tv) "QR для подключения телевизора" else "QR для входа на новом устройстве",Modifier.size((LocalConfiguration.current.screenHeightDp*.4f).coerceIn(160f,280f).dp).clip(RoundedCornerShape(20.dp)).background(Color.White).border(BorderStroke(2.dp,MaterialTheme.colorScheme.primary.copy(alpha=.5f)),RoundedCornerShape(20.dp)).testTag("tv-connect-qr"))
             }
             val help:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {
-                Text(if(tv) "На телефоне: MJWatch → Аккаунт → Добавить телевизор → Сканировать QR." else "На телефоне, где уже выполнен вход: MJWatch → Аккаунт → Добавить телефон или планшет → Сканировать QR нового устройства.")
+                Text("На телефоне, где уже выполнен вход: MJWatch → Аккаунт → значок QR-сканера вверху.")
                 Text(if(tv) "Телефон и TV должны быть в одной сети. QR действует 5 минут." else "Оба устройства должны быть в одной сети Wi-Fi. QR действует 5 минут. Подтвердите вход на обоих устройствах.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Action("Обновить QR",tv,Modifier.focusRequester(refreshFocus).testTag("tv-refresh-qr"),secondary=true){controller.qr.startTv()}
                 Action("Другие способы входа",tv,secondary=true,onClick=manual)

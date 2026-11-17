@@ -23,7 +23,7 @@ class MainActivity:ComponentActivity() {
             else if(result.originalIntent?.getBooleanExtra(Intents.Scan.MISSING_CAMERA_PERMISSION,false)==true)model.managed.qr.cameraDenied()
         }
         setContent {
-            WatchApp(model,false,scanTvQr={
+            WatchApp(model,false,scanQr={
                 scanner.launch(ScanOptions()
                     .setCaptureActivity(QrCaptureActivity::class.java)
                     .setDesiredBarcodeFormats(ScanOptions.QR_CODE)

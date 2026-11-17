@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.12
+
+- Replace separate TV/mobile pairing entry points with one scanner icon in the account header and one shared device confirmation flow.
+- Style connection QR codes with rounded modules/finders, a small MJ centre mark and the family accent; retain quiet space and error correction, and verify decoding down to 160 pixels.
+- Reset the connection screen scroll when opening QR sign-in so the code remains visible after editing the manual form.
+
 ## 0.8.11
 
 - Add optional QR sign-in on a new phone/tablet, approved from an authenticated phone with a separate server session and the existing encrypted LAN protocol.

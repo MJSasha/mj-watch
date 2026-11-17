@@ -35,6 +35,8 @@ import java.util.UUID
  val controller=model.managed;val account by controller.state.collectAsState();val managed=if(account.scope==s.config.scope)account else account.copy(me=null,data=null,pending=emptyList());val page=s.page
  var confirm by remember {mutableStateOf<Pair<String,()->Unit>?>(null)}
  var mobileQr by rememberSaveable(page) {mutableStateOf(false)}
+ val screenScroll=rememberScrollState()
+ LaunchedEffect(page,mobileQr) {screenScroll.scrollTo(0)}
  var dirty by remember(page) {mutableStateOf(false)}
  var leave by remember {mutableStateOf(false)}
  val back:()->Unit={if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
@@ -47,7 +49,7 @@ import java.util.UUID
  LaunchedEffect(page,s.config.scope){if(load!=null&&s.config.historyEnabled) {
   do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
  }}
- val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+ val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(screenScroll).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
   if(managed.busy&&page!="server-overview") LinearProgressIndicator(Modifier.fillMaxWidth())
   when(page) {
    "connection-choice"->{
@@ -106,7 +108,7 @@ import java.util.UUID
     ServerSecret(password,{password=it;dirty=true},if(invite.isBlank())"Пароль" else "Придумайте пароль · от 10 символов")
     if(invite.isBlank())Action("Войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&url.isNotBlank()&&name.isNotBlank()&&password.isNotBlank()&&ca.isBlank()&&invite.isBlank()){dirty=false;controller.login(url,name,password);password=""}
     if(invite.isBlank())Action("Войти по коду TV",tv,secondary=true,enabled=!managed.busy&&url.isNotBlank()&&ca.isBlank()){controller.startPairing(url)}
-    managed.pairing?.let {pair->Text(pair.getString("code"),fontSize=48.sp,fontWeight=FontWeight.Bold);Text("Код действует 5 минут. На вошедшем устройстве откройте «Аккаунт и синхронизация → Добавить телевизор».");Action("Отменить вход по коду",tv,secondary=true){controller.cancelPairing()}}
+    managed.pairing?.let {pair->Text(pair.getString("code"),fontSize=48.sp,fontWeight=FontWeight.Bold);Text("Код действует 5 минут. На вошедшем устройстве откройте «Аккаунт и синхронизация → QR-сканер → Ввести код вручную».");Action("Отменить вход по коду",tv,secondary=true){controller.cancelPairing()}}
     if(invite.isNotBlank())Action("Создать аккаунт и войти",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&password.length>=10&&ca.isBlank()){dirty=false;controller.login(url,name,password,invite);password=""}
     TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Параметры подключения вручную")}
     if(advanced){ServerSecret(invite,{invite=it;dirty=true},"Одноразовое приглашение");Action("Принять приглашение",tv,enabled=!managed.busy&&invite.isNotBlank()&&password.length>=10&&ca.isBlank()){dirty=false;controller.login(url,name,password,invite);password="";invite=""};ServerField(ca,{ca=it},"Публичный CA из доверенного приглашения",singleLine=false)

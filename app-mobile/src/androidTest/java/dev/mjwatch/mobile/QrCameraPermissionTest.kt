@@ -29,14 +29,14 @@ class QrCameraPermissionTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(15000){model.state.value.config.historyEnabled}
-        compose.runOnIdle {model.page("managed-tv")}
-        compose.onNodeWithText("Сканировать QR телевизора").performScrollTo().performClick()
+        compose.runOnIdle {model.page("managed-pairing")}
+        compose.onNodeWithContentDescription("Сканировать QR").performScrollTo().performClick()
         val device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         val deny=device.wait(Until.findObject(By.res("com.android.permissioncontroller:id/permission_deny_button")),6000)
         Assert.assertNotNull("Run with CAMERA revoked on this isolated device",deny)
         deny!!.click()
         compose.waitUntil(10000){model.managed.qr.phone.value.stage=="error"}
-        compose.onNodeWithText("Сканировать QR телевизора").assertIsEnabled()
+        compose.onNodeWithContentDescription("Сканировать QR").assertIsEnabled()
         Assert.assertTrue(model.managed.qr.phone.value.message.contains("камере"))
     }
 }

@@ -29,8 +29,8 @@ class QrPhoneUiTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(15000){model.state.value.config.historyEnabled}
-        compose.runOnIdle {model.page("managed-tv");model.managed.qr.scan("https://invalid.example/")}
-        compose.onNodeWithText("Сканировать QR телевизора").assertIsEnabled()
+        compose.runOnIdle {model.page("managed-pairing");model.managed.qr.scan("https://invalid.example/")}
+        compose.onNodeWithContentDescription("Сканировать QR").assertIsEnabled()
         Assert.assertEquals("error",model.managed.qr.phone.value.stage)
         val cancelled=AtomicInteger();val received=AtomicInteger()
         lateinit var server:TvQrServer
@@ -39,13 +39,13 @@ class QrPhoneUiTest {
         try {
             compose.runOnIdle {model.managed.qr.scan(offline.encode())}
             compose.waitUntil(15000){model.managed.qr.phone.value.stage=="error"}
-            compose.onNodeWithText("Сканировать QR телевизора").assertIsEnabled()
+            compose.onNodeWithContentDescription("Сканировать QR").assertIsEnabled()
             server=fresh()
             compose.runOnIdle {model.managed.qr.scan(server.link.encode())}
             compose.waitUntil(15000){model.managed.qr.phone.value.stage=="waiting"}
-            compose.onNodeWithText("Отменить подключение TV").performScrollTo().performClick()
+            compose.onNodeWithText("Отменить подключение").performScrollTo().performClick()
             compose.waitUntil(5000){cancelled.get()==1&&model.managed.qr.phone.value.stage.isBlank()}
-            compose.onNodeWithText("Сканировать QR телевизора").assertIsEnabled()
+            compose.onNodeWithContentDescription("Сканировать QR").assertIsEnabled()
             server=fresh()
             compose.runOnIdle {model.managed.qr.scan(server.link.encode())}
             compose.waitUntil(15000){model.managed.qr.phone.value.stage=="waiting"}
@@ -58,7 +58,7 @@ class QrPhoneUiTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(15000){model.state.value.config.historyEnabled}
-        compose.runOnIdle {model.page("managed-tv")}
+        compose.runOnIdle {model.page("managed-pairing")}
         val api=ManagedApi(model.state.value.config,model.secrets)
         val codes=runBlocking(Dispatchers.IO){listOf("old TV","new TV").map {api.request("pairing","POST",JSONObject().put("device",it)).getString("code")}}
         fun inbox(code:String)=TvQrServer(tvQrLocalAddress(),{},{JSONObject().put("stage","phone").put("code",code)})

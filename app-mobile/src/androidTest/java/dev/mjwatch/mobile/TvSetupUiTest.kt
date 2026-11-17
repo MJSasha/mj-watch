@@ -32,7 +32,7 @@ class TvSetupUiTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000){model.state.value.config.historyEnabled}
-        compose.runOnIdle {model.page("managed-tv")}
+        compose.runOnIdle {model.page("managed-pairing")}
         compose.onNodeWithText("Ввести код вручную").performScrollTo().performClick()
         compose.onNodeWithText("Сохранить настройки TV").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(managedCaFingerprint(fixture.getString("ca"))).assertExists()

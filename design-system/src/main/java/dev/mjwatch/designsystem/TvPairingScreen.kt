@@ -28,7 +28,7 @@ import dev.mjwatch.core.*
         val origin=endpoint(setup.url).origin()
         AlertDialog(onDismissRequest={controller.dismissTvSetup()},title={Text("Подтвердите сервер")},text={Column {
             Text(origin)
-            Text(if(setup.ca.isBlank())"Сертификат проверит Android." else "Сверьте этот отпечаток с экраном «Добавить телевизор» на телефоне:")
+            Text(if(setup.ca.isBlank())"Сертификат проверит Android." else "Сверьте этот отпечаток с экраном подключения устройства на телефоне:")
             if(setup.ca.isNotBlank())Text(managedCaFingerprint(setup.ca),fontSize=16.sp)
         }},confirmButton={Action(if(setup.ca.isBlank())"Подключиться" else "Отпечаток совпадает",true,enabled=!state.busy){url=setup.url;controller.confirmTvSetup()}},dismissButton={Action("Отмена",true,secondary=true){controller.dismissTvSetup()}})
     }
@@ -38,11 +38,11 @@ import dev.mjwatch.core.*
     val pair=state.pairing
     if(pair!=null) {
         Text(pair.getString("code"),fontSize=56.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
-        Text("На телефоне: Аккаунт и синхронизация → Добавить телевизор. Введите этот код и подтвердите устройство.")
+        Text("На телефоне: Аккаунт и синхронизация → QR-сканер → Ввести код вручную. Введите этот код и подтвердите устройство.")
         Text("Ждём подтверждения. Код действует ${pair.getInt("expiresIn")/60} мин.")
         Action("Отменить вход по коду",true,Modifier.focusRequester(focus),secondary=true){controller.cancelPairing()}
     } else {
-        Text("На вошедшем телефоне откройте «Аккаунт и синхронизация → Добавить телевизор» и сохраните настройки TV. Перенесите файл на телевизор, например через USB или облачное хранилище.")
+        Text("На вошедшем телефоне откройте «Аккаунт и синхронизация → QR-сканер → Ввести код вручную» и сохраните настройки TV. Перенесите файл на телевизор, например через USB или облачное хранилище.")
         Action("Импортировать настройки",true,Modifier.fillMaxWidth().focusRequester(focus),enabled=!state.busy){
             pickerError=""
             try{importer.launch(arrayOf("application/json","text/plain","application/octet-stream"))}

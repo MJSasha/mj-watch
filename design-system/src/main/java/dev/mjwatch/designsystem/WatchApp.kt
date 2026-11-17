@@ -54,7 +54,7 @@ private data class Destination(val id:String,val title:String,val icon:ImageVect
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
-@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
+@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
     val state by model.state.collectAsStateWithLifecycle()
     var startupShown by rememberSaveable {mutableStateOf(false)}
     val startupFade=remember {Animatable(0f)}
@@ -142,7 +142,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,titles,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
-                                    "managed-account","managed-devices","managed-tv","managed-mobile"->AccountScreen(state,model,tv,scanTvQr)
+                                    "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
                                     "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
