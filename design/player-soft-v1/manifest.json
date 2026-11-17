@@ -1,0 +1,37 @@
+[
+  {
+    "file": "01-soft-cinema.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1949625,
+    "sha256": "389fff9d265cb6efb97f4064be761425a90b561333074fce26ac1af95a19e491"
+  },
+  {
+    "file": "02-quiet-dock.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 2094730,
+    "sha256": "323199c00751a97e4a3f1d75b0ed4a929a8daec217e374157ae7f52230bdbb68"
+  },
+  {
+    "file": "03-editorial-fade.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 2165684,
+    "sha256": "5c766dfa9b96f14c9c0cf3dc7cf11e776228ee3fd8486670298d19ef87670d33"
+  },
+  {
+    "file": "04-states-controls.png",
+    "width": 1606,
+    "height": 979,
+    "bytes": 1808069,
+    "sha256": "eaf05c986775635811086275c965987e76d25eee0dc96c32e2fd490bc42cc75f"
+  },
+  {
+    "file": "05-states-status.png",
+    "width": 1609,
+    "height": 978,
+    "bytes": 1899091,
+    "sha256": "1f6f9c6e0b9858955495303181d0c051596098468ad9253c4b6613587521cbe0"
+  }
+]
