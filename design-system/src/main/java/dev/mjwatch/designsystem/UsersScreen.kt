@@ -185,8 +185,8 @@ private data class UserConfirmation(val title:String,val body:String,val button:
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if(tv||maxWidth>=840.dp)Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
             Box(Modifier.width(if(tv)tvUnit(340f) else 300.dp)){list()}
-            Box(Modifier.weight(1f)){detail()}
-        } else if(s.page=="server-users")list() else detail()
+            Box(Modifier.weight(1f)){BoundedPane(!tv){detail()}}
+        } else if(s.page=="server-users")list() else BoundedPane(!tv){detail()}
     }
 }
 

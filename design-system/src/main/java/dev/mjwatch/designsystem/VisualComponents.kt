@@ -35,6 +35,13 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Bound a task pane, never the application window or a list/detail split. */
+@Composable internal fun BoundedPane(bounded:Boolean,maxWidth:Dp=640.dp,content:@Composable ()->Unit) {
+    if(!bounded) {content();return}
+    Box(Modifier.fillMaxSize(),contentAlignment=Alignment.TopCenter) {
+        Box(Modifier.widthIn(max=maxWidth).fillMaxSize()) {content()}
+    }
+}
 @Composable internal fun tvUnit(value:Float):Dp=(value*LocalConfiguration.current.screenWidthDp/1280f).dp
 @Composable internal fun Wordmark() {
     Text(buildAnnotatedString {withStyle(SpanStyle(color=MaterialTheme.colorScheme.primary)) {append("MJ")};append("Watch")},fontSize=23.sp,fontWeight=FontWeight.Bold,letterSpacing=(-0.8).sp)

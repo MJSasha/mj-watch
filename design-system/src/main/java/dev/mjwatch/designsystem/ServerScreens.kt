@@ -186,8 +186,8 @@ import java.util.UUID
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     listOf("Обзор" to "server-overview","Пользователи" to "server-users","TorrServer" to "server-torr","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
-   Box(Modifier.weight(1f)){content()}
-  }else content()
+   Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
+  }else BoundedPane(!tv){content()}
  }
 }
 @Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
