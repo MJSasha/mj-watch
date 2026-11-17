@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.MobileQrLoginTest:...
+
+Time: 7.088
+
+OK (3 tests)
+
+
