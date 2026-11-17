@@ -11,12 +11,13 @@ jobs:
   emulator-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    env:
-      ANDROID_USER_HOME: ${{ runner.temp }}/issue26-android
-      ANDROID_EMULATOR_HOME: ${{ runner.temp }}/issue26-android
-      ANDROID_AVD_HOME: ${{ runner.temp }}/issue26-android/avd
     steps:
       - uses: actions/checkout@v4
+      - name: Set shared Android tool directories
+        run: |
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/issue26-android" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/issue26-android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/issue26-android/avd" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
