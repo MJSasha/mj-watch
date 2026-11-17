@@ -13,7 +13,7 @@
       1920,
       1080
     ],
-    "sha256": "552023e233aada55b91d3799aeac0780027758243dc11ef6e4b19ef5eca3bb72"
+    "sha256": "d4cfed5b109435f365c1dd91bf8b0a5316ca3a51675f4a9465eca969aaf738a7"
   },
   {
     "path": "1080p/player-timeline.png",
@@ -29,7 +29,7 @@
       1920,
       1080
     ],
-    "sha256": "e31e2467b3932ae1b0947c661587b18c067e3b20a633d6f0a423854c1526809f"
+    "sha256": "63cb14484348ed993217747d0e304ec90d2197848bbff75cacd844c30fadbe8b"
   },
   {
     "path": "1080p/playing-pause-icon.png",
@@ -37,7 +37,7 @@
       1920,
       1080
     ],
-    "sha256": "afe25261a1472ecf462aa3d583a332fff91fb7dbe5840fada3bc24c6185a42b2"
+    "sha256": "ce213a0407d27224e3a9056c43eee6a35c0da1cf6bc8ec51e1ea5b44966c29ef"
   },
   {
     "path": "720p/hidden-video.png",
