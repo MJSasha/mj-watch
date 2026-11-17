@@ -39,6 +39,8 @@
 
 ## Возможности
 
+В 0.9.0: телефон/планшет выбирает видео и управляет просмотром на ТВ системными средствами Android. Нужны managed-сервер 0.1.5 и открытый MJWatch на ТВ. Direct remote pairing и автоматические Google Cast-уведомления пока недоступны. [Состояние приёмки](docs/testing/phone-tv/README.md).
+
 | Область | Что умеет |
 | --- | --- |
 | **Поиск** | Jackett / Torznab и JacRed JSON, фильтры качества, источника, сидов и языка |
@@ -94,7 +96,7 @@ Debug APK находятся в `app-mobile/build/outputs/apk/debug/` и `app-tv
 ## Документация
 
 - [Текущее состояние и ограничения](STATUS.md), [проверки](docs/testing/ACCEPTANCE-REPORT.md)
-- [Дизайн и сценарии](design/HANDOFF.md), [стандарт MJ Family](docs/mj-family/guide.html), [галерея сверки](docs/ui-audit/index.html)
+- [Дизайн и сценарии](design/README.md), [стандарт MJ Family](docs/mj-family/guide.html), [галерея сверки](docs/ui-audit/index.html)
 - [Интеграционные контракты](docs/contracts/README.md), [публикация и обновления](docs/UPDATES.md)
 
 Ключи подписи, токены, APK и кеши не хранятся в Git.

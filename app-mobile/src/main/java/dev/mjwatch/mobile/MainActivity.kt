@@ -5,6 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.launch
+import dev.mjwatch.playback.RemotePlaybackService
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -15,6 +20,11 @@ class MainActivity:ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                RemotePlaybackService.state.collect {mediaController=RemotePlaybackService.mediaController()}
+            }
+        }
         val model=ViewModelProvider(this)[WatchModel::class.java]
         if(savedInstanceState==null)handleInvitation(intent,model)
         val scanner=registerForActivityResult(ScanContract()) {result->
@@ -36,6 +46,7 @@ class MainActivity:ComponentActivity() {
     }
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
     private fun handleInvitation(value:android.content.Intent,model:WatchModel){
+        if(value.hasExtra("remoteReleaseId"))model.openRemoteContent(value.getStringExtra("remoteReleaseId").orEmpty(),value.getStringExtra("remoteTitle").orEmpty(),value.getStringExtra("remoteMetadataId").orEmpty())
         if(value.action==android.content.Intent.ACTION_VIEW){val raw=value.dataString;if(raw!=null)model.openInvitation(raw)}
     }
 }

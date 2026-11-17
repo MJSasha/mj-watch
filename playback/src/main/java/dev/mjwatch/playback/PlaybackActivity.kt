@@ -32,6 +32,22 @@ class PlaybackActivity : ComponentActivity() {
     companion object {
         private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null
         fun hasActivePlayback()=active?.get()?.let {!it.released&&!it.isFinishing}==true
+        fun remoteVideo():RemoteVideo?=active?.get()?.takeIf {!it.released&&it::player.isInitialized}?.let {a->
+            if(a.intent.getBooleanExtra("mobile",true))return@let null
+            val p=a.player;val audio=a.getSystemService(android.media.AudioManager::class.java)
+            RemoteVideo(a.playbackSession,a.remoteContentId,a.intent.getStringExtra("title").orEmpty(),when {a.terminalError||p.playerError!=null->"error";p.playbackState==Player.STATE_ENDED->"ended";!a.firstFrame||p.playbackState==Player.STATE_BUFFERING->"loading";p.isPlaying->"playing";else->"paused"},p.currentPosition.coerceAtLeast(0),p.duration.coerceAtLeast(0),p.isCurrentMediaItemSeekable,audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC),if(audio.isVolumeFixed)0 else audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC),a.releaseId,a.intent.getStringExtra("metadataId").orEmpty()).let {if(it.volumeMax==0)it.copy(volume=0) else it}
+        }
+        fun remoteCommand(command:org.json.JSONObject) {
+            val a=active?.get()?.takeIf {!it.released&&it::player.isInitialized&&!it.intent.getBooleanExtra("mobile",true)} ?: return
+            if(command.optString("session")!=a.playbackSession)return
+            when(command.optString("action")) {
+                "play"->a.player.play()
+                "pause"->a.player.pause()
+                "seek"->if(a.player.isCurrentMediaItemSeekable)a.player.seekTo(command.optLong("position").coerceIn(0,a.player.duration.coerceAtLeast(0)))
+                "volume"->{val audio=a.getSystemService(android.media.AudioManager::class.java);if(!audio.isVolumeFixed)audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,command.optInt("volume").coerceIn(0,audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)),0)}
+                "stop"->stopActivePlayback()
+            }
+        }
         fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
     }
     private var episodes=emptyList<PlaybackEpisode>()
@@ -59,7 +75,8 @@ class PlaybackActivity : ComponentActivity() {
     private var panel: android.app.AlertDialog?=null
     private var startedAt=0L
     private var playbackConfig:Config?=null
-    private val playbackSession=java.util.UUID.randomUUID().toString()
+    private var playbackSession=java.util.UUID.randomUUID().toString()
+    private var remoteContentId=""
     private var playbackSequence=0L
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
@@ -71,6 +88,8 @@ class PlaybackActivity : ComponentActivity() {
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        playbackSession=intent.getStringExtra("remoteSession") ?: playbackSession
+        remoteContentId=intent.getStringExtra("remoteContentId").orEmpty()
         contentIdentity=intent.getStringExtra("contentKey") ?: ""
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
         episodes=PlaybackEpisode.decode(intent.getStringExtra("episodes"))
@@ -146,7 +165,7 @@ class PlaybackActivity : ComponentActivity() {
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
-            player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: progress?.takeUnless { it.completed }?.positionMs ?: 0)
+            player.setMediaItem(mediaItem(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
             while(isActive) { delay(15000); save()
@@ -158,6 +177,8 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
+    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri).setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
     private fun switchEpisode(index:Int) {
         val episode=episodes.getOrNull(index) ?: return
         val config=playbackConfig ?: return
@@ -169,11 +190,13 @@ class PlaybackActivity : ComponentActivity() {
         view.setKeepContentOnPlayerReset(false)
         player.stop()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
+        remoteContentId=remoteContentId.substringBeforeLast(':',"")+":"+fileId
+        playbackSession=java.util.UUID.randomUUID().toString()
         intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)
         controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
         episodeLoad=scope.launch {
             val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress()} else null
-            player.setMediaItem(MediaItem.fromUri(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
+            player.setMediaItem(mediaItem(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
             startedAt=System.currentTimeMillis();player.prepare();player.play()
         }
     }
@@ -222,7 +245,7 @@ class PlaybackActivity : ComponentActivity() {
                         intent.putExtra("episodes",PlaybackEpisode.encode(episodes))
                     }
                     startedAt=System.currentTimeMillis()
-                    player.setMediaItem(MediaItem.fromUri(intent.getStringExtra("uri")!!),position)
+                    player.setMediaItem(mediaItem(intent.getStringExtra("uri")!!),position)
                     player.prepare();player.playWhenReady=playing
                     return@launch
                 } catch(e:TimeoutCancellationException) {

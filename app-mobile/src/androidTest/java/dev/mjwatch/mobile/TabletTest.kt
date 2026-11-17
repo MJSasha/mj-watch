@@ -23,7 +23,7 @@ class TabletTest {
     compose.waitUntil(10000) {compose.onAllNodesWithText(DemoReleases.items.first().title).fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
     val search=compose.onNodeWithText("Название фильма или раздачи").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-    val detail=compose.onNodeWithTag("detail-sources").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+    val detail=compose.onNodeWithTag("detail-cast").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
     Assert.assertTrue(search.right<detail.left)
     compose.waitForIdle()
     val i=InstrumentationRegistry.getInstrumentation();i.waitForIdleSync()

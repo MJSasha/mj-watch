@@ -117,9 +117,9 @@ class UserManagementUiTest {
         compose.waitUntil(15000){model.managed.state.value.me!=null}
         compose.runOnIdle {model.page("managed-account")}
         compose.onNodeWithText("Код телевизора").assertDoesNotExist()
-        compose.onNodeWithText("Мои устройства").performClick()
+        compose.onNodeWithText("Устройства").performClick()
         compose.waitUntil(10000){!model.managed.state.value.busy&&model.managed.state.value.data?.has("devices")==true}
-        compose.onNodeWithText("Это устройство").assertExists()
+        compose.onNodeWithText("Это устройство",substring=true).assertExists()
         compose.runOnIdle {model.back()}
         compose.onNodeWithText("Дополнительные действия").performClick()
         compose.onNodeWithText("Импорт прежней истории · 0").performScrollTo().assertIsNotEnabled()

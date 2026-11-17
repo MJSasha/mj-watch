@@ -32,4 +32,16 @@ class ManagedUsersTest {
         val devices=managedDevices(JSONObject("""{"devices":[{"id":"d","name":"Телефон","lastSeen":42,"revoked":true}]}"""))
         assertEquals("d",devices.single().id);assertEquals(42L,devices.single().lastSeen);assertTrue(devices.single().revoked)
     }
+ @org.junit.Test fun unicodeDeviceAliasesAndBackwardCompatibleTypes() {
+  org.junit.Assert.assertTrue(validDeviceName("  Гостиная 😀  "))
+  org.junit.Assert.assertTrue(validDeviceName("😀".repeat(32)))
+  for(value in listOf("", " ", "😀".repeat(33), "x\ny", "x\u0000y"))org.junit.Assert.assertFalse(value,validDeviceName(value))
+  val old=managedDevices(org.json.JSONObject("""{"devices":[{"id":"a","name":"Legacy"}]}""")).single()
+  org.junit.Assert.assertEquals("unknown",old.type)
+  org.junit.Assert.assertFalse(old.remoteVideo)
+  org.junit.Assert.assertFalse(old.available)
+  val tv=managedDevices(org.json.JSONObject("""{"devices":[{"id":"tv","name":"Living room","type":"tv","remoteVideo":true,"available":true}]}""")).single()
+  org.junit.Assert.assertEquals("Телевизор",tv.typeLabel)
+  org.junit.Assert.assertTrue(tv.remoteVideo&&tv.available)
+ }
 }

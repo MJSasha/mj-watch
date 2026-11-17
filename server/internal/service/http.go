@@ -30,7 +30,7 @@ type identity struct {
 	Epoch                       int64
 }
 
-var Version = "0.1.4"
+var Version = "0.1.5"
 
 type Server struct {
 	passwordSlots chan struct{}
@@ -38,13 +38,14 @@ type Server struct {
 	uploadSlots   chan struct{}
 	dummyPassword string
 
-	DB     *sql.DB
-	Config Config
-	Client *http.Client
-	mu     sync.Mutex
-	rates  map[string][]time.Time
-	active map[string]int
-	tmdbMu sync.Mutex
+	DB       *sql.DB
+	Config   Config
+	Client   *http.Client
+	mu       sync.Mutex
+	rates    map[string][]time.Time
+	active   map[string]int
+	tmdbMu   sync.Mutex
+	remoteMu sync.Mutex
 }
 
 func New(db *sql.DB, c Config) *Server {
@@ -137,7 +138,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.DB.Exec("UPDATE devices SET last_seen=? WHERE id=?", time.Now().Unix(), i.Device)
-	if !s.limit("api:"+i.User, 300, time.Minute) {
+	rateKey, rateLimit := "api:"+i.User, 300
+	if strings.HasPrefix(path, "remote/") {
+		rateKey, rateLimit = "remote:"+i.Device, 240
+	}
+	if !s.limit(rateKey, rateLimit, time.Minute) {
 		fail(w, 429, "rate_limited")
 		return
 	}
@@ -165,11 +170,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respond(w, 200, map[string]bool{"revoked": true})
+	case path == "devices/self/profile" && r.Method == "PUT":
+		s.deviceProfile(w, r, i)
+	case strings.HasPrefix(path, "devices/") && r.Method == "PATCH":
+		s.renameDevice(w, r, strings.TrimPrefix(path, "devices/"), i)
+	case strings.HasPrefix(path, "remote/"):
+		s.remote(w, r, path, i)
 	case path == "devices" && r.Method == "GET":
 		s.devices(w, i.User)
 	case strings.HasPrefix(path, "devices/") && r.Method == "DELETE":
-		if _, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User); err != nil {
+		result, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
+		if err != nil {
 			fail(w, 503, "database_unavailable")
+			return
+		}
+		if n, _ := result.RowsAffected(); n != 1 {
+			fail(w, 404, "device_not_found")
 			return
 		}
 		respond(w, 200, map[string]bool{"revoked": true})
@@ -366,7 +382,7 @@ func (s *Server) auth(w http.ResponseWriter, r *http.Request, path string) bool 
 	return false
 }
 func (s *Server) devices(w http.ResponseWriter, uid string) {
-	rows, e := s.DB.Query("SELECT id,name,last_seen,revoked FROM devices WHERE user_id=? ORDER BY last_seen DESC", uid)
+	rows, e := s.DB.Query("SELECT d.id,d.name,d.last_seen,d.revoked,COALESCE(p.type,'unknown'),COALESCE(r.heartbeat,0),COALESCE(r.instance,'') FROM devices d LEFT JOIN device_profiles p ON p.device_id=d.id LEFT JOIN remote_receivers r ON r.device_id=d.id WHERE d.user_id=? ORDER BY d.last_seen DESC", uid)
 	if e != nil {
 		fail(w, 503, "database_unavailable")
 		return
@@ -374,10 +390,13 @@ func (s *Server) devices(w http.ResponseWriter, uid string) {
 	defer rows.Close()
 	out := []any{}
 	for rows.Next() {
-		var id, name string
-		var seen, revoked int64
-		rows.Scan(&id, &name, &seen, &revoked)
-		out = append(out, map[string]any{"id": id, "name": name, "lastSeen": seen, "revoked": revoked != 0})
+		var id, name, kind, instance string
+		var seen, revoked, heartbeat int64
+		if rows.Scan(&id, &name, &seen, &revoked, &kind, &heartbeat, &instance) != nil {
+			fail(w, 503, "database_unavailable")
+			return
+		}
+		out = append(out, map[string]any{"id": id, "name": name, "lastSeen": seen, "revoked": revoked != 0, "type": kind, "remoteVideo": kind == "tv" && instance != "", "available": revoked == 0 && heartbeat > time.Now().Unix()-8})
 	}
 	respond(w, 200, map[string]any{"devices": out})
 }
