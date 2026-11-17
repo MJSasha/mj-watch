@@ -1,6 +1,6 @@
 # Issue #26: implementation and verification
 
-17 November 2026. Candidate **0.9.0**, server **0.1.5**. This is an implementation branch, **not a published or accepted full #26/Cast release**.
+17 November 2026. Published **0.9.0**, server **0.1.5**. Approved scope: managed account-authorized playback. [Release](https://github.com/MJSasha/mj-watch/releases/tag/test-82).
 
 ## Implemented path
 
@@ -47,7 +47,7 @@ The dedicated `.github/workflows/phone-tv.yml` boots two phones and two independ
 | IDs | Current evidence / limitation |
 |---|---|
 | A01, A11–A13 | Server ACL/Unicode tests; shared list and server-confirmed rename passed on phone, 200% fonts and tablet; actual TV D-pad rename and Back passed. Foreign/revoked devices covered by API tests. Active-TV rename and offline-save UI remain unverified at runtime. |
-| A02–A06, A24–A26 | Phone launch gates, independent bookmark, 48dp targets/8dp gap, selector Back, connection and launch passed. All existing public model entry points guard the route; converted default regressions passed CI on `0f01678`. Final head CI pending. Offline/unsupported chooser rows have code/API coverage, not a dedicated screenshot test. |
+| A02–A06, A24–A26 | Phone launch gates, independent bookmark, 48dp targets/8dp gap, selector Back, connection and launch passed. All existing public model entry points guard the route; converted default regressions passed CI on `0f01678`. Final [main CI](https://github.com/MJSasha/mj-watch/actions/runs/44169177666) passed. Offline/unsupported chooser rows have code/API coverage, not a dedicated screenshot test. |
 | A07–A10 | Actual first frame, same-file join, replacement cancellation **and confirmation**, selection without launching, supplied resume position and independent TVs passed. Go tests cover stale confirmations and target/instance races. |
 | A14 | Existing QR/scanner sources and entry points unchanged; their default regressions passed in the prior complete CI. |
 | A15–A17 | Android MediaController play/pause/seek, absolute volume and **phone hardware volume keys while paused** passed against actual receiver state. TV media keys synchronize back to the phone; background/lock preserve playback. Foreground Activity uses Android `setMediaController` for native key routing. OS decides background key routing/lock-screen placement; OEMs remain untested. |
@@ -76,3 +76,13 @@ The Android build, server checks, mobile API 35 runtime and TV API 36/player run
 The standard build/server, mobile API 35 and TV API 36/player suites passed on `6b801ab`. The cloud four-device job booted and authorized all devices, then failed because Pixel Launcher / Android System UI displayed their own ANR dialogs over MJWatch ([push run](https://github.com/MJSasha/mj-watch/actions/runs/44163476391), [PR run](https://github.com/MJSasha/mj-watch/actions/runs/44163489057)). Screenshots identify these system processes; this is not represented as a successful cloud integration.
 
 The four-device workflow remains `workflow_dispatch`/reusable for a suitable host, with reduced guest rendering load and explicit ANR diagnostics. It is separate from automatic publication. Release validation uses the complete successful local API 36 four-device run `20261117-175633`, plus the required standard CI. The application code did not change after that local run; subsequent changes concern CI/resources, documentation and diagnostic test assertions.
+
+## Published artifacts
+
+[Stable release 0.9.0](https://github.com/MJSasha/mj-watch/releases/tag/test-82), versionCode **1082**, source `41db0faf6f586023b5d2be917491c8dd3848fd74`. [Main build/server and mobile/TV runtime CI](https://github.com/MJSasha/mj-watch/actions/runs/44169177666) passed before publication.
+
+The published mobile APK, TV APK and server supply were downloaded and checked against `SHA256SUMS.txt` and `update.json`. Both APKs have the expected package IDs, version 0.9.0, a greater versionCode than 0.8.16, and no debuggable manifest flag. Their signatures match the existing pinned certificate, preserving upgrade compatibility.
+
+The server supply is **0.1.5 / release**. Its RSA manifest signature verifies against the trust key extracted from the preceding signed 0.8.16 APK. Every packaged file matches the signed manifest, both APKs contain that exact signed supply, and amd64/arm64 binaries have the expected ELF architecture. Neither APK nor server signing keys were rotated.
+
+The original complete #26/Cast acceptance is not asserted by this managed release. The cloud four-device ANR limitation above remains documented; local four-device proof and standard CI supplied the release evidence.
