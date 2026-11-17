@@ -286,7 +286,17 @@ class PlaybackActivity : ComponentActivity() {
                 val value=org.json.JSONObject().put("quality",preferences.getString("quality","Все")).put("audioLanguage",preferences.getString("audio-language",null)).put("subtitleLanguage",if(preferences.getBoolean("subtitles-off",false))"off" else preferences.getString("subtitle-language",null))
                 runCatching {val engine=SyncEngine(ManagedApi(c,SecretStore(applicationContext)),db.syncDao());engine.enqueue("preferences","profile",value);engine.sync()}
             }
-        }.setOnDismissListener { panel=null; panelOpen=false; if(intent.getBooleanExtra("mobile",true))overlay.requestFocus() }.show()
+        }.setOnDismissListener { panel=null; panelOpen=false; if(intent.getBooleanExtra("mobile",true))overlay.requestFocus() }.show().also {styleTvPanel(it)}
+    }
+    private fun styleTvPanel(dialog:android.app.AlertDialog) {
+        if(intent.getBooleanExtra("mobile",true))return
+        val density=resources.displayMetrics.density
+        val focus=android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.argb(102,42,48,58))
+            cornerRadius=11*density
+            setStroke(kotlin.math.round(1.5f*density).toInt(),android.graphics.Color.rgb(240,242,236))
+        }
+        dialog.listView.selector=android.graphics.drawable.InsetDrawable(focus,(2*density).toInt())
     }
     private fun exitPlayback() {finalWrite=save();finish()}
     private fun videoSettings() {
@@ -315,7 +325,7 @@ class PlaybackActivity : ComponentActivity() {
         val dialog=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle(title).setItems(names) {_,which->choose(which)}.create()
         panel=dialog;panelOpen=true
         dialog.setOnDismissListener {if(panel===dialog){panel=null;panelOpen=false}}
-        dialog.show()
+        dialog.show();styleTvPanel(dialog)
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
