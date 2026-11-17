@@ -1,6 +1,8 @@
 package dev.mjwatch.designsystem
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,11 +20,11 @@ import dev.mjwatch.core.*
 import dev.mjwatch.playback.*
 import kotlinx.coroutines.*
 
-@Composable internal fun RemoteCastButton(s:WatchState,model:WatchModel) {
+@Composable internal fun RemoteCastButton(s:WatchState,model:WatchModel,hasArt:Boolean=false) {
     val remote by model.remote.collectAsState()
     var show by remember {mutableStateOf(false)}
     val focus=remember {FocusRequester()}
-    IconButton(onClick={show=true},modifier=Modifier.size(48.dp).focusRequester(focus).testTag("detail-cast")) {
+    IconButton(onClick={show=true},modifier=Modifier.size(48.dp).focusRequester(focus).testTag("detail-cast").background(if(hasArt)MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,CircleShape)) {
         Icon(if(remote.connected)Icons.Outlined.CastConnected else Icons.Outlined.Cast,"Где смотреть?"+(remote.target?.let {" · ${it.name}"} ?: ""),tint=if(remote.connected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
     }
     if(show)TargetSheet(s,model,onDismiss={show=false;focus.requestFocus()})
@@ -80,10 +82,13 @@ import kotlinx.coroutines.*
                 TextButton(onClick={RemotePlaybackService.connect(context,target.id)},modifier=Modifier.heightIn(min=48.dp)){Text("Повторить")}
             }
             remote.connected&&target!=null&&target.video.active&&(target.video.releaseId==contentId||metadataId!=null&&target.video.metadataId==metadataId)->{
-                Text((if(target.video.status=="loading")"Готовим на ТВ" else if(target.video.status=="paused")"Пауза на ТВ" else "Идёт на ТВ")+" · ${target.name}",modifier=Modifier.testTag("remote-status").semantics{liveRegion=LiveRegionMode.Polite})
+                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.Tv,null)
+                Text((if(target.video.status=="loading")"Готовим на ТВ" else if(target.video.status=="paused")"Пауза на ТВ" else "Идёт на ТВ")+" · ${target.name}",modifier=Modifier.weight(1f).testTag("remote-status").semantics{liveRegion=LiveRegionMode.Polite})
+                }
             }
             remote.connected&&target!=null->{
-                Action("Смотреть на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,onClick=onStart)
+                Action("Смотреть на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,pill=true,onClick=onStart)
             }
         }
         if(remote.message.isNotBlank()&&remote.connected)Text(remote.message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})

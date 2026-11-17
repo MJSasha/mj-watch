@@ -41,6 +41,7 @@ class PhoneTvTest {
         Assert.fail(message+"; remote="+RemotePlaybackService.state.value)
     }
     private fun proof(name:String) {
+        compose.waitForIdle();instrumentation.waitForIdleSync();Thread.sleep(350)
         val dir=File(context.getExternalFilesDir(null),"phone-tv-proof").apply{mkdirs()}
         Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
     }
@@ -50,12 +51,12 @@ class PhoneTvTest {
         compose.waitUntil(15000){!model.state.value.initializing&&model.managed.state.value.syncedAt>0}
         val tvs=runBlocking(Dispatchers.IO){withTimeout(25000){var rows:List<ManagedDevice>;do {rows=managedDevices(api().authorized("devices")).filter {it.type=="tv"&&it.available};if(rows.size<2)delay(500)}while(rows.size<2);rows}}
         val first=tvs.first {it.name=="Гостиная"};val second=tvs.first {it.name=="Спальня"}
-        compose.runOnIdle {model.open(Release("fixture:remote","Тестовое видео","fixture",magnet="magnet:?xt=urn:btih:0123456789012345678901234567890123456789"))}
+        compose.runOnIdle {model.open(Release("demo:remote","Тихая орбита","fixture",magnet="magnet:?xt=urn:btih:0123456789012345678901234567890123456789"),metadata=Metadata("tmdb:movie:1","Тихая орбита",null,"История о встрече за пределами знакомого мира.",year=2026))}
         compose.onNodeWithTag("detail-cast").assertExists()
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
         compose.runOnIdle {model.prepare();Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)}
         compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
-        compose.waitUntil(10000){model.library.value.any {it.id=="fixture:remote"&&it.bookmarked}}
+        compose.waitUntil(10000){model.library.value.any {it.id=="tmdb:movie:1"&&it.bookmarked}}
         proof("01-no-connection")
         compose.onNodeWithTag("detail-cast").performClick()
         compose.onNodeWithText("Где смотреть?").assertExists()
@@ -79,8 +80,9 @@ class PhoneTvTest {
         val target=RemotePlaybackService.state.value.target!!;val originalSession=target.video.session
         Assert.assertEquals(first.id,target.id);compose.onNodeWithTag("remote-status").assertExists();proof("03-playing-on-tv")
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.MEDIA_CONTENT_CONTROL")
-        val controllers=context.getSystemService(MediaSessionManager::class.java).getActiveSessions(null)
-        val controller=controllers.single {it.packageName==context.packageName}
+        val sessions=context.getSystemService(MediaSessionManager::class.java)
+        waitFor("Android registered its active media card"){sessions.getActiveSessions(null).any {it.packageName==context.packageName}}
+        val controller=sessions.getActiveSessions(null).single {it.packageName==context.packageName}
         Assert.assertEquals(MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE,controller.playbackInfo.playbackType)
         controller.transportControls.pause()
         waitFor("System pause reached the actual TV"){snapshot(first.id,target.instance).video.status=="paused"}
@@ -92,12 +94,21 @@ class PhoneTvTest {
         waitFor("Volume changes on the TV"){snapshot(first.id,target.instance).video.volume==newVolume}
         controller.transportControls.play()
         waitFor("System play reached the actual TV"){snapshot(first.id,target.instance).video.status=="playing"}
+        waitFor("Android card reflects playing state"){controller.playbackState?.state==PlaybackState.STATE_PLAYING}
         device.openNotification();Thread.sleep(500);proof("04-android-media-controls");device.pressBack()
         java.net.URL("http://127.0.0.1:18445/tv-pause").readText()
         waitFor("TV remote pause reflected on the phone"){RemotePlaybackService.state.value.target?.video?.status=="paused"}
         java.net.URL("http://127.0.0.1:18445/tv-play").readText()
         waitFor("TV remote play reflected on the phone"){RemotePlaybackService.state.value.target?.video?.status=="playing"}
         java.net.URL("http://127.0.0.1:18445/cut").readText()
+        // Removing an adb reverse listener leaves existing keep-alive sockets alive.
+        // Drop only this controller's sockets, as a real network loss would do.
+        lateinit var transport:okhttp3.OkHttpClient
+        compose.runOnIdle {
+            val service=RemotePlaybackService::class.java.getDeclaredField("current").apply {isAccessible=true}.get(null)
+            transport=(RemotePlaybackService::class.java.getDeclaredField("api").apply {isAccessible=true}.get(service) as ManagedApi).client
+        }
+        runBlocking(Dispatchers.IO){transport.connectionPool.evictAll();transport.dispatcher.cancelAll()}
         waitFor("Broken transport closes the launch gate"){!RemotePlaybackService.state.value.connected}
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
         compose.onNodeWithText("Повторить").assertExists();proof("08-connection-lost")
@@ -114,16 +125,12 @@ class PhoneTvTest {
         device.wakeUp();device.pressMenu()
         context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
         val handle=model.state.value.handle!!
-        val same=RemoteMedia(handle.hash,17,"Тестовое видео","fixture:remote","${handle.contentHash}:17")
+        val same=RemoteMedia(handle.hash,17,"Тихая орбита","demo:remote","${handle.contentHash}:17")
         compose.runOnIdle {RemotePlaybackService.load(same)}
         waitFor("Repeated file attached"){!RemotePlaybackService.state.value.busy}
         Assert.assertEquals("Same file cannot restart",originalSession,snapshot(first.id,target.instance).video.session)
-        // A second phone session joins through the real API without replacing the receiver session.
-        runBlocking(Dispatchers.IO) {
-            val extra=JSONObject(java.net.URL("http://127.0.0.1:18444/bootstrap").readText())
-            val client=api();val route=client.request("remote/${first.id}/connect","POST",headers=mapOf("Authorization" to "Bearer ${extra.getString("accessToken")}"))
-            Assert.assertEquals(originalSession,route.getJSONObject("state").getString("session"))
-        }
+        JSONObject(java.net.URL("http://127.0.0.1:18445/second-controller?target=${first.id}&session=$originalSession").readText()).also {Assert.assertTrue(it.getBoolean("ok"))}
+        Assert.assertEquals("A real second Android sender did not restart the TV",originalSession,snapshot(first.id,target.instance).video.session)
         // Replacement is explicit, and cancelling it keeps the current video intact.
         compose.runOnIdle {RemotePlaybackService.load(same.copy(fileId=18,contentId="${handle.contentHash}:18",title="Другое видео"))}
         compose.onNodeWithText("Заменить видео?").assertExists();proof("05-replacement")
@@ -133,6 +140,9 @@ class PhoneTvTest {
         waitFor("Second TV selected"){RemotePlaybackService.state.value.connected&&RemotePlaybackService.state.value.target?.id==second.id}
         Assert.assertEquals("Old TV keeps its video",originalSession,snapshot(first.id,target.instance).video.session)
         Assert.assertEquals("Selecting a TV never loads video","idle",RemotePlaybackService.state.value.target!!.video.status)
+        compose.runOnIdle {RemotePlaybackService.load(same.copy(fileId=18,contentId="${handle.contentHash}:18",position=12000))}
+        waitFor("Independent second TV starts at supplied saved position"){RemotePlaybackService.state.value.target?.video?.let {it.status=="playing"&&it.position>=12000}==true}
+        Assert.assertEquals("First TV remains untouched",originalSession,snapshot(first.id,target.instance).video.session)
         compose.runOnIdle {RemotePlaybackService.disconnect(context)}
         Assert.assertEquals("Disconnecting phone leaves TV playing","playing",snapshot(first.id,target.instance).video.status)
         instrumentation.uiAutomation.dropShellPermissionIdentity()

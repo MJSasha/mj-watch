@@ -42,7 +42,7 @@ class JacredFlowTest {
     override fun after() {server.shutdown()}
  }
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
- @Test fun checksSearchAndVideoUseHttpAdaptersWithoutKeys() {
+ @Test fun checksAndSearchUseHttpAdaptersButNoVideoWithoutTv() {
     compose.onNodeWithText("Jackett / JacRed").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить поиск"))
     compose.onNodeWithText("Проверить поиск").performClick()
@@ -64,16 +64,13 @@ class JacredFlowTest {
     compose.onNodeWithText("Название фильма или раздачи").performTextInput("Sintel")
     compose.waitUntil(10000) {compose.onAllNodesWithText("Sintel HTTP fixture 720p").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
-    compose.onNodeWithTag("detail-sources").performClick()
+    compose.onNodeWithText("Раздачи").performClick()
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Sintel HTTP fixture 720p"))
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
-    compose.onNodeWithTag("source-continue").assertIsDisplayed()
-    compose.onNodeWithTag("source-continue").performClick()
-    val i=InstrumentationRegistry.getInstrumentation();var frame=false
-    compose.waitUntil(20000) {i.runOnMainSync {frame=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().any {it.firstFrameSeen}};frame}
+    compose.onNodeWithTag("source-continue").assertDoesNotExist()
     Assert.assertTrue(paths.any {it.startsWith("/parser/api/v2.0/indexers/all/results?")&&it.contains("Query=Sintel")})
-    Assert.assertTrue(paths.any {it.startsWith("/ts/stream/Sintel.mp4?")&&it.contains("index=17")})
+    Assert.assertFalse("No stream preparation without a TV",paths.any {it.startsWith("/ts/stream")||it=="/ts/torrents"})
     Assert.assertFalse(paths.any {it.contains("apikey")||it.contains("caps")})
-    UiDevice.getInstance(i).pressBack()
+    Assert.assertFalse(PlaybackActivity.hasActivePlayback())
  }
 }

@@ -89,11 +89,11 @@ class IssueFixesUiTest {
         Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)
         compose.onNodeWithText(item.overview!!).assertExists()
         screenshot("history-film-detail")
-        compose.onNodeWithTag("detail-sources").performClick()
+        compose.onNodeWithText("Раздачи").performClick()
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
         compose.onNodeWithText("Сезон 1").assertExists()
     }
-    @Test fun releaseSeasonAndQualityFiltersAndEpisodeFiles() {
+    @Test fun releaseSeasonAndQualityFiltersCannotBypassTvGate() {
         val model=model()
         compose.runOnIdle {model.search("тест")}
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.size==2}
@@ -108,14 +108,9 @@ class IssueFixesUiTest {
         compose.onNodeWithText(DemoReleases.items.first().title).assertDoesNotExist()
         screenshot("release-season-filter")
         compose.onNodeWithText(DemoReleases.items.last().title).performClick()
-        compose.onNodeWithTag("source-continue").performClick()
-        compose.waitUntil(10000) {model.state.value.page=="files"}
-        compose.onNodeWithText("Сезон 1").performClick()
-        val first=compose.onNodeWithText("Сезон 1 · Серия 1").fetchSemanticsNode().boundsInRoot
-        val second=compose.onNodeWithText("Сезон 1 · Серия 2").fetchSemanticsNode().boundsInRoot
-        Assert.assertTrue(first.top<second.top)
-        Assert.assertEquals(3,model.state.value.handle!!.files.single {it.path.endsWith("01.mp4")}.serverFileId)
-        screenshot("season-episode-files")
+        compose.onNodeWithTag("source-continue").assertDoesNotExist()
+        compose.runOnIdle {model.playRelease(DemoReleases.items.last(),1);Assert.assertEquals("releases",model.state.value.page);Assert.assertNull(model.state.value.handle)}
+        screenshot("season-selection-without-tv")
     }
     @Test fun adaptiveIconAndMonochromeUseTransparentForeground() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext

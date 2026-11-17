@@ -86,6 +86,11 @@ func TestRemoteTargetSessionAndReceiverTruth(t *testing.T) {
 		t.Fatal(connected)
 	}
 	c := RemoteCommand{ID: Token(), Instance: instance, Action: "load", Handle: "handle", FileID: 1, Title: "Movie"}
+	c.Position = -1
+	if code, _ := call(t, s, phone, "POST", "remote/"+id+"/commands", c); code != 400 {
+		t.Fatal("negative resume position", code)
+	}
+	c.Position = 0
 	if code, v := call(t, s, phone, "POST", "remote/"+id+"/commands", c); code != 200 || v["accepted"] != true {
 		t.Fatal(code, v)
 	}
@@ -93,6 +98,9 @@ func TestRemoteTargetSessionAndReceiverTruth(t *testing.T) {
 	_, observed := call(t, s, phone, "GET", "remote/"+id+"?instance="+instance, nil)
 	if observed["state"].(map[string]any)["status"] != "idle" {
 		t.Fatal(observed)
+	}
+	if observed["pendingId"] != c.ID {
+		t.Fatal("command receipt was mistaken for receiver acknowledgment", observed)
 	}
 	queued := report(tv, instance, "", idle)["command"].(map[string]any)
 	if queued["id"] != c.ID || queued["contentId"] != "content-hash:1" {
@@ -103,6 +111,10 @@ func TestRemoteTargetSessionAndReceiverTruth(t *testing.T) {
 	}
 	playing := RemoteState{Session: c.ID, ContentID: "content-hash:1", Title: "Movie", Status: "playing", Position: 36000, Duration: 120000, Seek: true, Volume: 5, VolumeMax: 15}
 	report(tv, instance, c.ID, playing)
+	_, acknowledged := call(t, s, phone, "GET", "remote/"+id+"?instance="+instance, nil)
+	if acknowledged["pendingId"] != "" {
+		t.Fatal("receiver did not acknowledge command", acknowledged)
+	}
 	// Retries and another controller joining the same file cannot restart it.
 	if code, v := call(t, s, phone, "POST", "remote/"+id+"/commands", c); code != 200 || v["duplicate"] != true {
 		t.Fatal(code, v)

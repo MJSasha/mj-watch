@@ -29,6 +29,8 @@ class RemotePlaybackService:Service() {
     private var polling:Job?=null
     private var watchdog:Job?=null
     private var sending:Job?=null
+    private val queued=ArrayDeque<Pair<String,()->Unit>>()
+    private var requestedVolume:Int?=null
     private lateinit var session:MediaSession
     private var api:ManagedApi?=null
     private var volumeSignature=""
@@ -55,7 +57,7 @@ class RemotePlaybackService:Service() {
         intent?.action?.takeIf {it in setOf("play","pause","stop")}?.let {command(it);return START_NOT_STICKY}
         val id=intent?.getStringExtra("target") ?: return START_NOT_STICKY
         startForeground(2601,notification("Подключаемся к ТВ"))
-        epoch++;val generation=epoch;polling?.cancel();sending?.cancel();watchdog?.cancel();session.isActive=false
+        epoch++;val generation=epoch;queued.clear();requestedVolume=null;polling?.cancel();sending?.cancel();watchdog?.cancel();session.isActive=false
         mutable.value=RemotePlaybackState(target=state.value.target?.takeIf {it.id==id} ?: RemoteTarget(id,intent.getStringExtra("targetName") ?: id.take(6),"",RemoteVideo()),busy=true)
         watchdog=scope.launch {
             while(isActive&&epoch==generation) {
@@ -85,7 +87,7 @@ class RemotePlaybackService:Service() {
     }
     private fun lost(message:String) {
         mutable.update {it.copy(connected=false,busy=false,conflict=null,message=message)}
-        epoch++;polling?.cancel();sending?.cancel();watchdog?.cancel();api?.client?.dispatcher?.cancelAll()
+        epoch++;queued.clear();requestedVolume=null;polling?.cancel();sending?.cancel();watchdog?.cancel();api?.client?.dispatcher?.cancelAll()
         session.isActive=false;stopForeground(STOP_FOREGROUND_REMOVE)
     }
     private fun loadMedia(media:RemoteMedia,replacement:RemoteReplacement?=null) {
@@ -95,20 +97,41 @@ class RemotePlaybackService:Service() {
         if(target.video.active&&target.video.contentId!=media.contentId&&replacement==null) {
             mutable.update {it.copy(conflict=RemoteReplacement(target.id,target.instance,target.video.session,target.name,target.video.title,media))};return
         }
-        command("load",JSONObject().put("handle",media.handle).put("fileId",media.fileId).put("title",media.title).put("releaseId",media.releaseId).put("metadataId",media.metadataId),replacement?.session ?: target.video.session,media)
+        command("load",JSONObject().put("handle",media.handle).put("fileId",media.fileId).put("title",media.title).put("releaseId",media.releaseId).put("metadataId",media.metadataId).put("position",media.position),replacement?.session ?: target.video.session,media)
     }
     private fun command(action:String,body:JSONObject=JSONObject(),expectedSession:String?=null,media:RemoteMedia?=null) {
         val target=state.value.target ?: return;val client=api ?: return
-        if(!state.value.connected||sending?.isActive==true)return
+        if(!state.value.connected)return
         val generation=epoch
+        if(sending?.isActive==true) {
+            if(action=="load")return
+            if(action in setOf("volume","seek"))queued.removeAll {it.first==action}
+            if(queued.size>=32)queued.removeFirst()
+            val session=expectedSession ?: target.video.session
+            queued.addLast(action to {
+                val current=state.value.target
+                if(epoch==generation&&current?.id==target.id&&current.instance==target.instance&&current.video.session==session)command(action,body,session)
+            })
+            return
+        }
         val payload=body.put("id",UUID.randomUUID().toString()).put("instance",target.instance).put("session",expectedSession ?: target.video.session).put("action",action)
         mutable.update {it.copy(busy=true,message=if(action=="load")"Отправляем видео на ТВ…" else "",conflict=null)}
         sending=scope.launch {
             try {
-                withContext(Dispatchers.IO){
-                    check(Settings(applicationContext).config.first().profileKey==client.config.profileKey){"Account changed"}
-                    try {client.authorized("remote/${target.id}/commands","POST",payload)}
-                    catch(e:java.io.IOException){if(e is HttpFailure)throw e;client.authorized("remote/${target.id}/commands","POST",payload)}
+                withTimeout(8000) {
+                    while(true) {
+                        try {
+                            withContext(Dispatchers.IO){
+                                check(Settings(applicationContext).config.first().profileKey==client.config.profileKey){"Account changed"}
+                                try {client.authorized("remote/${target.id}/commands","POST",payload)}
+                                catch(e:java.io.IOException){if(e is HttpFailure)throw e;client.authorized("remote/${target.id}/commands","POST",payload)}
+                            }
+                            break
+                        } catch(e:HttpFailure) {
+                            if(runCatching {JSONObject(e.responseBody ?: "{}").optString("code")}.getOrNull()!="command_pending")throw e
+                            delay(250)
+                        }
+                    }
                 }
                 // Wait for an actual receiver observation. The accepted load alone proves nothing.
                 withTimeout(10000) {
@@ -116,12 +139,12 @@ class RemotePlaybackService:Service() {
                         val fresh=RemoteTarget.parse(withContext(Dispatchers.IO){client.authorized("remote/${target.id}?instance=${target.instance}")})
                         if(epoch!=generation)return@withTimeout
                         mutable.update {it.copy(target=fresh,observedAt=System.nanoTime())}
-                        if(action!="load"||fresh.video.contentId==media?.contentId&&fresh.video.active)break
+                        if(fresh.pendingId!=payload.getString("id")&&(action!="load"||fresh.video.contentId==media?.contentId&&fresh.video.active))break
                         delay(500)
                     }
                 }
                 if(epoch==generation)mutable.update {it.copy(busy=false,message="")}
-            } catch(e:CancellationException){if(e is TimeoutCancellationException&&epoch==generation)mutable.update {it.copy(busy=false,message="ТВ не подтвердил запуск. Повторите попытку.")}else throw e}
+            } catch(e:CancellationException){if(e is TimeoutCancellationException&&epoch==generation)mutable.update {it.copy(busy=false,message="ТВ не подтвердил команду. Повторите попытку.")}else throw e}
             catch(e:HttpFailure) {
                 if(epoch!=generation)return@launch
                 val response=runCatching{JSONObject(e.responseBody ?: "{}")} .getOrNull()
@@ -129,9 +152,18 @@ class RemotePlaybackService:Service() {
                     val video=response.optJSONObject("state")?.let {RemoteVideo.parse(it)}
                     if(video!=null)mutable.update {it.copy(busy=false,target=target.copy(video=video),conflict=RemoteReplacement(target.id,target.instance,video.session,target.name,video.title,media),message="")}
                     else mutable.update {it.copy(busy=false,message="Просмотр на ТВ изменился. Повторите запуск.")}
+                } else if(response?.optString("code")=="session_changed") {
+                    response.optJSONObject("state")?.let {video->mutable.update {it.copy(busy=false,target=target.copy(video=RemoteVideo.parse(video)),observedAt=System.nanoTime(),message="")}}
                 } else if(response?.optString("code")=="command_pending")mutable.update {it.copy(busy=false,message="ТВ выполняет предыдущую команду. Повторите попытку.")}
                 else lost("Нет связи с ТВ. Проверьте доступ и повторите подключение.")
             } catch(e:Exception){if(epoch==generation)lost("Нет связи с ТВ. Видео могло продолжиться.")}
+            finally {
+                if(epoch==generation) {
+                    sending=null
+                    if(action=="volume"&&requestedVolume==body.optInt("volume"))requestedVolume=null
+                    while(queued.isNotEmpty()&&sending?.isActive!=true)queued.removeFirst().second.invoke()
+                }
+            }
         }
     }
     // MediaStyle notifications with a session are exempt from POST_NOTIFICATIONS:
@@ -162,8 +194,8 @@ class RemotePlaybackService:Service() {
         if(volumeSignature!=signature) {
             volumeSignature=signature
             volumeProvider=object:VolumeProvider(if(video.volumeMax>0)VolumeProvider.VOLUME_CONTROL_ABSOLUTE else VolumeProvider.VOLUME_CONTROL_FIXED,video.volumeMax,video.volume) {
-                override fun onSetVolumeTo(volume:Int){command("volume",JSONObject().put("volume",volume.coerceIn(0,maxVolume)))}
-                override fun onAdjustVolume(direction:Int){if(direction!=0)onSetVolumeTo((state.value.target?.video?.volume ?: currentVolume)+direction)}
+                override fun onSetVolumeTo(volume:Int){requestedVolume=volume.coerceIn(0,maxVolume);command("volume",JSONObject().put("volume",requestedVolume))}
+                override fun onAdjustVolume(direction:Int){if(direction!=0)onSetVolumeTo((requestedVolume ?: state.value.target?.video?.volume ?: currentVolume)+direction)}
             }
             session.setPlaybackToRemote(volumeProvider!!)
         } else volumeProvider?.setCurrentVolume(video.volume)
@@ -176,7 +208,7 @@ class RemotePlaybackService:Service() {
         session.setSessionActivity(pending)
         val action=if(state.value.target?.video?.status=="playing")"pause" else "play"
         val transport=PendingIntent.getService(this,27,Intent(this,RemotePlaybackService::class.java).setAction(action),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return Notification.Builder(this,"remote-video").addAction(Notification.Action.Builder(if(action=="pause")android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,if(action=="pause")"Пауза" else "Воспроизвести",transport).build()).setSmallIcon(android.R.drawable.ic_media_play).setContentTitle(title).setContentText(state.value.target?.name ?: "MJWatch").setContentIntent(pending).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0)).setOngoing(state.value.target?.video?.active==true).setVisibility(Notification.VISIBILITY_PUBLIC).build()
+        return Notification.Builder(this,"remote-video").addAction(Notification.Action.Builder(if(action=="pause")android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,if(action=="pause")"Пауза" else "Воспроизвести",transport).build()).setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(state.value.target?.name ?: "MJWatch").setContentIntent(pending).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0)).setOngoing(state.value.target?.video?.active==true).setVisibility(Notification.VISIBILITY_PUBLIC).build()
     }
     override fun onDestroy() {
         epoch++;scope.cancel();session.release();current=null;mutable.update {it.copy(connected=false,busy=false,conflict=null)};super.onDestroy()

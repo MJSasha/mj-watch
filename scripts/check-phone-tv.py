@@ -39,6 +39,7 @@ def instrument(serial, package, test, folder, **arguments):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--phone', default='emulator-5570')
+    parser.add_argument('--phone2', default='emulator-5576')
     parser.add_argument('--tv1', default='emulator-5572')
     parser.add_argument('--tv2', default='emulator-5574')
     parser.add_argument('--video', type=Path, required=True, help='Test MP4 at least 3 minutes long')
@@ -46,7 +47,7 @@ def main():
     folder = ROOT / 'dist/phone-tv' / time.strftime('%Y%m%d-%H%M%S')
     folder.mkdir(parents=True)
     # Only the AVDs created for this task may be reset by this runner.
-    for serial, name in [(args.phone, 'issue26-phone'), (args.tv1, 'issue26-tv1'), (args.tv2, 'issue26-tv2')]:
+    for serial, name in [(args.phone, 'issue26-phone'),(args.phone2,'issue26-phone2'), (args.tv1, 'issue26-tv1'), (args.tv2, 'issue26-tv2')]:
         if adb(serial, 'emu', 'avd', 'name').splitlines()[0].strip() != name:
             raise RuntimeError('Refusing to reset an unrelated device: ' + serial)
         if adb(serial, 'shell', 'getprop', 'sys.boot_completed').strip() != '1':
@@ -59,6 +60,8 @@ def main():
         adb(serial, 'reverse', 'tcp:19443', 'tcp:19443')
         adb(serial, 'reverse', 'tcp:18444', 'tcp:19444')
         adb(serial, 'reverse', 'tcp:18445', 'tcp:19445')
+    adb(args.phone,'shell','wm','size','1080x2340')
+    adb(args.phone,'shell','wm','density','420')
     fixture = folder / 'fixture'
     run(['go', 'build', '-o', fixture, './cmd/fixture'], cwd=ROOT / 'server')
     log = (folder / 'fixture.log').open('w')
@@ -88,6 +91,12 @@ def main():
                     adb(args.phone, 'reverse', 'tcp:19443', 'tcp:19443')
                 elif url.path in ['/tv-pause', '/tv-play']:
                     adb(args.tv1, 'shell', 'input', 'keyevent', 'KEYCODE_MEDIA_PAUSE' if url.path == '/tv-pause' else 'KEYCODE_MEDIA_PLAY')
+                elif url.path == '/second-controller':
+                    query=parse_qs(url.query)
+                    target=query.get('target',[''])[0];session=query.get('session',[''])[0]
+                    if not all(re.fullmatch('[A-Za-z0-9_-]{16,128}',value) for value in [target,session]):
+                        self.send_error(400);return
+                    instrument(args.phone2,'dev.mjwatch.mobile','dev.mjwatch.mobile.SecondControllerTest',folder,receiver=target,session=session)
                 elif url.path == '/state':
                     query = parse_qs(url.query)
                     target = query.get('target', [''])[0]
@@ -111,7 +120,7 @@ def main():
 
         probe = http.server.ThreadingHTTPServer(('127.0.0.1', 19445), NetworkProbe)
         threading.Thread(target=probe.serve_forever, daemon=True).start()
-        for serial, app in [(args.tv1, 'tv'), (args.tv2, 'tv'), (args.phone, 'mobile')]:
+        for serial, app in [(args.tv1, 'tv'), (args.tv2, 'tv'), (args.phone, 'mobile'),(args.phone2,'mobile')]:
             package = 'dev.mjwatch.' + app
             print('Installing isolated ' + serial, flush=True)
             adb(serial, 'install', '-r', ROOT / f'app-{app}/build/outputs/apk/debug/app-{app}-debug.apk')
@@ -122,10 +131,21 @@ def main():
             adb(serial, 'shell', 'am', 'start', '-n', 'dev.mjwatch.tv/.MainActivity')
         print('Testing actual phone UI and Android MediaSession against both TV APKs', flush=True)
         instrument(args.phone, 'dev.mjwatch.mobile', 'dev.mjwatch.mobile.PhoneTvTest', folder)
+        proof_path='/sdcard/Android/data/dev.mjwatch.mobile/files/phone-tv-proof'
+        adb(args.phone,'pull',proof_path,folder/'screenshots-phone')
+        print('Checking 200% fonts and tablet dialog geometry',flush=True)
+        adb(args.phone,'shell','settings','put','system','font_scale','2.0')
+        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder)
+        adb(args.phone,'pull',proof_path,folder/'screenshots-font200')
+        adb(args.phone,'shell','settings','put','system','font_scale','1.0')
+        adb(args.phone,'shell','wm','size','1600x2560')
+        adb(args.phone,'shell','wm','density','240')
+        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder)
+        adb(args.phone,'pull',proof_path,folder/'screenshots-tablet')
         print('PASSED. Evidence: ' + str(folder), flush=True)
     finally:
         # Preserve actual failure screens/logs as well as successful runs.
-        for serial, package in [(args.phone,'dev.mjwatch.mobile'),(args.tv1,'dev.mjwatch.tv'),(args.tv2,'dev.mjwatch.tv')]:
+        for serial, package in [(args.phone,'dev.mjwatch.mobile'),(args.phone2,'dev.mjwatch.mobile'),(args.tv1,'dev.mjwatch.tv'),(args.tv2,'dev.mjwatch.tv')]:
             try:
                 (folder / (serial+'-media-session.txt')).write_text(adb(serial,'shell','dumpsys','media_session'))
                 (folder / (serial+'-logcat.txt')).write_text(adb(serial,'logcat','-d','-t','3000'))
@@ -135,12 +155,14 @@ def main():
                     subprocess.run([str(ADB),'-s',serial,'exec-out','screencap','-p'],stdout=output,check=True)
             except subprocess.CalledProcessError as error:
                 (folder/(serial+'-capture-error.txt')).write_text(str(error))
+        for command in [('settings','put','system','font_scale','1.0'),('wm','size','reset'),('wm','density','reset')]:
+            subprocess.run([str(ADB),'-s',args.phone,'shell',*command],capture_output=True)
         if 'probe' in locals():
             probe.shutdown();probe.server_close()
         os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=10)
         log.close()
-        for serial in [args.phone, args.tv1, args.tv2]:
+        for serial in [args.phone,args.phone2, args.tv1, args.tv2]:
             for port in [19443, 18444, 18445]:
                 subprocess.run([str(ADB), '-s', serial, 'reverse', '--remove', 'tcp:' + str(port)], capture_output=True)
 

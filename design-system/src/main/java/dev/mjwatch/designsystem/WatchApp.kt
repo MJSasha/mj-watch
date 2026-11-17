@@ -218,10 +218,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
 }
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,onClick:()->Unit) {
+@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,pill:Boolean=false,onClick:()->Unit) {
     if(tv) {TvActionButton(text,modifier,enabled,secondary,icon,loading,onClick=onClick);return}
     val colors=MaterialTheme.colorScheme
-    val shape=MaterialTheme.shapes.medium
+    val shape=if(pill)RoundedCornerShape(50) else MaterialTheme.shapes.medium
     val content:@Composable ()->Unit={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
         val contentColor=LocalContentColor.current
         if(loading) CircularProgressIndicator(Modifier.size(20.dp).clearAndSetSemantics {},color=contentColor,strokeWidth=2.dp) else if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=contentColor)
@@ -419,7 +419,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 Row(Modifier.fillMaxWidth().padding(inset).testTag("detail-toolbar"),horizontalArrangement=Arrangement.SpaceBetween) {
                     IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(!tv)RemoteCastButton(s,model)
+                    if(!tv)RemoteCastButton(s,model,hasArt)
                     IconButton(onClick={model.bookmark()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
                     }
                 }
@@ -427,6 +427,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 if(!compact) Column(Modifier.padding(inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text(title,modifier=Modifier.testTag("detail-title"),fontSize=if(tv) 40.sp else if(m!=null) 32.sp else 24.sp,lineHeight=if(tv) 48.sp else if(m!=null) 38.sp else 30.sp,fontWeight=FontWeight.Bold,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=if(hasArt) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface)
                     Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp)
+                    if(!tv)Text(m?.overview?.takeIf {it.isNotBlank()} ?: "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant)
                     if(tv) WatchTheme(if(hasArt)"dark" else s.config.theme) {Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null) model.resume(saved) else choose()}
                         if(saved!=null) Action("Раздачи",true,Modifier.testTag("detail-sources"),secondary=true,onClick=choose)
@@ -446,10 +447,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     if(related.isEmpty()) Empty("Похожих пока нет","Попробуйте поиск по названию",tv,onClick={model.page("search")})
                     else {Text("Из того же раздела",color=MaterialTheme.colorScheme.onSurfaceVariant);LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp)) {items(related,key={it.id}) {item->Box(Modifier.width(156.dp)) {MetadataCard(item,s.config,tv) {model.metadata(item)}}}}}
                 } else {
-                Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и управление плеером. История и позиции доступны после подключения сервера MJWatch." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(tv||compact)Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и управление плеером. История и позиции доступны после подключения сервера MJWatch." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(m?.kind=="tv"&&s.config.managed) ManagedEpisodes(m,s.config,model,tv)
-                if(r!=null) {Text("Исходное название",fontWeight=FontWeight.Bold);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Свойства дорожек и устройства проверяются при воспроизведении.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                progress.filter {it.releaseId==r?.id||it.releaseId in linked}.forEach {p->Text("Сохранено ${p.path} · ${time(p.positionMs)}${if(p.completed) " · Завершено" else ""}",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                if(r!=null&&m==null) {Text("Исходное название",fontWeight=FontWeight.Bold);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Свойства дорожек и устройства проверяются при воспроизведении.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                saved?.let {p->Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text("Вы остановились на ${time(p.positionMs)}",fontSize=16.sp,modifier=Modifier.testTag("saved-position"))
+                    if((p.durationMs ?: 0)>0)LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!.toFloat()).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().clearAndSetSemantics {})
+                }}
                 }
             }
         }
@@ -553,7 +557,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     fun launch(file:TorrentFile) {
         if(!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
         if(!tv) {
-            dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(s.handle!!.hash,file.serverFileId,s.selectedMetadata?.title ?: s.selected!!.displayTitle(),s.selected!!.id,"${s.handle!!.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty()))
+            dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(s.handle!!.hash,file.serverFileId,s.selectedMetadata?.title ?: s.selected!!.displayTitle(),s.selected!!.id,"${s.handle!!.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==file.path&&!it.completed}?.positionMs ?: 0))
             model.playerClosed();return
         }
         val request=model.stream(file)

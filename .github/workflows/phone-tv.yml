@@ -1,4 +1,4 @@
-name: Phone to two TVs
+name: Two phones and two TVs
 on:
   workflow_dispatch:
   push:
@@ -38,15 +38,17 @@ jobs:
         run: |
           set -e
           echo no | avdmanager create avd --force -n issue26-phone -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
+          echo no | avdmanager create avd --force -n issue26-phone2 -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-tv1 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
           echo no | avdmanager create avd --force -n issue26-tv2 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
           emulator -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
+          emulator -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
           emulator -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
           emulator -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
           python3 - <<'PY'
           import subprocess,time
           deadline=time.monotonic()+300
-          waiting={'emulator-5570','emulator-5572','emulator-5574'}
+          waiting={'emulator-5570','emulator-5572','emulator-5574','emulator-5576'}
           while waiting and time.monotonic()<deadline:
               for serial in list(waiting):
                   result=subprocess.run(['adb','-s',serial,'shell','getprop','sys.boot_completed'],capture_output=True,text=True)

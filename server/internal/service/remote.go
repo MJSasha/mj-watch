@@ -117,7 +117,13 @@ func (s *Server) remote(w http.ResponseWriter, r *http.Request, path string, i i
 		fail(w, 409, "receiver_offline")
 		return
 	}
-	snapshot := map[string]any{"deviceId": target, "name": name, "instance": instance, "state": json.RawMessage(raw)}
+	var queuedCommand RemoteCommand
+	json.Unmarshal([]byte(queued), &queuedCommand)
+	pendingID := ""
+	if queuedCommand.Created >= time.Now().Unix()-8 {
+		pendingID = queuedCommand.ID
+	}
+	snapshot := map[string]any{"deviceId": target, "name": name, "instance": instance, "state": json.RawMessage(raw), "pendingId": pendingID}
 	if len(parts) == 3 && parts[2] == "connect" && r.Method == "POST" {
 		respond(w, 200, snapshot)
 		return
@@ -155,7 +161,7 @@ func (s *Server) remote(w http.ResponseWriter, r *http.Request, path string, i i
 	json.Unmarshal([]byte(raw), &state)
 	if c.Action == "load" {
 		var hash string
-		if s.DB.QueryRow("SELECT hash FROM playback WHERE id=? AND user_id=?", c.Handle, i.User).Scan(&hash) != nil || c.FileID < 0 || len(c.Title) > 1024 || len(c.ReleaseID) > 2048 || len(c.MetadataID) > 128 {
+		if s.DB.QueryRow("SELECT hash FROM playback WHERE id=? AND user_id=?", c.Handle, i.User).Scan(&hash) != nil || c.FileID < 0 || c.Position < 0 || len(c.Title) > 1024 || len(c.ReleaseID) > 2048 || len(c.MetadataID) > 128 {
 			fail(w, 400, "invalid_media")
 			return
 		}

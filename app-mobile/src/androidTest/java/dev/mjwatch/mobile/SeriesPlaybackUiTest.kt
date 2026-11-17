@@ -46,11 +46,9 @@ class SeriesPlaybackUiTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000){model.state.value.config.demo}
-        compose.runOnIdle {model.open(DemoReleases.items.first());model.prepare()}
-        compose.waitUntil(10000){model.state.value.page=="files"}
-        val first=compose.onNodeWithText("Сезон 1 · Серия 1")
-        first.performClick()
-        compose.onNodeWithText("Смотреть").performClick()
+        // Low-level shared player regression. Phone catalogue launch gates are tested separately.
+        val queueFixture=listOf(PlaybackEpisode("asset:///demo.mp4","Сезон 1/Серия 01.mp4",3),PlaybackEpisode("asset:///demo.mp4","Сезон 1/Серия 02.mp4",17))
+        instrumentation.runOnMainSync {compose.activity.startActivity(android.content.Intent(compose.activity,PlaybackActivity::class.java).putExtra("uri","asset:///demo.mp4").putExtra("path",queueFixture.first().path).putExtra("fileId",3).putExtra("episodes",PlaybackEpisode.encode(queueFixture)).putExtra("mobile",true))}
         var a=awaitEpisode(3)
         UiDevice.getInstance(instrumentation).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1000)?.click()
         var queue=emptyList<PlaybackEpisode>()

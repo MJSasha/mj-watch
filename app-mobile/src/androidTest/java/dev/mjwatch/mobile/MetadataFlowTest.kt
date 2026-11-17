@@ -30,14 +30,11 @@ class MetadataFlowTest {
     compose.onNodeWithText(item.overview!!).assertExists()
     compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
     compose.waitUntil(5000) {model.library.value.any {it.id==item.id&&it.bookmarked}}
-    compose.onNodeWithTag("detail-sources").performClick()
+    compose.onNodeWithText("Раздачи").performClick()
     compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
     compose.onNodeWithTag("release-list").performScrollToNode(hasText(DemoReleases.items.first().title))
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
-    compose.onNodeWithTag("source-continue").assertIsDisplayed()
-    compose.onNodeWithTag("source-continue").performClick()
-    compose.waitUntil(10000) {model.state.value.page=="files"}
-    compose.runOnIdle {Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse("Direct opening does not create history",model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
-    Assert.assertEquals(3,model.state.value.handle!!.files.single {it.path.endsWith("01.mp4")}.serverFileId)
+    compose.onNodeWithTag("source-continue").assertDoesNotExist()
+    compose.runOnIdle {model.playRelease(DemoReleases.items.first(),null);Assert.assertEquals("releases",model.state.value.page);Assert.assertNull(model.state.value.handle);Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse(model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
  }
 }

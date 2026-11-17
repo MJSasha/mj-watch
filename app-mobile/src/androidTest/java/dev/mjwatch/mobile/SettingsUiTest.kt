@@ -74,7 +74,8 @@ class SettingsUiTest {
     val title=compose.onNodeWithTag("detail-title").fetchSemanticsNode().boundsInRoot
     Assert.assertTrue("Header controls precede title",toolbar.bottom<=title.top)
     compose.onNodeWithContentDescription("Назад").assertIsDisplayed()
-    compose.onNodeWithTag("detail-sources").assertIsDisplayed()
+    compose.onNodeWithTag("detail-cast").assertIsDisplayed()
+    compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
     screenshot("long-title")
     compose.onNodeWithContentDescription("Назад").performClick()
     compose.waitUntil(5000) {model.state.value.page=="home"}

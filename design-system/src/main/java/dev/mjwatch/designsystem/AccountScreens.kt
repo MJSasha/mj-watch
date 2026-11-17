@@ -61,7 +61,7 @@ import org.json.JSONObject
             "managed-devices"->{
                 val devices=managed.data?.takeIf {it.has("devices")}?.let {managedDevices(it)}
                 if(devices?.isEmpty()==true){Text("Устройств пока нет");Text("Устройства появятся после первого входа.")}
-                devices?.forEach {device->DeviceRow(device,device.id==managed.me?.optString("deviceId"),s,model,tv){confirm="Отключить ${device.name}? Для просмотра на нём потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}}
+                devices?.forEach {device->key(device.id){DeviceRow(device,device.id==managed.me?.optString("deviceId"),s,model,tv){confirm="Отключить ${device.name}? Для просмотра на нём потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}}}
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
             "managed-pairing"->{

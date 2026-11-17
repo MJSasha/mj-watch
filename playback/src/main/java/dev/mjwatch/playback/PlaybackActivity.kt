@@ -165,7 +165,7 @@ class PlaybackActivity : ComponentActivity() {
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
-            player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: progress?.takeUnless { it.completed }?.positionMs ?: 0)
+            player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
             while(isActive) { delay(15000); save()

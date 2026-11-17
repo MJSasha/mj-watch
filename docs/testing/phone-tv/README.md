@@ -28,14 +28,16 @@ Local commands (JDK 21, Android SDK 36):
 (cd server && go test -race ./... && go vet ./...)
 ```
 
-The dedicated `.github/workflows/phone-tv.yml` boots one phone and two independent Android TV API 36 emulators. `scripts/check-phone-tv.py --video <MP4 longer than 3 minutes>` verifies AVD names before resetting test APKs, creates an isolated HTTPS fixture, installs actual APKs, and executes `PhoneTvTest`. It checks receiver frames, system transport/remote volume, TV key events, background/lock, a broken phone transport, reconnect, same-file attach, replacement cancellation, independent targets, bookmarks and server-confirmed rename. Test credentials/CA keys are disposable and excluded from uploaded evidence.
+The dedicated `.github/workflows/phone-tv.yml` boots two phones and two independent Android TV API 36 emulators. `scripts/check-phone-tv.py --video <MP4 longer than 3 minutes>` verifies AVD names before resetting test APKs, creates an isolated HTTPS fixture, installs actual APKs, and executes `PhoneTvTest`. It checks receiver frames, system transport/remote volume, TV key events, background/lock, a broken phone transport, reconnect, same-file attach, replacement cancellation, independent targets, bookmarks and server-confirmed rename. Test credentials/CA keys are disposable and excluded from uploaded evidence.
 
 ## Local results
 
 - 65 core JVM tests and 12 playback JVM tests passed, including Unicode device aliases and expiration of the launch gate.
 - Go `test -race ./...` and `vet ./...` passed. Protocol tests cover two targets, a second controller, foreign-account isolation, rename ACL, expired receiver state, stale confirmations/restarts and revoked queued commands.
 - Both APKs and instrumentation APKs compile; mobile/TV lint and unsigned release builds pass.
-- Android runtime, visual comparison and the new three-emulator integration have **not run**. QEMU cannot boot inside this sandbox. A GitHub tree upload was rejected by automatic approval review; no branch/PR/CI run was published without explicit authorization.
+- The isolated four-emulator integration passed locally on Android API 36: receiver first frame, Android play/pause/seek/remote volume, physical-TV key events, second Android sender joining without restart, background/lock, broken sender sockets/reconnect, independent TVs and supplied saved position. Unicode rename also passed at 200% font scale and tablet size.
+- Screenshots are being recaptured at the reference phone viewport before final visual sign-off. The shared device rows and launch gates have corresponding regression updates; CI on the updated branch remains required.
+- [Draft PR #31](https://github.com/MJSasha/mj-watch/pull/31) contains the implementation. The original TV runtime suite and build passed in CI; the mobile suite identified twelve assertions for the former local-playback product behavior, now updated to the connected-target contract.
 - Packaging syntax and the seven installation-status tests pass. The existing TLS fixture failure is described below and remains separate from the new protocol checks.
 
 ## Acceptance tracking
@@ -44,20 +46,20 @@ The dedicated `.github/workflows/phone-tv.yml` boots one phone and two independe
 
 | IDs | Current evidence / limitation |
 |---|---|
-| A01, A11–A13 | Server ACL/Unicode tests; shared list and rename dialog implemented; Android screenshots pending |
-| A02–A06, A24–A26 | All public model/file launch gates updated; dedicated phone UI tests prepared; runtime pending |
-| A07–A10 | Receiver-truth protocol, same-file join, CAS replacement, two-target routing covered by Go tests; actual frames/system controls pending |
-| A14 | Existing QR/scanner code and entry points untouched; regression runtime pending |
-| A15–A17 | Native remote MediaSession/VolumeProvider and foreground sender implemented; actual system UI/runtime pending |
-| A18 | Explicit second-controller join tested at API level; automatic LAN/Cast notification is not implemented |
-| A19 | Target/session invalidation, stale receiver fencing, revoked queued-command rejection covered by Go tests; Android loss/retry test prepared |
+| A01, A11–A13 | Server ACL/Unicode tests; shared list and rename dialog implemented; Android rename/large-font/tablet tests passed; final screenshots pending |
+| A02–A06, A24–A26 | All public model/file launch gates updated; dedicated phone UI tests prepared; local dedicated runtime passed; complete updated regression CI pending |
+| A07–A10 | Receiver-truth protocol, same-file join, CAS replacement, two-target routing covered by Go tests; actual first frame and native system controls passed locally |
+| A14 | Existing QR/scanner code and entry points untouched; regression local dedicated runtime passed; complete updated regression CI pending |
+| A15–A17 | Native remote MediaSession/VolumeProvider and foreground sender implemented; actual system UI/local dedicated runtime passed; complete updated regression CI pending |
+| A18 | A second Android sender joined and used its own native media session without restarting the TV; automatic LAN/Cast notification is not implemented |
+| A19 | Target/session invalidation, stale receiver fencing, revoked queued-command rejection covered by Go tests; Android sender socket loss and receiver-truth retry passed locally |
 | A20 | Unsupported/offline receivers cannot become targets; Cast/OEM and disabled-notification behavior remain unverified |
 | A21 | No in-app sender transport added; existing local player retained for standalone TV and low-level player tests |
-| A22 | 48dp actions, wrapping labels and modal rename implemented; TalkBack, 200% font, tablet and D-pad runtime/visual comparison pending |
-| A23 | TV launch guard stays independent of remote selection; TV runtime pending |
+| A22 | 48dp actions, wrapping labels and modal rename implemented; 200% font and tablet rename passed; TalkBack and TV rename D-pad verification pending |
+| A23 | TV launch guard stays independent of remote selection; TV local dedicated runtime passed; complete updated regression CI pending |
 
-Local sandbox denies CPU capability access required by QEMU, so it cannot supply Android screenshots or first-frame evidence. Local compilation/unit tests do not establish visual parity with the three reference sheets.
+QEMU was started outside the sandbox after the user authorized emulator verification. Actual APKs and native Android media sessions supplied the runtime evidence; JVM tests alone are not treated as visual or LAN/Cast proof.
 
 The existing `server/packaging/test_health_tls.py` has an environment-dependent baseline failure: Apple Python 3.9 does not reject the legacy CA as the test expects; Homebrew Python 3.12 rejects it first for a missing authority key identifier rather than the expected key-usage wording. Packaging/TLS implementation was not changed for this issue.
 
-The prior mobile local-playback UI scenarios target the previous product behavior. They need conversion to the connected-target fixture before the complete legacy instrumentation suite can be considered an acceptance suite for #26. The dedicated three-emulator test does not turn the remaining manual/compatibility scenarios into passes.
+The prior mobile local-playback UI entry assertions have been converted to the connected-target contract. Shared low-level player coverage remains, and the connected four-device fixture covers remote playback. The dedicated fixture does not turn remaining manual/compatibility scenarios into passes.

@@ -35,11 +35,11 @@ import org.json.JSONObject
                     IconButton(onClick={menu=true},enabled=!device.revoked,modifier=Modifier.size(48.dp).focusRequester(focus).tvFocusRing(tv).testTag("device-menu-${device.id}")){Icon(Icons.Outlined.MoreVert,"Действия · ${device.name}")}
                     DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                         DropdownMenuItem(text={Text("Переименовать")},onClick={menu=false;renaming=true},modifier=Modifier.heightIn(min=48.dp))
+                        if(!current)DropdownMenuItem(text={Text("Отключить ${device.name}")},onClick={menu=false;onRevoke()},enabled=!device.revoked,modifier=Modifier.heightIn(min=48.dp))
                     }
                 }
             }
-            Text(when {device.revoked->"Доступ отозван";connected->"Подключён для просмотра";device.type=="tv"->if(device.available)"Доступен" else "Нет связи";else->"Последняя активность: ${activityTime(device.lastSeen)}"})
-            if(!current)TextButton(onClick=onRevoke,enabled=!device.revoked,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv)){Text("Отключить ${device.name}")}
+            Text(when {device.revoked->"Доступ отозван";connected->"Подключён для просмотра";device.type=="tv"->if(!device.remoteVideo)"Удалённый просмотр недоступен. Обновите MJWatch на ТВ." else if(device.available)"Доступен" else "Нет связи";else->"Последняя активность: ${activityTime(device.lastSeen)}"})
         }
     }
     if(renaming)RenameDeviceDialog(device,s,model,tv){renaming=false;focus.requestFocus()}
