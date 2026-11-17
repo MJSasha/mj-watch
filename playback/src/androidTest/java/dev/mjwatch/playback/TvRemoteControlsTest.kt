@@ -2,6 +2,11 @@
 package dev.mjwatch.playback
 
 import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.BackHandler
 import androidx.test.platform.app.InstrumentationRegistry
 import android.view.KeyEvent
@@ -23,6 +28,7 @@ import java.lang.reflect.Proxy
 class TvRemoteControlsTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
     @Before fun preferences() {InstrumentationRegistry.getInstrumentation().targetContext.getSharedPreferences("playback-preferences",0).edit().clear().commit()}
+    private var frame by mutableStateOf(Color.Black)
     private var clock=0L
     private var position=50_000L
     private var playing=true
@@ -53,8 +59,10 @@ class TvRemoteControlsTest {
     private fun start(shown:Boolean=false) {
         visible=shown
         compose.setContent {
+            Box(Modifier.fillMaxSize().background(frame)) {
             TvPlayerControls({fake},"Test",visible,false,status,{retries++}, {visible=it},{exits++},{panel=true},{panel=true},queue,0,{selected=it;transitions++},panel,{back=it},now={clock})
             BackHandler {if(panel)panel=false else back?.invoke()}
+            }
         }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
@@ -147,6 +155,11 @@ class TvRemoteControlsTest {
         compose.runOnIdle {status=PlaybackStatus("Ошибка","Повторите загрузку",retry=true)}
         compose.mainClock.advanceTimeBy(300)
         compose.onNodeWithText("Повторить").assertIsFocused()
+        captureBuffering("tv-error-focus")
+        key(Key.DirectionRight);compose.onNodeWithText("К раздаче").assertIsFocused()
+        compose.onAllNodes(isFocused()).assertCountEquals(1)
+        captureBuffering("tv-error-secondary-focus")
+        key(Key.DirectionLeft);compose.onNodeWithText("Повторить").assertIsFocused()
         key(Key.DirectionCenter);assertEquals(1,retries)
         pressBack();assertEquals(1,exits)
     }
@@ -195,6 +208,7 @@ class TvRemoteControlsTest {
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("playback-buffering").assertDoesNotExist()
         compose.onNodeWithText("Отменить").assertIsFocused()
+        captureBuffering("tv-prolonged-buffering-focus")
         key(Key.DirectionCenter);assertEquals(1,exits)
     }
 
@@ -211,6 +225,16 @@ class TvRemoteControlsTest {
         captureBuffering("mobile-compact-spinner-fake-engine")
         compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
         assertEquals(1,exits)
+    }
+
+    @Test fun approvedChromeRemainsLegibleOnWhiteAndBlackFrames() {
+        start(true);focus("player-play")
+        compose.runOnIdle {frame=Color.White}
+        captureBuffering("tv-white-frame")
+        compose.runOnIdle {frame=Color.Black}
+        captureBuffering("tv-black-frame")
+        compose.onNodeWithContentDescription("Пауза").assertExists()
+        compose.onAllNodesWithText("Пауза",useUnmergedTree=true).assertCountEquals(0)
     }
 
 }

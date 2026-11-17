@@ -1,0 +1,92 @@
+[
+  {
+    "element": "title",
+    "foreground": [
+      240,
+      242,
+      236
+    ],
+    "background": [
+      33,
+      39,
+      49
+    ],
+    "background_sample": [
+      640,
+      37
+    ],
+    "contrast": 13.31
+  },
+  {
+    "element": "episode",
+    "foreground": [
+      179,
+      198,
+      222
+    ],
+    "background": [
+      38,
+      44,
+      54
+    ],
+    "background_sample": [
+      640,
+      68
+    ],
+    "contrast": 8.05
+  },
+  {
+    "element": "time",
+    "foreground": [
+      240,
+      242,
+      236
+    ],
+    "background": [
+      59,
+      65,
+      74
+    ],
+    "background_sample": [
+      640,
+      575
+    ],
+    "contrast": 9.12
+  },
+  {
+    "element": "icons and focus",
+    "foreground": [
+      240,
+      242,
+      236
+    ],
+    "background": [
+      43,
+      50,
+      59
+    ],
+    "background_sample": [
+      640,
+      643
+    ],
+    "contrast": 11.48
+  },
+  {
+    "element": "progress",
+    "foreground": [
+      180,
+      244,
+      91
+    ],
+    "background": [
+      66,
+      71,
+      80
+    ],
+    "background_sample": [
+      640,
+      554
+    ],
+    "contrast": 7.13
+  }
+]

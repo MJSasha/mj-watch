@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+- Apply the approved native Android TV player design: soft gradients, a thin lime timeline, compact light icons and a single inset focus outline, without visible action labels or tooltips (#32).
+- Preserve accessible action names and 48 dp targets; keep −10/+10 readable at 200% font scaling and retain native dialog/status focus feedback.
+- Preserve D-pad/OK/Back, seek preview, six-second timeout, queue/skip/next, MediaSession and managed playback behavior. Mobile controls and server 0.1.5 remain unchanged.
+- Include isolated real-video 720p/native1080p, large-font and focus evidence; physical TV/OEM and cloud four-device acceptance are not claimed.
+
 ## 0.9.0
 
 - Add phone/tablet → authorized Android TV playback through the managed server, with one selected target, independent TVs, receiver-confirmed state, same-file joining and confirmed replacement. Playback stays on the TV when the controller disconnects.

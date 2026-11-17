@@ -1,0 +1,258 @@
+[
+  {
+    "path": "1080p/hidden-video.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "e92f87ff10df0f22d7017cf3d2ad45bf892718cee4016be91c1adda6297f7005"
+  },
+  {
+    "path": "1080p/player-episodes-dialog.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "d4cfed5b109435f365c1dd91bf8b0a5316ca3a51675f4a9465eca969aaf738a7"
+  },
+  {
+    "path": "1080p/player-timeline.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "48639fd96b519da2613c4a102fbd7aad3477b2b83a671f4deb481024de7fb21d"
+  },
+  {
+    "path": "1080p/player-video-dialog.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "63cb14484348ed993217747d0e304ec90d2197848bbff75cacd844c30fadbe8b"
+  },
+  {
+    "path": "1080p/playing-pause-icon.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "ce213a0407d27224e3a9056c43eee6a35c0da1cf6bc8ec51e1ea5b44966c29ef"
+  },
+  {
+    "path": "720p/hidden-video.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "f6667626754fd0d41aa15461f8565c3d83ff44a37550a3661df0794a130f0905"
+  },
+  {
+    "path": "720p/player-back.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "81295125aa09c50b95bc53da23c9b596e6dd3daae9be69fa57bd4e93c1fe4315"
+  },
+  {
+    "path": "720p/player-episodes-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "0277f4f0d8d3eeb72c75e50d1877b342bf39a659799ed248fd92b58597089712"
+  },
+  {
+    "path": "720p/player-episodes.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "b09bcd483c3fec837b80009e27a771757528649fc796a5ab7e8b2aeeaf6b39a8"
+  },
+  {
+    "path": "720p/player-next-episode.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "cdc60f38c48ffef591602090a1722280345e4065e70228f09c6c589296333232"
+  },
+  {
+    "path": "720p/player-play.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "752f703701372c0523d60b66ad85db42630d1ef984162e5d6f2a53a036bc5e57"
+  },
+  {
+    "path": "720p/player-timeline.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "4cc4b97e46dfe2e4630b014a7e193bbfec436f2614b4e61e73fba61886581abc"
+  },
+  {
+    "path": "720p/player-tracks-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "ddadf078918ca50d6966dde510e13b9226aa09e7ba85c205b6a57cb1f90214a7"
+  },
+  {
+    "path": "720p/player-tracks.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "e7a52daa2ebc5778ce5a13df60ef9e7f2421c959e1f5b91d6885b66c2469d66f"
+  },
+  {
+    "path": "720p/player-video-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "658431b1de5e78fa4eca39891e4c8e0bf1bc6f3e9863b4c71080cee67d12d40f"
+  },
+  {
+    "path": "720p/player-video.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "f8203e8741dd9523f38ae8aee3b6ff7f907339ed7328e84db29a559defe5b28d"
+  },
+  {
+    "path": "720p/playing-pause-icon.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "031dee5d5ad7d3de97ff687c56ba7e6aeeb0f279d33a3803c865b31d62e66a1b"
+  },
+  {
+    "path": "720p/timeline-preview.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "16542d507a1c51dc9ab3c2416cea5606fb4627ee7ebf302ed141fda8529af973"
+  },
+  {
+    "path": "720p/top-tracks-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "ddadf078918ca50d6966dde510e13b9226aa09e7ba85c205b6a57cb1f90214a7"
+  },
+  {
+    "path": "720p/top-tracks.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "7e47d591ec1e46f2cb80d6298fdf974060aca7a0a30d7d5898147f977be6c187"
+  },
+  {
+    "path": "font200/player-episodes-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "649ff9a462d25de4ae6ab12e8be05149b1b2b14e7443e7b07cbb2d055f41a011"
+  },
+  {
+    "path": "font200/player-play.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "77c9f76837def116f25dc7f2c1b62ef9173226e3e7b984c4d73e9d380a483caa"
+  },
+  {
+    "path": "font200/player-timeline.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "9fbffd17e172955cbdffd55b2d705bbc5b5dd663aee99fcf82dcd41f02082b1b"
+  },
+  {
+    "path": "font200/player-video-dialog.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "d55955e784dd3f69143c7ae327c0674af9107059a3276635ea2e0b8dc8d0f063"
+  },
+  {
+    "path": "reference-vs-runtime.png",
+    "size": [
+      2560,
+      760
+    ],
+    "sha256": "24c45f67d39b1e9d2d0054d3e0d724954127b99e2e1c0ab5c320b01e928eba12"
+  },
+  {
+    "path": "status-primary-vs-secondary.png",
+    "size": [
+      5120,
+      1520
+    ],
+    "sha256": "bff5b2d955ffc16848c34672377ecd300e42784d35393ae7226fd3e46ca8aaed"
+  },
+  {
+    "path": "synthetic-status/tv-black-frame.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "7ff811f41451eeae106e5a0eb98f28d9569b56934906a1014612841d90302c46"
+  },
+  {
+    "path": "synthetic-status/tv-compact-spinner-fake-engine.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "3115589b90b6718c95d821031d8ff64c0dc4aaf52ec9f9e9aaaa210068734717"
+  },
+  {
+    "path": "synthetic-status/tv-error-focus.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "9fee71fc30e5f7af011e7ea52e1ecc006a9c771443c6578834c587c6af6bc7e5"
+  },
+  {
+    "path": "synthetic-status/tv-error-secondary-focus.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "76e1dfd19b980f95291c77bca0bab281a81ea3aee43f1de94d4fd0f6736fbd2d"
+  },
+  {
+    "path": "synthetic-status/tv-prolonged-buffering-focus.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "bb876daabc19ce1cfab7a68d1fd5b9579c931db16f6e9d20744b8dfada274ca6"
+  },
+  {
+    "path": "synthetic-status/tv-white-frame.png",
+    "size": [
+      1280,
+      720
+    ],
+    "sha256": "57ad04a4ab824f4f23b747d49abf7c43f95bb0db477b06404cf749b8c8a09712"
+  }
+]

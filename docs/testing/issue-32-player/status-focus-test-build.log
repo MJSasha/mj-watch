@@ -1,0 +1,96 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:preBuild UP-TO-DATE
+> Task :core:preDebugBuild UP-TO-DATE
+> Task :core:generateDebugResValues UP-TO-DATE
+> Task :core:generateDebugResources UP-TO-DATE
+> Task :core:packageDebugResources UP-TO-DATE
+> Task :core:processDebugNavigationResources UP-TO-DATE
+> Task :core:parseDebugLocalResources UP-TO-DATE
+> Task :core:generateDebugRFile UP-TO-DATE
+> Task :core:kspDebugKotlin UP-TO-DATE
+> Task :core:compileDebugKotlin UP-TO-DATE
+> Task :core:javaPreCompileDebug UP-TO-DATE
+> Task :core:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:preBuild UP-TO-DATE
+> Task :playback:preDebugBuild UP-TO-DATE
+> Task :playback:generateDebugResValues UP-TO-DATE
+> Task :playback:generateDebugResources UP-TO-DATE
+> Task :playback:packageDebugResources UP-TO-DATE
+> Task :playback:processDebugNavigationResources UP-TO-DATE
+> Task :playback:parseDebugLocalResources UP-TO-DATE
+> Task :playback:generateDebugRFile UP-TO-DATE
+> Task :playback:compileDebugKotlin UP-TO-DATE
+> Task :playback:javaPreCompileDebug UP-TO-DATE
+> Task :playback:compileDebugJavaWithJavac NO-SOURCE
+> Task :playback:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :core:compileDebugLibraryResources UP-TO-DATE
+> Task :core:writeDebugAarMetadata UP-TO-DATE
+> Task :playback:preDebugAndroidTestBuild UP-TO-DATE
+> Task :playback:writeDebugAarMetadata UP-TO-DATE
+> Task :playback:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :playback:processDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :playback:compileDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :playback:compileDebugLibraryResources UP-TO-DATE
+> Task :playback:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :playback:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :playback:generateDebugAndroidTestResources UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :core:extractDeepLinksDebug UP-TO-DATE
+> Task :core:processDebugManifest UP-TO-DATE
+> Task :playback:extractDeepLinksDebug UP-TO-DATE
+> Task :playback:processDebugManifest UP-TO-DATE
+> Task :playback:processDebugAndroidTestManifest UP-TO-DATE
+> Task :playback:processDebugAndroidTestResources UP-TO-DATE
+> Task :playback:javaPreCompileDebugAndroidTest UP-TO-DATE
+> Task :core:mergeDebugShaders UP-TO-DATE
+> Task :core:compileDebugShaders NO-SOURCE
+> Task :core:generateDebugAssets UP-TO-DATE
+> Task :core:mergeDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestShaders UP-TO-DATE
+> Task :playback:compileDebugAndroidTestShaders NO-SOURCE
+> Task :playback:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :playback:mergeDebugShaders UP-TO-DATE
+> Task :playback:compileDebugShaders NO-SOURCE
+> Task :playback:generateDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestAssets UP-TO-DATE
+> Task :playback:compressDebugAndroidTestAssets UP-TO-DATE
+> Task :playback:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :playback:desugarDebugAndroidTestFileDependencies UP-TO-DATE
+> Task :core:processDebugJavaRes UP-TO-DATE
+> Task :playback:processDebugJavaRes UP-TO-DATE
+> Task :playback:checkDebugAndroidTestDuplicateClasses UP-TO-DATE
+> Task :playback:mergeExtDexDebugAndroidTest UP-TO-DATE
+> Task :playback:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :core:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :playback:mergeLibDexDebugAndroidTest UP-TO-DATE
+> Task :core:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:mergeDebugNativeLibs NO-SOURCE
+> Task :core:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :playback:mergeDebugJniLibFolders UP-TO-DATE
+> Task :playback:mergeDebugNativeLibs NO-SOURCE
+> Task :playback:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestJniLibFolders UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestNativeLibs UP-TO-DATE
+> Task :playback:stripDebugAndroidTestDebugSymbols UP-TO-DATE
+> Task :playback:validateSigningDebugAndroidTest UP-TO-DATE
+> Task :playback:writeDebugAndroidTestSigningConfigVersions UP-TO-DATE
+> Task :playback:compileDebugAndroidTestKotlin
+> Task :playback:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :playback:dexBuilderDebugAndroidTest
+> Task :playback:mergeDebugAndroidTestGlobalSynthetics UP-TO-DATE
+> Task :playback:processDebugAndroidTestJavaRes UP-TO-DATE
+> Task :playback:mergeDebugAndroidTestJavaResource UP-TO-DATE
+> Task :playback:mergeProjectDexDebugAndroidTest
+> Task :playback:packageDebugAndroidTest
+> Task :playback:createDebugAndroidTestApkListingFileRedirect UP-TO-DATE
+> Task :playback:assembleDebugAndroidTest
+
+BUILD SUCCESSFUL in 10s
+71 actionable tasks: 4 executed, 67 up-to-date
