@@ -3,6 +3,7 @@ package dev.mjwatch.tv
 
 import android.content.Intent
 import android.view.KeyEvent
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -37,7 +38,7 @@ class TvPlayerBehaviorTest {
                 val dialog=field(a,"panel") as? android.app.AlertDialog
                 focused=(dialog?.window ?: a.window).decorView.hasWindowFocus()
             }}
-            focused
+            focused||compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()
         }
         instrumentation.sendKeyDownUpSync(code);compose.waitForIdle()
     }
@@ -49,10 +50,10 @@ class TvPlayerBehaviorTest {
         }
         compose.waitForIdle()
     }
-    private fun launch(series:Boolean=false):PlaybackActivity {
+    private fun launch(series:Boolean=false,title:String="TV remote regression",label:String="1.mp4"):PlaybackActivity {
         val c=instrumentation.targetContext
-        val queue=(1..if(series)2 else 1).map {PlaybackEpisode("asset:///demo.mp4","$it.mp4",it)}
-        c.startActivity(Intent(c,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",queue.first().uri).putExtra("title","TV remote regression").putExtra("mobile",false).putExtra("path","1.mp4").putExtra("fileId",1).putExtra("episodes",PlaybackEpisode.encode(queue)))
+        val queue=(1..if(series)2 else 1).map {PlaybackEpisode("asset:///demo.mp4",if(series&&it>1)"$it.mp4" else label,it)}
+        c.startActivity(Intent(c,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",queue.first().uri).putExtra("title",title).putExtra("mobile",false).putExtra("path",queue.first().path).putExtra("fileId",1).putExtra("episodes",PlaybackEpisode.encode(queue)))
         var a:PlaybackActivity?=null
         compose.waitUntil(20000) {instrumentation.runOnMainSync {a=activity()?.takeIf {it.firstFrameSeen}};a!=null}
         instrumentation.runOnMainSync {(field(a!!,"player") as Player).apply {pause();seekTo(2000)}}
@@ -134,6 +135,61 @@ class TvPlayerBehaviorTest {
         compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)
         key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {var gone=false;instrumentation.runOnMainSync {gone=activity()==null};gone}
+    }
+
+    @Test fun approvedDesignSemanticsTargetsAndFocusEvidenceWithRealVideo() {
+        val largeFont=InstrumentationRegistry.getArguments().getString("evidenceDir")=="font200"
+        launch(series=true,title=if(largeFont)"Тихая орбита · Очень длинное русское название фильма для проверки крупного шрифта" else "Тихая орбита",
+            label=if(largeFont)"Сезон 1 · Серия 4 · Очень длинное название файла с дополнительной информацией о серии.mp4" else "Сезон 1 · Серия 4")
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-prompt").fetchSemanticsNodes().isNotEmpty()}
+        key(KeyEvent.KEYCODE_BACK)
+        val folder=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"issue-32-player/"+InstrumentationRegistry.getArguments().getString("evidenceDir","720p")).apply {mkdirs()}
+        fun capture(name:String) {
+            compose.waitForIdle()
+            java.io.File(folder,"$name.png").outputStream().use {
+                Assert.assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it))
+            }
+        }
+        val labels=listOf("Предыдущая серия","Следующая серия","Назад","Дорожки","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Выбор серии","Аудио и субтитры","Параметры видео")
+        for(label in labels) {
+            val node=compose.onNodeWithContentDescription(label)
+            try {node.assertExists().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)}
+            catch(e:AssertionError) {throw AssertionError("Target: $label",e)}
+            compose.onAllNodesWithText(label,useUnmergedTree=true).assertCountEquals(0)
+        }
+        compose.onNodeWithTag("player-previous-episode").assertIsNotEnabled()
+        for(tag in listOf("player-next-episode","player-play","player-back","player-episodes","player-tracks","player-video","player-timeline")) {
+            compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus)
+            compose.onNodeWithTag(tag).assertIsFocused()
+            capture(tag)
+        }
+        compose.onNodeWithContentDescription("Дорожки").performSemanticsAction(SemanticsActions.RequestFocus)
+        capture("top-tracks")
+        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("top-tracks-dialog");key(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
+        compose.onNodeWithTag("player-timeline").performSemanticsAction(SemanticsActions.RequestFocus)
+        key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("timeline-preview")
+        key(KeyEvent.KEYCODE_BACK)
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        for(tag in listOf("player-episodes","player-tracks","player-video")) {
+            compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus)
+            key(KeyEvent.KEYCODE_DPAD_CENTER);capture("$tag-dialog")
+            key(KeyEvent.KEYCODE_BACK)
+            compose.waitUntil(5000) {runCatching {compose.onNodeWithTag(tag).assertIsFocused();true}.getOrDefault(false)}
+        }
+        compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)
+        key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_DPAD_UP)
+        capture("hidden-video")
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        instrumentation.runOnMainSync {Assert.assertTrue((field(activity()!!,"player") as Player).playWhenReady)}
+        compose.waitUntil(5000) {compose.onAllNodesWithContentDescription("Пауза").fetchSemanticsNodes().isNotEmpty()}
+        compose.onAllNodesWithText("Пауза",useUnmergedTree=true).assertCountEquals(0)
+        capture("playing-pause-icon")
+        key(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        instrumentation.runOnMainSync {Assert.assertFalse((field(activity()!!,"player") as Player).playWhenReady)}
+        key(KeyEvent.KEYCODE_MEDIA_PLAY)
+        key(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+        instrumentation.runOnMainSync {Assert.assertFalse((field(activity()!!,"player") as Player).playWhenReady)}
     }
 
 }

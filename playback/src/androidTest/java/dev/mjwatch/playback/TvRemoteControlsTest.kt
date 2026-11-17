@@ -147,6 +147,7 @@ class TvRemoteControlsTest {
         compose.runOnIdle {status=PlaybackStatus("Ошибка","Повторите загрузку",retry=true)}
         compose.mainClock.advanceTimeBy(300)
         compose.onNodeWithText("Повторить").assertIsFocused()
+        captureBuffering("tv-error-focus")
         key(Key.DirectionCenter);assertEquals(1,retries)
         pressBack();assertEquals(1,exits)
     }
@@ -195,6 +196,7 @@ class TvRemoteControlsTest {
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("playback-buffering").assertDoesNotExist()
         compose.onNodeWithText("Отменить").assertIsFocused()
+        captureBuffering("tv-prolonged-buffering-focus")
         key(Key.DirectionCenter);assertEquals(1,exits)
     }
 
