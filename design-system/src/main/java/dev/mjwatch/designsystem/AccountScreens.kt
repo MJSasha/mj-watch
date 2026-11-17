@@ -48,7 +48,7 @@ import org.json.JSONObject
     }},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false;controller.logout(!keepData);model.page("connection-choice")}){Text("Выйти")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false}){Text("Отмена")}})
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text(when(s.page){"managed-devices"->"Мои устройства";"managed-pairing"->"Подключить устройство";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})
+            Text(when(s.page){"managed-devices"->"Устройства";"managed-pairing"->"Подключить устройство";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics {heading()})
             if(scanQr!=null&&s.page in setOf("managed-account","managed-pairing")) FilledTonalIconButton(
                 onClick={model.page("managed-pairing");scanQr()},
                 enabled=!managed.busy&&qr.stage !in setOf("sending","waiting","approving"),
@@ -61,13 +61,7 @@ import org.json.JSONObject
             "managed-devices"->{
                 val devices=managed.data?.takeIf {it.has("devices")}?.let {managedDevices(it)}
                 if(devices?.isEmpty()==true){Text("Устройств пока нет");Text("Устройства появятся после первого входа.")}
-                devices?.forEach {device->SettingsGroup(tv){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                    val current=device.id==managed.me?.optString("deviceId")
-                    Text(device.name,fontWeight=FontWeight.Medium)
-                    if(current)Text("Это устройство")
-                    Text(if(device.revoked)"Доступ отозван" else "Последняя активность: ${activityTime(device.lastSeen)}")
-                    if(!current)Action("Отключить ${device.name}",tv,secondary=true,enabled=!device.revoked&&!managed.busy){confirm="Отключить ${device.name}? Для просмотра на нём потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}
-                }}}
+                devices?.forEach {device->DeviceRow(device,device.id==managed.me?.optString("deviceId"),s,model,tv){confirm="Отключить ${device.name}? Для просмотра на нём потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}}
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
             "managed-pairing"->{
@@ -111,7 +105,7 @@ import org.json.JSONObject
                 Text(managed.syncMessage.ifBlank {"Проверяем синхронизацию"},modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
                 Action("Синхронизировать",tv,enabled=!managed.busy){controller.syncNow()}
                 SettingsGroup(tv) {
-                    SettingsActionRow(Icons.Outlined.Devices,"Мои устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
+                    SettingsActionRow(Icons.Outlined.Devices,"Устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
                     if(scanQr==null) {SettingsDivider();SettingsActionRow(Icons.Outlined.DevicesOther,"Подключить устройство","По коду подключения",tv){model.page("managed-pairing")}}
                 }
                 val history by model.scopedLibrary.collectAsState()

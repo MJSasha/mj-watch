@@ -57,7 +57,11 @@ func main() {
 			io.WriteString(w, "MatriX.145.2")
 		case "/torrents", "/torrent/upload":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"hash": "0123456789012345678901234567890123456789", "file_stats": []any{map[string]any{"id": 17, "path": "fixture/movie.mp4", "length": 2400000}}})
+			files := []any{map[string]any{"id": 17, "path": "fixture/movie.mp4", "length": 2400000}}
+			if os.Getenv("MJWATCH_FIXTURE_REMOTE") == "1" {
+				files = append(files, map[string]any{"id": 18, "path": "fixture/second.mp4", "length": 2400000})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"hash": "0123456789012345678901234567890123456789", "file_stats": files})
 		case "/stream":
 			http.ServeFile(w, r, video)
 		default:

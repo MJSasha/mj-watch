@@ -36,6 +36,7 @@ class MainActivity:ComponentActivity() {
     }
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
     private fun handleInvitation(value:android.content.Intent,model:WatchModel){
+        if(value.hasExtra("remoteReleaseId"))model.openRemoteContent(value.getStringExtra("remoteReleaseId").orEmpty(),value.getStringExtra("remoteTitle").orEmpty(),value.getStringExtra("remoteMetadataId").orEmpty())
         if(value.action==android.content.Intent.ACTION_VIEW){val raw=value.dataString;if(raw!=null)model.openInvitation(raw)}
     }
 }
