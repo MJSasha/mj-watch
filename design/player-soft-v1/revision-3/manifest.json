@@ -1,0 +1,20 @@
+[
+  {
+    "file": "01-airline.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "1b0e9a9a95f34a733e2a9c93b00d36a00ae10f4bf0c4e2274ae1b20d49ab7bd7"
+  },
+  {
+    "file": "02-monochrome.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "a5924ebc5e3d6a9522c35759465bf229cc72483224239a71db32d8b538033ab6"
+  },
+  {
+    "file": "03-quiet-focus.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "d89e0b3b5f9eabcf48f71df131e48eae82b384147139134a821b345b3f9d8a1d"
+  }
+]
