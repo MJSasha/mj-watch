@@ -98,9 +98,11 @@ class PhoneTvTest {
         val newVolume=if(oldVolume>0)oldVolume-1 else 1
         controller.setVolumeTo(newVolume,0)
         waitFor("Volume changes on the TV"){snapshot(first.id,target.instance).video.volume==newVolume}
+        waitFor("Foreground activity routes native keys to the remote session"){compose.activity.mediaController?.sessionToken==controller.sessionToken}
+        waitFor("System volume reflects the acknowledged receiver value"){RemotePlaybackService.state.value.target?.video?.volume==newVolume&&!RemotePlaybackService.state.value.busy}
         val physicalVolume=if(newVolume>0)newVolume-1 else 1
         device.pressKeyCode(if(newVolume>0)android.view.KeyEvent.KEYCODE_VOLUME_DOWN else android.view.KeyEvent.KEYCODE_VOLUME_UP)
-        waitFor("Phone volume keys adjust receiver volume"){snapshot(first.id,target.instance).video.volume==physicalVolume}
+        waitFor("Phone volume keys adjust receiver volume $newVolume → $physicalVolume"){snapshot(first.id,target.instance).video.volume==physicalVolume}
         proof("12-system-remote-volume");device.pressBack()
         controller.transportControls.play()
         waitFor("System play reached the actual TV"){snapshot(first.id,target.instance).video.status=="playing"}

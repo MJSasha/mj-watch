@@ -21,6 +21,7 @@ class RemotePlaybackService:Service() {
         private var current:RemotePlaybackService?=null
         fun connect(context:Context,id:String,name:String?=state.value.target?.takeIf {it.id==id}?.name) {context.startForegroundService(Intent(context,RemotePlaybackService::class.java).putExtra("target",id).putExtra("targetName",name))}
         fun disconnect(context:Context) {context.stopService(Intent(context,RemotePlaybackService::class.java));mutable.value=RemotePlaybackState()}
+        fun mediaController():android.media.session.MediaController?=current?.session?.controller?.takeIf {state.value.connected&&state.value.target?.video?.active==true}
         fun load(media:RemoteMedia) {current?.loadMedia(media)}
         fun confirm(replacement:RemoteReplacement) {current?.loadMedia(replacement.media,replacement)}
         fun dismissConflict() {mutable.update {it.copy(conflict=null)}}
@@ -195,7 +196,7 @@ class RemotePlaybackService:Service() {
             volumeSignature=signature
             volumeProvider=object:VolumeProvider(if(video.volumeMax>0)VolumeProvider.VOLUME_CONTROL_ABSOLUTE else VolumeProvider.VOLUME_CONTROL_FIXED,video.volumeMax,video.volume) {
                 override fun onSetVolumeTo(volume:Int){requestedVolume=volume.coerceIn(0,maxVolume);command("volume",JSONObject().put("volume",requestedVolume))}
-                override fun onAdjustVolume(direction:Int){if(direction!=0)onSetVolumeTo((requestedVolume ?: state.value.target?.video?.volume ?: currentVolume)+direction)}
+                override fun onAdjustVolume(direction:Int){if(direction==android.media.AudioManager.ADJUST_RAISE||direction==android.media.AudioManager.ADJUST_LOWER)onSetVolumeTo((requestedVolume ?: state.value.target?.video?.volume ?: currentVolume)+direction)}
             }
             session.setPlaybackToRemote(volumeProvider!!)
         } else volumeProvider?.setCurrentVolume(video.volume)
@@ -208,7 +209,9 @@ class RemotePlaybackService:Service() {
         session.setSessionActivity(pending)
         val action=if(state.value.target?.video?.status=="playing")"pause" else "play"
         val transport=PendingIntent.getService(this,27,Intent(this,RemotePlaybackService::class.java).setAction(action),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return Notification.Builder(this,"remote-video").addAction(Notification.Action.Builder(if(action=="pause")android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,if(action=="pause")"Пауза" else "Воспроизвести",transport).build()).setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(state.value.target?.name ?: "MJWatch").setContentIntent(pending).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0)).setOngoing(state.value.target?.video?.active==true).setVisibility(Notification.VISIBILITY_PUBLIC).build()
+        val builder=Notification.Builder(this,"remote-video").setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(state.value.target?.name ?: "MJWatch").setContentIntent(pending).setOngoing(state.value.target?.video?.active==true).setVisibility(Notification.VISIBILITY_PUBLIC)
+        if(state.value.target?.video?.active==true)builder.addAction(Notification.Action.Builder(if(action=="pause")android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,if(action=="pause")"Пауза" else "Воспроизвести",transport).build()).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0))
+        return builder.build()
     }
     override fun onDestroy() {
         epoch++;scope.cancel();session.release();current=null;mutable.update {it.copy(connected=false,busy=false,conflict=null)};super.onDestroy()
