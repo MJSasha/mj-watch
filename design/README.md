@@ -3,7 +3,7 @@
 Актуальный проект: [Телефон → ТВ, v1](phone-tv-v1/README.md), 17.11.2026.
 
 - [Макеты: состояния просмотра](phone-tv-v1/01-viewing-states.png).
-- [Макеты: общий список устройств, добавление, переименование](phone-tv-v1/02-unified-devices.png).
+- [Макеты: общий список устройств и диалог переименования](phone-tv-v1/02-unified-devices.png).
 - [Макеты: выбор экрана, занятый ТВ, потеря связи](phone-tv-v1/03-target-and-recovery.png).
 - [Системное управление: исследование и границы](phone-tv-v1/SYSTEM-MEDIA.md).
 - [Критерии приёмки](phone-tv-v1/ACCEPTANCE.md).
