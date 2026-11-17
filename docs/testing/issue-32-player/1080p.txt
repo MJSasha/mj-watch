@@ -15,7 +15,7 @@ INSTRUMENTATION_STATUS: test=approvedDesignSemanticsTargetsAndFocusEvidenceWithR
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 14.164
+Time: 12.485
 
 OK (1 test)
 

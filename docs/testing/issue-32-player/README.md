@@ -2,9 +2,9 @@
 
 17 November 2026. Implementation and local emulator evidence; independent review and the next signed stable release are still required.
 
-Code under test: `3449baa2a5cf6461e0912b1f0a9053bd9de87962`. Base: `16eb1e285cb1b7c01e7262d1d5eb0d236e80bb03` (`codex/issue-26-phone-tv`, PR #31). Initial clone was `1c66118`; it was fast-forwarded before editing. The later base updates touched release documentation/workflows, not this player UI. Published branch head is recorded by the PR and its checks; subsequent evidence commits do not change application code.
+Code under test: `91dcb110f96f94426c4110a762e06d2a96500504`. Base: `6b801abab2fe02b15d73aa5d33ff58d48002d618` (`codex/issue-26-phone-tv`, PR #31). Initial clone was `1c66118`; it was fast-forwarded before editing. The later base updates touched release documentation/workflows, not this player UI. Published branch head is recorded by the PR and its checks; subsequent evidence commits do not change application code.
 
-Only `TvPlayerControls.kt` changes production behavior visually. `TvPlaybackState`, `PlaybackActivity`, RemoteReceiver, MediaSession, history, server and the phone/TV contract are unchanged. Version numbers, signing and release workflows remain owned by the preceding #26 release at this stage. No changes were made in the shared project checkout or the active release checkout.
+Production changes are confined to `TvPlayerControls.kt` and a TV-only native ListView selector in `PlaybackActivity.kt` (12 lines plus two call sites). `TvPlaybackState`, RemoteReceiver, MediaSession, history, server and the phone/TV contract are unchanged. `PlaybackActivity.kt` overlaps PR #31 as a file; this patch only decorates existing dialogs after show(), preserving their listeners and managed playback flow. Version numbers, signing and release workflows remain owned by the preceding #26 release at this stage. No changes were made in the shared project checkout or the active release checkout.
 
 ## Approved target and comparison
 
@@ -14,7 +14,7 @@ The exact approved PNG and final contract were copied from `codex/player-design-
 
 Both panels use the same 16:9 comparison viewport. The approved original (1672×941) is preserved unchanged under `design/player-soft-v1/final/`; only the comparison presentation fits it to 1280×720. Runtime is an unmodified screenshot of the installed TV APK playing the bundled real MP4 through Media3. The fixture has a 10-second duration and two queue entries, so its actual time/progress and disabled Previous differ from the illustration.
 
-Visual inspection confirmed soft continuous gradients, a thin lime track and centered marker, compact light icons, no dock/dividers, no persistent Play/Pause fill, one light inset focus outline, and no transport/service action labels or tooltips. At the normalized 720p comparison the track is about y=550 versus y=552 in the reference; the Play/Pause center is about (264,643) versus (260,643). Native 48 dp targets intentionally remain larger than some illustrated glyphs. Native audio/video dialogs retain their existing platform presentation, selected checks and text.
+Visual inspection confirmed soft continuous gradients, a thin lime track and centered marker, compact light icons, no dock/dividers, no persistent Play/Pause fill, one light inset focus outline, and no transport/service action labels or tooltips. At the normalized 720p comparison the track is about y=550 versus y=552 in the reference; the Play/Pause center is about (264,643) versus (260,643). Native 48 dp targets intentionally remain larger than some illustrated glyphs. Native audio/video dialogs retain their existing platform presentation, selected checks and text, with the same inset light focus outline on the active row.
 
 ## Checks actually run
 
@@ -25,7 +25,7 @@ Visual inspection confirmed soft continuous gradients, a thin lime track and cen
 | Installed TV APK + ExoPlayer + real bundled MP4, `TvPlayerBehaviorTest` | 4/4 at native 1280×720 / 213 dpi; [log](installed-tv-720.txt) |
 | Design/semantics/dialog/media-key scenario, native 1920×1080 / 320 dpi | 1/1; [log](1080p.txt), actual [1920×1080 PNG](1080p/playing-pause-icon.png) |
 | Same scenario, 1280×720 / 213 dpi, font scale 2.0 and long Russian title/path | 1/1; [log](font200.txt), [frame](font200/player-play.png) |
-| TV debug APK + TV/playback instrumentation APK builds, TV lint, mobile Kotlin compile | Passed; [build log](build.log), [test build](test-build.log) |
+| TV debug APK + TV/playback instrumentation APK builds, TV lint, mobile Kotlin compile | Passed; [build log](build.log), [test build](test-build.log), [native-dialog affected checks](dialog-build.log) |
 
 The existing tests cover hidden arrows/OK, held OK, timeline preview/confirm/cancel/blur, Back exit, modal return focus, timeout blockers, automatic skip/next rules and queue boundaries. Real-video tests cover preview and single Back exit, media Next boundaries, recreation preserving paused position/speed, quality/audio/speed/fit preserving actual playback state, plus hidden OK and hardware PLAY/PAUSE/PLAY_PAUSE. The state machine remains responsible for the six-second timer even while paused.
 

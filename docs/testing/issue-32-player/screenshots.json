@@ -13,7 +13,7 @@
       1920,
       1080
     ],
-    "sha256": "45bf1deff6a5d822275bc134e967e2ecd5c48c40c5038ac8aad6859f1f80516e"
+    "sha256": "552023e233aada55b91d3799aeac0780027758243dc11ef6e4b19ef5eca3bb72"
   },
   {
     "path": "1080p/player-timeline.png",
@@ -29,7 +29,7 @@
       1920,
       1080
     ],
-    "sha256": "7666edf1c9581d5f0ec3021518203f30567c4fce5e48f77f45eae9e7b998fa51"
+    "sha256": "e31e2467b3932ae1b0947c661587b18c067e3b20a633d6f0a423854c1526809f"
   },
   {
     "path": "1080p/playing-pause-icon.png",
@@ -37,7 +37,7 @@
       1920,
       1080
     ],
-    "sha256": "cd9749a4463860a467df605ab2f6eeeb198b9ce6037c2d2f8fe08cc832ca1d3a"
+    "sha256": "afe25261a1472ecf462aa3d583a332fff91fb7dbe5840fada3bc24c6185a42b2"
   },
   {
     "path": "720p/hidden-video.png",
@@ -101,7 +101,7 @@
       1280,
       720
     ],
-    "sha256": "9a2e67740334ee1f6c7611ad73d1b89baed5a1fe323c515b229a5a33e654b927"
+    "sha256": "ddadf078918ca50d6966dde510e13b9226aa09e7ba85c205b6a57cb1f90214a7"
   },
   {
     "path": "720p/player-tracks.png",
@@ -117,7 +117,7 @@
       1280,
       720
     ],
-    "sha256": "e53befe1825c5cd7b1ce9e2779648f5575d851541fa69a846fdbff438212ea94"
+    "sha256": "658431b1de5e78fa4eca39891e4c8e0bf1bc6f3e9863b4c71080cee67d12d40f"
   },
   {
     "path": "720p/player-video.png",
@@ -133,7 +133,7 @@
       1280,
       720
     ],
-    "sha256": "8b73f898c7c2f2d9391814bdddc37272ec9540c4c34a74e9247104080760d7c3"
+    "sha256": "031dee5d5ad7d3de97ff687c56ba7e6aeeb0f279d33a3803c865b31d62e66a1b"
   },
   {
     "path": "720p/timeline-preview.png",
@@ -149,7 +149,7 @@
       1280,
       720
     ],
-    "sha256": "9a2e67740334ee1f6c7611ad73d1b89baed5a1fe323c515b229a5a33e654b927"
+    "sha256": "ddadf078918ca50d6966dde510e13b9226aa09e7ba85c205b6a57cb1f90214a7"
   },
   {
     "path": "720p/top-tracks.png",
@@ -189,7 +189,7 @@
       1280,
       720
     ],
-    "sha256": "d4545d12d05ccadaf92c237490406b908a86affff0058cd2a45a9c61fd1c09ba"
+    "sha256": "d55955e784dd3f69143c7ae327c0674af9107059a3276635ea2e0b8dc8d0f063"
   },
   {
     "path": "reference-vs-runtime.png",
@@ -197,7 +197,7 @@
       2560,
       760
     ],
-    "sha256": "daa65a7629161ad4a69497cbd6aa8c1b8d0d6250934fc53b3fcee615826c58b5"
+    "sha256": "24c45f67d39b1e9d2d0054d3e0d724954127b99e2e1c0ab5c320b01e928eba12"
   },
   {
     "path": "synthetic-status/tv-black-frame.png",
