@@ -1,10 +1,22 @@
 # Android TV player: approved design implementation (#32)
 
-17 November 2026. Implementation and local emulator evidence; independent review and the next signed stable release are still required.
+17 November 2026. Implementation and local emulator evidence. Independent UI review and the status-focus follow-up were accepted; final main-based CI/integration review and the next signed stable release are still required.
 
 Accepted native-chrome baseline: `91dcb110f96f94426c4110a762e06d2a96500504`. Base: `6b801abab2fe02b15d73aa5d33ff58d48002d618` (`codex/issue-26-phone-tv`, PR #31). Initial clone was `1c66118`; it was fast-forwarded before editing. The later base updates touched release documentation/workflows, not this player UI. Published branch head is recorded by the PR and its checks; subsequent evidence commits do not change application code.
 
 Production changes are confined to `TvPlayerControls.kt` and a TV-only native ListView selector in `PlaybackActivity.kt` (12 lines plus two call sites). `TvPlaybackState`, RemoteReceiver, MediaSession, history, server and the phone/TV contract are unchanged. `PlaybackActivity.kt` overlaps PR #31 as a file; this patch only decorates existing dialogs after show(), preserving their listeners and managed playback flow. Version numbers, signing and release workflows remain owned by the preceding #26 release at this stage. No changes were made in the shared project checkout or the active release checkout.
+
+## Release integration candidate 0.9.1
+
+Predecessor 0.9.0 is published and verified as test-82, source `41db0faf6f586023b5d2be917491c8dd3848fd74`, APK versionCode **1082**. This branch was rebased onto current main `20148e8f79f3733aa814e42bfb69e20f79e1afc7` without conflicts. The application files are byte-identical to independently reviewed `fbfd4f76e25b2614b07b48f61dfb7defb75765fa` / status code `ad8f875`; no accepted UI sets were unnecessarily rerun.
+
+Main-based local JVM/build/TV lint/mobile compile and release-script syntax checks passed ([integration build](final-integration-build.log)). Final remote CI is tracked on the PR head; these local checks are not a substitute for its full mobile/TV runtime jobs.
+
+Candidate version is **0.9.1**, source versionCode **1083**, selected after checking published versions and main. The unchanged stable pipeline overrides the APK code with **1000 + its workflow run_number**; the actual published value must exceed 1082 and will be checked from both APKs and update.json. Signing, server, managed contract and workflows are unchanged in this PR. The publication script changes only release-note text.
+
+Inherited main policy runs build/server/unit/lint/release-build and mobile/TV runtime before publication. The cloud four-device job is a separate manual workflow after diagnosed Android ANRs; the successful local four-device evidence belongs to predecessor 0.9.0 and is not relabeled as a passed cloud run or a fresh 0.9.1 multi-device certification. Earlier #33 run77 failed mobile tests and cloud e2e on its old base; it is not accepted green. The complete ordinary CI must pass on the final main-based head, and failures must be diagnosed if they repeat.
+
+Classic branch-protection inspection returned 403 (integration permission), while the visible ruleset list was empty. That does not establish absence of classic protection. Merge must use the ordinary API with the expected head SHA and no bypass, after green final checks and parent-chat integration review. Release validation then checks actual main/release SHA, signed APK metadata/digests and an in-place upgrade on this task's own disposable TV.
 
 ## Status focus follow-up
 
