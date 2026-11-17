@@ -200,6 +200,14 @@
     "sha256": "24c45f67d39b1e9d2d0054d3e0d724954127b99e2e1c0ab5c320b01e928eba12"
   },
   {
+    "path": "status-primary-vs-secondary.png",
+    "size": [
+      5120,
+      1520
+    ],
+    "sha256": "bff5b2d955ffc16848c34672377ecd300e42784d35393ae7226fd3e46ca8aaed"
+  },
+  {
     "path": "synthetic-status/tv-black-frame.png",
     "size": [
       1280,
@@ -218,18 +226,26 @@
   {
     "path": "synthetic-status/tv-error-focus.png",
     "size": [
-      1280,
-      720
+      1920,
+      1080
     ],
-    "sha256": "d5145385096dd5676c2fb0a9c7d872331188411a799ed936e6553baa7d82d510"
+    "sha256": "9fee71fc30e5f7af011e7ea52e1ecc006a9c771443c6578834c587c6af6bc7e5"
+  },
+  {
+    "path": "synthetic-status/tv-error-secondary-focus.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "sha256": "76e1dfd19b980f95291c77bca0bab281a81ea3aee43f1de94d4fd0f6736fbd2d"
   },
   {
     "path": "synthetic-status/tv-prolonged-buffering-focus.png",
     "size": [
-      1280,
-      720
+      1920,
+      1080
     ],
-    "sha256": "4df72f3e0fc85197c0ff8e927bc497bb5b7d40c367153122308074317ed551c9"
+    "sha256": "bb876daabc19ce1cfab7a68d1fd5b9579c931db16f6e9d20744b8dfada274ca6"
   },
   {
     "path": "synthetic-status/tv-white-frame.png",

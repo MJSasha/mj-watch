@@ -2,9 +2,19 @@
 
 17 November 2026. Implementation and local emulator evidence; independent review and the next signed stable release are still required.
 
-Code under test: `91dcb110f96f94426c4110a762e06d2a96500504`. Base: `6b801abab2fe02b15d73aa5d33ff58d48002d618` (`codex/issue-26-phone-tv`, PR #31). Initial clone was `1c66118`; it was fast-forwarded before editing. The later base updates touched release documentation/workflows, not this player UI. Published branch head is recorded by the PR and its checks; subsequent evidence commits do not change application code.
+Accepted native-chrome baseline: `91dcb110f96f94426c4110a762e06d2a96500504`. Base: `6b801abab2fe02b15d73aa5d33ff58d48002d618` (`codex/issue-26-phone-tv`, PR #31). Initial clone was `1c66118`; it was fast-forwarded before editing. The later base updates touched release documentation/workflows, not this player UI. Published branch head is recorded by the PR and its checks; subsequent evidence commits do not change application code.
 
 Production changes are confined to `TvPlayerControls.kt` and a TV-only native ListView selector in `PlaybackActivity.kt` (12 lines plus two call sites). `TvPlaybackState`, RemoteReceiver, MediaSession, history, server and the phone/TV contract are unchanged. `PlaybackActivity.kt` overlaps PR #31 as a file; this patch only decorates existing dialogs after show(), preserving their listeners and managed playback flow. Version numbers, signing and release workflows remain owned by the preceding #26 release at this stage. No changes were made in the shared project checkout or the active release checkout.
+
+## Status focus follow-up
+
+Current production follow-up: `ad8f87532c3a3ed865be2875589c93952618d8b2`. The icon-only TV provider had also disabled the original Material focus state layer inside status cards. The original `LocalRippleConfiguration` is now captured before that provider and restored strictly around `PlaybackStatusOverlay`. Chrome retains its outline-only styling; the `!modal` guards remain. The redundant blocking-status outline guard was removed so permitted baseline navigation cannot produce an invisible background focus. No remote/media/managed behavior was rewritten.
+
+Affected validation: playback JVM, TV build/lint and mobile compile passed ([build](status-focus-build.log)); the full 15 remote tests passed with the production patch ([log](status-focus-host-remote.txt)). After removing temporary capture experiments, the final focused error test passed 1/1 ([log](status-focus-target.txt)): Right focuses «К раздаче», there is exactly one focused node, Left returns to Retry, Retry and Back retain their original effects. The accepted real-video/multi-resolution sets above were not unnecessarily rerun for this status-only patch. Final main-based CI is still required.
+
+[Primary](synthetic-status/tv-error-focus.png) and [secondary](synthetic-status/tv-error-secondary-focus.png) are original complete native 1920×1080 PNGs, with no focus outline on background chrome while a card action has focus. The full PNG contents were checked with an independent decoder. A partial presentation during image inspection was initially misdiagnosed as a GPU problem; the original files were complete on both SwiftShader and host GPU. No GPU-specific production or screenshot-helper workaround remains. The comparison below only fits the two original frames to the same 16:9 viewport.
+
+![Status primary beside secondary focus](status-primary-vs-secondary.png)
 
 ## Approved target and comparison
 
@@ -27,7 +37,7 @@ Visual inspection confirmed soft continuous gradients, a thin lime track and cen
 | Same scenario, 1280×720 / 213 dpi, font scale 2.0 and long Russian title/path | 1/1; [log](font200.txt), [frame](font200/player-play.png) |
 | TV debug APK + TV/playback instrumentation APK builds, TV lint, mobile Kotlin compile | Passed; [build log](build.log), [test build](test-build.log), [native-dialog affected checks](dialog-build.log) |
 
-After the final native-selector code commit `91dcb11`, the 12 JVM checks, TV build/lint/mobile compile, 15 remote tests, all 4 installed real-video tests, font200 scenario and native 1080p scenario were repeated successfully. Native 1080p dialog captures were then refreshed with system animations disabled so the report shows fully opened windows.
+After the native-selector baseline code commit `91dcb11`, the 12 JVM checks, TV build/lint/mobile compile, 15 remote tests, all 4 installed real-video tests, font200 scenario and native 1080p scenario were repeated successfully. Native 1080p dialog captures were then refreshed with system animations disabled so the report shows fully opened windows.
 
 The existing tests cover hidden arrows/OK, held OK, timeline preview/confirm/cancel/blur, Back exit, modal return focus, timeout blockers, automatic skip/next rules and queue boundaries. Real-video tests cover preview and single Back exit, media Next boundaries, recreation preserving paused position/speed, quality/audio/speed/fit preserving actual playback state, plus hidden OK and hardware PLAY/PAUSE/PLAY_PAUSE. The state machine remains responsible for the six-second timer even while paused.
 
