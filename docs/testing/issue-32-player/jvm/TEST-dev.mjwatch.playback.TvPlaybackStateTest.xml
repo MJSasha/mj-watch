@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.mjwatch.playback.TvPlaybackStateTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-17T19:54:23.861Z" hostname="Mac" time="0.008">
+  <properties/>
+  <testcase name="inactivityTimerIsBlockedByModalAndPreview" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.007"/>
+  <testcase name="autoNextCountsPlaybackPausesForPanelsAndSeeksAndTransitionsOnlyOnce" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.0"/>
+  <testcase name="previewIsClampedAcceleratedAndOnlyCommittedExplicitly" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.001"/>
+  <testcase name="openingDismissalResetsAfterLeavingItsMarkedRange" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.0"/>
+  <testcase name="stayCancelsCurrentTailVisitAndLastEpisodeNeverAdvances" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.0"/>
+  <testcase name="markersAreValidatedAndEndingFallsBackToThirtySeconds" classname="dev.mjwatch.playback.TvPlaybackStateTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
