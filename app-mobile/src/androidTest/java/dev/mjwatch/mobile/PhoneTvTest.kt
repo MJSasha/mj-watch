@@ -103,7 +103,7 @@ class PhoneTvTest {
         val physicalVolume=if(newVolume>0)newVolume-1 else 1
         device.pressKeyCode(if(newVolume>0)android.view.KeyEvent.KEYCODE_VOLUME_DOWN else android.view.KeyEvent.KEYCODE_VOLUME_UP)
         waitFor("Phone volume keys adjust receiver volume $newVolume → $physicalVolume"){snapshot(first.id,target.instance).video.volume==physicalVolume}
-        proof("12-system-remote-volume");device.pressBack()
+        proof("12-system-remote-volume");Thread.sleep(3300)
         controller.transportControls.play()
         waitFor("System play reached the actual TV"){snapshot(first.id,target.instance).video.status=="playing"}
         waitFor("Android card reflects playing state"){controller.playbackState?.state==PlaybackState.STATE_PLAYING}
@@ -123,6 +123,8 @@ class PhoneTvTest {
         runBlocking(Dispatchers.IO){transport.connectionPool.evictAll();transport.dispatcher.cancelAll()}
         waitFor("Broken transport closes the launch gate"){!RemotePlaybackService.state.value.connected}
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
+        Assert.assertEquals("System panels leave the film open","detail",model.state.value.page)
+        compose.waitUntil(5000){compose.onAllNodesWithText("Повторить").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText("Повторить").assertExists();proof("08-connection-lost")
         val continuing=JSONObject(java.net.URL("http://127.0.0.1:18445/state?target=${first.id}&instance=${target.instance}").readText()).getJSONObject("state")
         Assert.assertEquals("TV keeps playing without the phone","playing",continuing.getString("status"))

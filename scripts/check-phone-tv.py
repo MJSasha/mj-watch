@@ -25,12 +25,12 @@ def adb(serial, *args):
     return run([ADB, '-s', serial, *args])
 
 
-def instrument(serial, package, test, folder, **arguments):
+def instrument(serial, package, test, folder, *, log_name=None, **arguments):
     cmd = ['shell', 'am', 'instrument', '-w', '-r', '-e', 'class', test, '-e', 'isolatedRemote', 'true']
     for key, value in arguments.items():
         cmd += ['-e', key, value]
     output = adb(serial, *cmd, package + '.test/androidx.test.runner.AndroidJUnitRunner')
-    (folder / (serial + '-' + test.rsplit('.', 1)[-1] + '.log')).write_text(output)
+    (folder / (serial + '-' + (log_name or test.rsplit('.', 1)[-1]) + '.log')).write_text(output)
     if 'FAILURES' in output or 'INSTRUMENTATION_FAILED' in output or 'OK (' not in output:
         raise RuntimeError(output)
     print(output.strip(), flush=True)
@@ -135,12 +135,12 @@ def main():
         adb(args.phone,'pull',proof_path,folder/'screenshots-phone')
         print('Checking 200% fonts and tablet dialog geometry',flush=True)
         adb(args.phone,'shell','settings','put','system','font_scale','2.0')
-        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder)
+        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder,log_name='rename-font200')
         adb(args.phone,'pull',proof_path,folder/'screenshots-font200')
         adb(args.phone,'shell','settings','put','system','font_scale','1.0')
         adb(args.phone,'shell','wm','size','1600x2560')
         adb(args.phone,'shell','wm','density','240')
-        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder)
+        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder,log_name='rename-tablet')
         adb(args.phone,'pull',proof_path,folder/'screenshots-tablet')
         adb(args.phone,'shell','wm','size','1080x2340');adb(args.phone,'shell','wm','density','420')
         adb(args.phone,'shell','settings','put','secure','enabled_accessibility_services','com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService')

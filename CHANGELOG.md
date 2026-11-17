@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 (unreleased)
+## 0.9.0
 
 - Add phone/tablet → authorized Android TV playback through the managed server, with one selected target, independent TVs, receiver-confirmed state, same-file joining and confirmed replacement. Playback stays on the TV when the controller disconnects.
 - Publish Android system play/pause/seek and remote TV volume from a foreground media session; retain independent TV playback and physical remote controls. No in-app remote transport.
