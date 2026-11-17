@@ -8,9 +8,10 @@ from reportlab.lib.utils import ImageReader
 from reportlab.lib.utils import simpleSplit
 import re
 ROOT=Path(__file__).resolve().parent
-OUT=ROOT.parent/'output/pdf/MJWatch-design.pdf'
-pdfmetrics.registerFont(TTFont('Roboto',str(ROOT/'assets/Roboto-Regular.ttf')))
-pdfmetrics.registerFont(TTFont('RobotoMedium',str(ROOT/'assets/Roboto-Medium.ttf')))
+OUT=ROOT.parents[2]/'output/pdf/MJWatch-initial-v1.pdf'
+OUT.parent.mkdir(parents=True,exist_ok=True)
+pdfmetrics.registerFont(TTFont('Roboto',str(ROOT/'../../assets/Roboto-Regular.ttf')))
+pdfmetrics.registerFont(TTFont('RobotoMedium',str(ROOT/'../../assets/Roboto-Medium.ttf')))
 c=canvas.Canvas(str(OUT),pagesize=(1440,1010))
 c.setTitle('MJWatch - Android & Android TV design')
 c.setAuthor('MJWatch design project')

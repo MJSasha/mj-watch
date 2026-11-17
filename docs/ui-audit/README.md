@@ -1,6 +1,6 @@
 # Сверка интерфейса MJWatch 0.4.0
 
-2026-11-15. Ориентиры: `design/index.html`, `design/screens.js`, все 24 экрана из `design/screens/`, правила `design/spec/`. Исходные макеты не изменялись. [Галерея сравнения](index.html).
+2026-11-15. Ориентиры: `design/archive/initial-v1/index.html`, `design/archive/initial-v1/screens.js`, все 24 экрана из `design/archive/initial-v1/screens/`, правила `design/spec/`. Исходные макеты не изменялись. [Галерея сравнения](index.html).
 
 ## Найдено и исправлено
 
