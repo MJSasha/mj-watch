@@ -45,12 +45,26 @@ class AppLifecycleUiTest {
         compose.runOnUiThread {compose.activity.setContent {WatchApp(model,true)}}
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithTag("startup-banner").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(750)
         capture("startup")
-        compose.mainClock.advanceTimeBy(1000)
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("startup-banner").assertIsDisplayed()
+        compose.onNodeWithTag("app-content").assertExists()
+        capture("startup-reveal")
+        compose.mainClock.advanceTimeBy(450)
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
         compose.mainClock.autoAdvance=true
         compose.runOnIdle {model.page("settings");model.page("home")}
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
+    }
+    @Test fun completedStartupDoesNotReplayAfterActivityRecreation() {
+        compose.mainClock.advanceTimeBy(1800)
+        compose.onNodeWithTag("startup-banner").assertDoesNotExist()
+        compose.mainClock.autoAdvance=false
+        compose.activityRule.scenario.recreate()
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("startup-banner").assertDoesNotExist()
+        compose.mainClock.autoAdvance=true
     }
     @Test fun downloadProgressUpdatesAndCancelStaysVisible() {
         val update=AppUpdate(10000,"0.8.11","dev.mjwatch.tv","","",20L*1024*1024,"","")
@@ -103,7 +117,7 @@ class AppLifecycleUiTest {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000) {model.state.value.config.demo}
-        compose.mainClock.advanceTimeBy(1000)
+        compose.mainClock.advanceTimeBy(1800)
         compose.runOnIdle {model.page("settings")}
         val exit=compose.onNodeWithText("Выйти из приложения")
         exit.performSemanticsAction(SemanticsActions.RequestFocus).performKeyInput {pressKey(Key.DirectionCenter)}

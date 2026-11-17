@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.16
+
+- Replace the startup pulse with a cinematic MJ logo entrance, orbiting light and a staged wordmark reveal on phone, tablet and TV.
+- Expand and dissolve the emblem into the ready screen with a short fade and depth transition. Wait for initialization, respect system animation duration settings, and retain the once-per-launch behavior across navigation and recreation.
+
 ## 0.8.14
 
 - Recover transient player HTTP/network failures with bounded backoff, reset the retry budget after stable playback, refresh managed sessions and reprepare missing torrents. Retry rebuilds the stream for the exact original file while preserving position and pause state (#25).

@@ -7,8 +7,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.*
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
@@ -48,6 +51,7 @@ import dev.mjwatch.core.*
 import dev.mjwatch.playback.PlaybackActivity
 import dev.mjwatch.playback.PlaybackEpisode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private data class Destination(val id:String,val title:String,val icon:ImageVector)
@@ -57,9 +61,35 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
     val state by model.state.collectAsStateWithLifecycle()
     var startupShown by rememberSaveable {mutableStateOf(false)}
-    val startupFade=remember {Animatable(0f)}
-    LaunchedEffect(Unit) {if(!startupShown) {startupFade.animateTo(1f,tween(650));startupShown=true}}
-    if(state.initializing||!startupShown) {WatchTheme(state.config.theme) {StartupBanner(Modifier.alpha(.5f+.5f*startupFade.value))};return}
+    var revealing by remember {mutableStateOf(false)}
+    val entrance=remember {Animatable(0f)}
+    val reveal=remember {Animatable(0f)}
+    LaunchedEffect(Unit) {
+        if(!startupShown) {
+            entrance.animateTo(1f,tween(1100))
+            snapshotFlow {state.initializing}.first {!it}
+            revealing=true
+            withFrameNanos {}
+            reveal.animateTo(1f,tween(420,easing=FastOutSlowInEasing))
+            startupShown=true
+        }
+    }
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0C0E15)).onPreviewKeyEvent {!startupShown}) {
+        if(!state.initializing&&(startupShown||revealing)) Box(Modifier.fillMaxSize().testTag("app-content").graphicsLayer {
+            alpha=if(startupShown) 1f else reveal.value
+            scaleX=.97f+.03f*alpha;scaleY=scaleX
+        }) {WatchAppContent(model,tv,scanQr)}
+        if(!startupShown||state.initializing) WatchTheme(state.config.theme) {
+            StartupBanner(Modifier.pointerInput(Unit) {
+                awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}
+            },if(startupShown) 1f else entrance.value,if(startupShown) 0f else reveal.value)
+        }
+    }
+    BackHandler(!startupShown) {}
+}
+
+@Composable private fun WatchAppContent(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?) {
+    val state by model.state.collectAsStateWithLifecycle()
     AutomaticUpdates(model.updates)
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
     val snackbar=remember {SnackbarHostState()}
