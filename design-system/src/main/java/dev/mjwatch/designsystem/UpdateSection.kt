@@ -56,10 +56,7 @@ import kotlinx.coroutines.*
         state.available?.let {update->
             if(!compact) Text("Доступна ${update.versionName} · сборка ${update.versionCode} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             if(state.downloading) {
-                if(tv) UpdateButton("Скачиваем…",enabled=false,loading=true) {}
-                LinearProgressIndicator(progress={ (state.downloaded.toFloat()/update.size).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth())
-                Text("Загружено ${state.downloaded/1024/1024} из ${update.size/1024/1024} МБ")
-                UpdateButton("Отменить загрузку") {manager.cancel()}
+                Text("Обновление загружается…")
             } else if(state.ready!=null) {
                 val allowed=remember(lifecycleState) {context.packageManager.canRequestPackageInstalls()}
                 UpdateButton(if(allowed) "Установить обновление" else "Разрешить установку",!installing) {

@@ -31,11 +31,13 @@ import org.json.JSONObject
 import java.util.UUID
 
 @Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,registerBack:((()->Unit)?)->Unit) {
+ val keyboard=LocalSoftwareKeyboardController.current
  val controller=model.managed;val account by controller.state.collectAsState();val managed=if(account.scope==s.config.scope)account else account.copy(me=null,data=null,pending=emptyList());val page=s.page
  var confirm by remember {mutableStateOf<Pair<String,()->Unit>?>(null)}
+ var mobileQr by rememberSaveable(page) {mutableStateOf(false)}
  var dirty by remember(page) {mutableStateOf(false)}
  var leave by remember {mutableStateOf(false)}
- val back:()->Unit={if(dirty)leave=true else model.back()}
+ val back:()->Unit={if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
  DisposableEffect(page,dirty){registerBack(back);onDispose{registerBack(null)}}
  BackHandler {back()}
  if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
@@ -62,9 +64,10 @@ import java.util.UUID
    "managed-login"->{
     var manualLogin by rememberSaveable {mutableStateOf(false)}
     var tvLegacy by rememberSaveable {mutableStateOf(false)}
-    if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){tvLegacy=false;manualLogin=false}
-    if(tv&&!manualLogin) {if(tvLegacy)TvPairingScreen(s,model){manualLogin=true} else TvQrScreen(model){tvLegacy=true}} else {
     var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
+    if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){tvLegacy=false;manualLogin=false}
+    if(!tv&&mobileQr) TvQrScreen(model,tv=false){mobileQr=false}
+    else if(tv&&!manualLogin) {if(tvLegacy)TvPairingScreen(s,model){manualLogin=true} else TvQrScreen(model){tvLegacy=true}} else {
     DisposableEffect(Unit){onDispose{controller.cancelPairing()}}
     val loginContext=LocalContext.current
     var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
@@ -79,6 +82,7 @@ import java.util.UUID
      } catch(e:Exception){importError="Приглашение не распознано. Скопируйте его целиком у владельца сервера.";false}
     }
     Text("Войти на сервер MJWatch",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    if(!tv)Action("Войти по QR с другого устройства",false,secondary=true){keyboard?.hide();mobileQr=true}
     OperationMessage(managed.message,error=true)
     Text("Получили приглашение? Скопируйте его у владельца и нажмите кнопку ниже.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     Action("Вставить приглашение",tv,secondary=true,enabled=!managed.busy){

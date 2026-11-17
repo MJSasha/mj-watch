@@ -50,7 +50,7 @@ class TvQrController(
                     }
                 }finally{if(server!==fresh)fresh.close()}
             }catch(e:CancellationException){throw e}
-            catch(e:Exception){withContext(Dispatchers.Main.immediate){if(generation==tvGeneration)tvMutable.value=TvQrState(message="Не удалось открыть подключение по QR. Подключите TV к домашней сети и повторите.")}}
+            catch(e:Exception){withContext(Dispatchers.Main.immediate){if(generation==tvGeneration)tvMutable.value=TvQrState(message="Не удалось открыть подключение по QR. Подключите устройство к домашней сети и повторите.")}}
         }
     }
     fun stopTv() {
@@ -70,7 +70,7 @@ class TvQrController(
     }
     fun scan(raw:String) {
         cancelPhone();val generation=phoneGeneration;val c=config()
-        val link=try{TvQrLink.decode(raw)}catch(e:Exception){phoneMutable.value=PhoneQrState(stage="error",message="Это не QR подключения MJWatch. Отсканируйте QR с экрана телевизора.");return}
+        val link=try{TvQrLink.decode(raw)}catch(e:Exception){phoneMutable.value=PhoneQrState(stage="error",message="Это не QR подключения MJWatch. Отсканируйте QR с экрана нового устройства.");return}
         if(!c.historyEnabled){phoneMutable.value=PhoneQrState(stage="error",message="Сначала войдите на сервер MJWatch на телефоне.");return}
         phoneMutable.value=PhoneQrState(stage="sending",scope=c.scope)
         phoneJob=scope.launch(Dispatchers.IO) {
@@ -93,14 +93,14 @@ class TvQrController(
                             return@launch
                         }
                         "confirm","connecting"->publishPhone(c,generation,PhoneQrState(stage="waiting",account=me.getString("name"),scope=c.scope))
-                        "error"->throw TvQrFailure("TV не смог проверить подключение к серверу. Проверьте адрес и сертификат на телефоне и обновите QR на TV.")
-                        else->throw TvQrFailure("Подключение отменено. Обновите QR на телевизоре.")
+                        "error"->throw TvQrFailure("Устройство не смогло проверить подключение к серверу. Проверьте адрес и сертификат и обновите QR на новом устройстве.")
+                        else->throw TvQrFailure("Подключение отменено. Обновите QR на новом устройстве.")
                     }
                     delay(1000);result=client.status()
                 }
-                throw TvQrFailure("QR истёк. Обновите его на телевизоре и отсканируйте снова.")
+                throw TvQrFailure("QR истёк. Обновите его на новом устройстве и отсканируйте снова.")
             }catch(e:CancellationException){throw e}
-            catch(e:Exception){publishPhone(c,generation,PhoneQrState(stage="error",scope=c.scope,message=when(e){is TvQrFailure->e.message.orEmpty();is HttpFailure->if(e.status in setOf(403,409,410))"QR истёк или уже используется. Обновите QR на TV." else safeError(e);else->"Не удалось связаться с TV. Подключите телефон и TV к одной сети Wi-Fi, отключите VPN и отсканируйте новый QR."}))}
+            catch(e:Exception){publishPhone(c,generation,PhoneQrState(stage="error",scope=c.scope,message=when(e){is TvQrFailure->e.message.orEmpty();is HttpFailure->if(e.status in setOf(403,409,410))"QR истёк или уже используется. Обновите QR на новом устройстве." else safeError(e);else->"Не удалось связаться с устройством. Подключите оба устройства к одной сети Wi-Fi, отключите VPN и отсканируйте новый QR."}))}
         }
     }
     private fun ensureCurrent(c:Config,generation:Int){if(generation!=phoneGeneration||config().scope!=c.scope||config().managedUrl!=c.managedUrl||!config().historyEnabled)throw CancellationException("Account or QR changed")}
@@ -124,9 +124,9 @@ class TvQrController(
                 ensureCurrent(c,generation)
                 api.authorized("pairing/${preview.code}/approve","POST",JSONObject().put("code",preview.code))
                 ensureCurrent(c,generation)
-                publishPhone(c,generation,preview.copy(stage="approved",code="",message="Телевизор подтверждён. На TV автоматически откроется главный экран."))
+                publishPhone(c,generation,preview.copy(stage="approved",code="",message="Устройство подтверждено. На нём автоматически откроется главный экран."))
             }catch(e:CancellationException){throw e}
-            catch(e:Exception){publishPhone(c,generation,preview.copy(stage="error",code="",message=if(e is HttpFailure)safeError(e) else "TV недоступен или подключение отменено. Обновите QR на TV и отсканируйте снова."))}
+            catch(e:Exception){publishPhone(c,generation,preview.copy(stage="error",code="",message=if(e is HttpFailure)safeError(e) else "Устройство недоступно или подключение отменено. Обновите QR на новом устройстве и отсканируйте снова."))}
         }
     }
     fun cancelPhone(){

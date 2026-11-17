@@ -27,7 +27,7 @@ class MainActivity:ComponentActivity() {
                 scanner.launch(ScanOptions()
                     .setCaptureActivity(QrCaptureActivity::class.java)
                     .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                    .setPrompt("Наведите камеру на QR телевизора")
+                    .setPrompt("Наведите камеру на QR нового устройства")
                     .setBeepEnabled(false)
                     .setOrientationLocked(false)
                     .addExtra(Intents.Scan.SHOW_MISSING_CAMERA_PERMISSION_DIALOG,false))

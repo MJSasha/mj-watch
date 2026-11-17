@@ -29,6 +29,7 @@ import org.json.JSONObject
 }
 
 @Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
+    val mobileTarget=s.page=="managed-mobile"
     val controller=model.managed
     val raw by controller.state.collectAsState()
     val managed=raw.takeIf {it.scope==s.config.scope} ?: ManagedState()
@@ -45,7 +46,7 @@ import org.json.JSONObject
         Text("Локальные история, избранное и неотправленные изменения аккаунта будут удалены. Данные на сервере сохранятся.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false;controller.logout(!keepData);model.page("connection-choice")}){Text("Выйти")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={logout=false}){Text("Отмена")}})
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        Text(when(s.page){"managed-devices"->"Мои устройства";"managed-tv"->"Добавить телевизор";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
+        Text(when(s.page){"managed-devices"->"Мои устройства";"managed-mobile"->"Добавить телефон или планшет";"managed-tv"->"Добавить телевизор";else->managed.me?.optString("name") ?: "Аккаунт"},fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
         if(managed.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessage(managed.message)
         when(s.page) {
@@ -61,25 +62,25 @@ import org.json.JSONObject
                 }}}
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
-            "managed-tv"->{
+            "managed-tv","managed-mobile"->{
                 val qr by controller.qr.phone.collectAsState()
                 DisposableEffect(Unit){onDispose{controller.qr.cancelPhone()}}
-                Text("Откройте подключение MJWatch на TV и отсканируйте QR. Адрес и сертификат передадутся автоматически.")
-                if(scanTvQr!=null)Action("Сканировать QR телевизора",tv,enabled=qr.stage !in setOf("sending","waiting","approving"),onClick=scanTvQr)
+                Text(if(mobileTarget) "На новом телефоне: Войти на сервер MJWatch → Войти по QR с другого устройства. Отсканируйте показанный QR. Адрес и сертификат передадутся автоматически." else "Откройте подключение MJWatch на TV и отсканируйте QR. Адрес и сертификат передадутся автоматически.")
+                if(scanTvQr!=null)Action(if(mobileTarget) "Сканировать QR нового устройства" else "Сканировать QR телевизора",tv,enabled=qr.stage !in setOf("sending","waiting","approving"),onClick=scanTvQr)
                 if(qr.stage in setOf("sending","waiting","approving")) {
                     CircularProgressIndicator()
-                    Text(when(qr.stage){"sending"->"Передаём настройки на TV…";"approving"->"Подтверждаем телевизор…";else->"На TV выберите «Подключить»."},modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+                    Text(when(qr.stage){"sending"->"Передаём настройки на устройство…";"approving"->"Подтверждаем устройство…";else->"На новом устройстве выберите «Подключить»."},modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                 }
                 if(qr.stage=="preview") {
-                    Text("Телевизор: ${qr.device}",fontWeight=FontWeight.Medium)
+                    Text("Устройство: ${qr.device}",fontWeight=FontWeight.Medium)
                     Text("Аккаунт: ${qr.account}")
                     val shown=qr
-                    Action("Подключить телевизор",tv){controller.qr.approvePhone(shown)}
+                    Action(if(mobileTarget) "Подключить устройство" else "Подключить телевизор",tv){controller.qr.approvePhone(shown)}
                 }
                 OperationMessage(qr.message,error=qr.stage=="error")
-                if(qr.stage.isNotBlank()&&qr.stage!="approved")Action("Отменить подключение TV",tv,secondary=true){controller.qr.cancelPhone()}
+                if(qr.stage.isNotBlank()&&qr.stage!="approved")Action(if(mobileTarget) "Отменить подключение устройства" else "Отменить подключение TV",tv,secondary=true){controller.qr.cancelPhone()}
                 var legacy by rememberSaveable {mutableStateOf(false)}
-                Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
+                if(!mobileTarget)Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
                 if(legacy) {
                 var code by rememberSaveable {mutableStateOf("")}
                 val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->if(uri!=null)controller.exportTvSetup(uri)}
@@ -107,6 +108,7 @@ import org.json.JSONObject
                     SettingsActionRow(Icons.Outlined.Devices,"Мои устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
                     SettingsDivider()
                     SettingsActionRow(Icons.Outlined.Tv,"Добавить телевизор","Сканировать QR с экрана TV",tv){model.page("managed-tv")}
+                    if(scanTvQr!=null) {SettingsDivider();SettingsActionRow(Icons.Outlined.Smartphone,"Добавить телефон или планшет","Войти на новом устройстве по QR",tv){model.page("managed-mobile")}}
                 }
                 val history by model.scopedLibrary.collectAsState()
                 managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->

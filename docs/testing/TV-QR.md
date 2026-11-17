@@ -99,3 +99,9 @@ Build/lint/unit commands follow TV-PAIRING.md. Proof is stored under ignored
   fixture tests skipped by those suites are not counted as executed.
 - Logs and screenshots are retained in `dist/qr-connection`. Camera input was the
   captured TV QR through the emulator imagefile camera, not a physical camera.
+
+## Mobile sign-in (0.8.11)
+
+On the new phone/tablet choose **Войти на сервер MJWatch → Войти по QR с другого устройства**. Password/invitation sign-in remains the default. On an authenticated phone choose **Аккаунт → Добавить телефон или планшет → Сканировать QR нового устройства**. Both devices must share a private Wi-Fi/LAN with peer access. Accept the named account/server on the new device, then approve the server device preview on the authenticated phone. The new phone receives its own session through the existing protected pairing poll. No password or existing session token is copied. The QR expires after five minutes; refresh/rejection/Back close the prior inbox and stop polling.
+
+The QR protocol/URI remain compatible with the TV flow. Mobile uses a vertical QR layout and ordinary touch controls. Back returns to the password form and preserves entered text. The `MobileQrLoginTest` ordinary regression covers the optional entry point, rejection, key replacement and Back cleanup; `-e mobileQrFixture true` additionally verifies HTTPS pairing and a distinct mobile device session against an isolated fixture on ports 18643/18644.

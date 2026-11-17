@@ -38,7 +38,7 @@ private fun qrAddress(raw:String):InetAddress {
 fun tvQrLocalAddress():String=NetworkInterface.getNetworkInterfaces().toList()
     .filter {it.isUp&&!it.isLoopback}.sortedBy {if(it.name.startsWith("wlan"))0 else 1}.flatMap {it.inetAddresses.toList()}
     .filterIsInstance<Inet4Address>().firstOrNull {it.isSiteLocalAddress}?.hostAddress
-    ?: throw IOException("Подключите TV к домашней сети Wi-Fi или Ethernet и обновите QR.")
+    ?: throw IOException("Подключите устройство к домашней сети Wi-Fi или Ethernet и обновите QR.")
 
 /** The QR is an out-of-band, one-session authentication key. Never persist or log it. */
 class TvQrLink(val ip:String,val port:Int,private val key:ByteArray) {

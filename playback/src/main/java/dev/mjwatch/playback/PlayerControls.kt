@@ -5,7 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.focus.*
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.Alignment
@@ -36,12 +39,24 @@ internal val PlayerLime=Color(0xFFC7FF68)
     val windowFocused=LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(visible,ready,windowFocused) {if(visible&&ready&&windowFocused&&!mobile) {delay(100);playFocus.requestFocus()}}
     var interaction by remember {mutableIntStateOf(0)};var scrubbing by remember {mutableStateOf(false)}
+    var seekFeedback by remember {mutableStateOf("")}
+    var seekInteraction by remember {mutableIntStateOf(0)}
+    LaunchedEffect(seekInteraction) {if(seekFeedback.isNotEmpty()) {delay(900);seekFeedback=""}}
     LaunchedEffect(Unit) {while(true) {player()?.let {p->if(!scrubbing) position=p.currentPosition;duration=p.duration.coerceAtLeast(0);playing=p.isPlaying;ready=p.playbackState==Player.STATE_READY||p.duration>0};delay(250)}}
     LaunchedEffect(visible,playing,interaction,keepVisible) {if(visible&&playing&&!keepVisible) {delay(4000);onVisibility(false)}}
     fun touch(block:()->Unit) {interaction++;block()}
     MaterialTheme(colorScheme=darkColorScheme(primary=PlayerLime,onPrimary=Color(0xFF0C0E15),surface=Color(0xFF191E29),onSurface=Color(0xFFF0F2EC))) {
         CompositionLocalProvider(LocalContentColor provides Color(0xFFF0F2EC)) {Box(Modifier.fillMaxSize()) {
-            if(!visible) Box(Modifier.fillMaxSize().clickable {onVisibility(true)})
+            Box(Modifier.fillMaxSize().testTag("player-gestures").then(if(!visible)Modifier.semantics {onClick(label="Показать элементы управления"){onVisibility(true);true}} else Modifier).pointerInput(visible,externalPanel,keepVisible) {
+                detectTapGestures(onTap={touch {onVisibility(keepVisible||!visible)}},onDoubleTap={offset->
+                    val p=player()
+                    if(p!=null&&p.isCurrentMediaItemSeekable&&p.duration>0&&!externalPanel) touch {
+                        val forward=offset.x>=size.width/2
+                        p.seekTo((p.currentPosition+if(forward)10_000 else -10_000).coerceIn(0,p.duration))
+                        seekFeedback=if(forward) "+10 секунд" else "−10 секунд";seekInteraction++
+                    }
+                })
+            })
             if(visible) {
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC0C0E15),Color.Transparent))).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
@@ -76,6 +91,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 }
             }
+            if(seekFeedback.isNotEmpty()) Text(seekFeedback,Modifier.align(Alignment.Center).background(Color(0xCC0C0E15),CircleShape).padding(20.dp),fontSize=24.sp,fontWeight=FontWeight.Bold)
             if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusOverlay(status,onRetry,onBack)}
         }
     }

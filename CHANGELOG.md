@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.11
+
+- Add optional QR sign-in on a new phone/tablet, approved from an authenticated phone with a separate server session and the existing encrypted LAN protocol.
+
+- Seek ten seconds backwards/forwards by double-tapping the left/right half of the mobile video, with feedback and bounded positions (#20).
+- Show the MJ logo from the native launch window and an animated branded startup screen while local configuration loads (#21).
+- Add an explicit exit action in settings and confirmation on Back from home; stop playback/downloads and remove the task while keeping settings and history (#22).
+- Keep update download percentages, bytes, verification status and a focused cancel action in a dialog outside the TV settings scroll area (#23).
+- Add phone/TV startup, exit, download-progress and mobile gesture runtime regressions.
+
 ## 0.8.10
 
 - Check the Latest release descriptor directly instead of using the unauthenticated GitHub REST API, so shared IP rate limits do not block app updates.

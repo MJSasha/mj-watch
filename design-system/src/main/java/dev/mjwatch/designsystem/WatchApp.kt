@@ -6,6 +6,9 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.*
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
@@ -52,8 +55,12 @@ internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loa
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
 @Composable fun WatchApp(model:WatchModel,tv:Boolean,scanTvQr:(()->Unit)?=null) {
-    AutomaticUpdates(model.updates)
     val state by model.state.collectAsStateWithLifecycle()
+    var startupShown by rememberSaveable {mutableStateOf(false)}
+    val startupFade=remember {Animatable(0f)}
+    LaunchedEffect(Unit) {if(!startupShown) {startupFade.animateTo(1f,tween(650));startupShown=true}}
+    if(state.initializing||!startupShown) {WatchTheme(state.config.theme) {StartupBanner(Modifier.alpha(.5f+.5f*startupFade.value))};return}
+    AutomaticUpdates(model.updates)
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
     val snackbar=remember {SnackbarHostState()}
     LaunchedEffect(state.page,state.message) {
@@ -74,6 +81,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     CompositionLocalProvider(LocalTvNavigation provides tv,LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) TVBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
         val colors=MaterialTheme.colorScheme
         val activity=androidx.activity.compose.LocalActivity.current
+        var exitRequested by remember {mutableStateOf(false)}
+        val updateState by model.updates.state.collectAsStateWithLifecycle()
+        if(updateState.downloading) UpdateDownloadDialog(updateState,tv) {model.updates.cancel()}
+        if(exitRequested) ExitAppDialog(tv,onDismiss={exitRequested=false},onExit={
+            model.cancel();model.updates.cancel();PlaybackActivity.stopActivePlayback();activity?.finishAndRemoveTask()
+        })
         SideEffect {activity?.let {a->WindowCompat.getInsetsController(a.window,a.window.decorView).apply {isAppearanceLightStatusBars=colors.background.luminance()>.5;isAppearanceLightNavigationBars=colors.background.luminance()>.5};if(android.os.Build.VERSION.SDK_INT>=29) a.window.isNavigationBarContrastEnforced=false}}
         androidx.tv.material3.MaterialTheme(colorScheme=androidx.tv.material3.darkColorScheme(primary=colors.primary,onPrimary=colors.onPrimary,surface=colors.surface,onSurface=colors.onSurface,surfaceVariant=colors.surfaceVariant,onSurfaceVariant=colors.onSurfaceVariant)) {
             val width=LocalConfiguration.current.screenWidthDp
@@ -83,6 +96,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val top=state.page in (destinations.map {it.id}+"history")
             val cinematic=state.page in setOf("home","detail")
             val railFocus=remember {FocusRequester()};var railFocused by remember {mutableStateOf(false)}
+            BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
             Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&top&&state.configured&&!imeVisible) {
@@ -127,8 +141,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 when(state.page) {
                                     "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,titles,progress,model,tv)
-                                    "settings"->if(state.configured) SettingsOverview(state,model,tv) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
-                                    "managed-account","managed-devices","managed-tv"->AccountScreen(state,model,tv,scanTvQr)
+                                    "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
+                                    "managed-account","managed-devices","managed-tv","managed-mobile"->AccountScreen(state,model,tv,scanTvQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
                                     "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
@@ -669,7 +683,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 }
 private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
-@Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean) {
+@Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean,onExit:()->Unit) {
     var section by rememberSaveable {mutableStateOf("Подключения")}
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var themes by remember {mutableStateOf(false)}
@@ -680,8 +694,9 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     }}
     if(tv) {
         Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
-            Column(Modifier.width(tvUnit(320f)),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.width(tvUnit(320f)).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
+                Action("Выйти из приложения",true,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)
             }
             Box(Modifier.weight(1f)) {when(section) {
                 "Подключения"->ConnectionLinks(s,model,true)
@@ -705,6 +720,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         }}
         item {SettingsLabel("Приложение")}
         item {UpdateLink(model,false)}
+        item {Action("Выйти из приложения",false,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)}
         item {Text("MJWatch ${model.updates.versionName}\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=12.sp)}
     }
 }
