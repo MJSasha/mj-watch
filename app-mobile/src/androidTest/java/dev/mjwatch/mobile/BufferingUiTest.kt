@@ -49,4 +49,56 @@ class BufferingUiTest {
         compose.onNodeWithTag("playback-status").assertDoesNotExist()
         i.runOnMainSync {player!!.finish()}
     }
+    @Test fun temporaryHttpFailureAndManualRetryRetainActivityPositionAndPause() {
+        val i=InstrumentationRegistry.getInstrumentation();val context=i.targetContext
+        val data=context.assets.open("demo.mp4").use {it.readBytes()}
+        val mode=java.util.concurrent.atomic.AtomicInteger(4)
+        val calls=java.util.concurrent.atomic.AtomicInteger()
+        val lost=java.util.concurrent.atomic.AtomicBoolean(true)
+        val adds=java.util.concurrent.atomic.AtomicInteger()
+        val hash="0123456789012345678901234567890123456789"
+        server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse {
+                if(request.path=="/torrents") {
+                    val body=org.json.JSONObject(request.body.readUtf8())
+                    if(body.getString("action")=="get"&&lost.get())return MockResponse().setResponseCode(404)
+                    if(body.getString("action")=="add"){adds.incrementAndGet();lost.set(false)}
+                    return MockResponse().setBody("""{"hash":"$hash","file_stats":[{"id":7,"path":"movie.mp4","length":${data.size}}]}""")
+                }
+                calls.incrementAndGet()
+                if(mode.get()==-1)return MockResponse().setResponseCode(403)
+                if(mode.getAndUpdate {if(it>0)it-1 else it}>0)return MockResponse().setResponseCode(503)
+                val start=request.getHeader("Range")?.substringAfter("bytes=")?.substringBefore('-')?.toIntOrNull() ?: 0
+                return MockResponse().setResponseCode(if(start>0)206 else 200).setHeader("Content-Type","video/mp4")
+                    .setHeader("Accept-Ranges","bytes").apply {if(start>0)setHeader("Content-Range","bytes $start-${data.lastIndex}/${data.size}")}
+                    .setBody(okio.Buffer().write(data,start,data.size-start))
+            }
+        }
+        context.startActivity(Intent(context,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",server.url("/movie.mp4").toString()).putExtra("title","Recovery test").putExtra("path","movie.mp4").putExtra("torrentHandle",hash)
+            .putExtra("recoveryRelease",org.json.JSONObject().put("id","recovery").put("title","Recovery").put("source","fixture").put("hash",hash).put("magnet","magnet:?xt=urn:btih:$hash").toString()))
+        var activity:PlaybackActivity?=null
+        compose.waitUntil(45000){i.runOnMainSync {activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().firstOrNull {it.firstFrameSeen}};activity!=null}
+        Assert.assertTrue("Temporary HTTP errors must recover automatically",calls.get()>=5)
+        Assert.assertEquals("A missing torrent is prepared again inside the player",1,adds.get())
+        val same=activity!!
+        Assert.assertEquals("Exact file is reselected with its current server ID",7,same.intent.getIntExtra("fileId",-1))
+        lateinit var player:androidx.media3.common.Player
+        i.runOnMainSync {
+            val field=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
+            player=field.get(same) as androidx.media3.common.Player
+            player.pause();mode.set(-1)
+            player.setMediaItem(androidx.media3.common.MediaItem.fromUri(server.url("/movie.mp4").toString()),2000)
+            player.prepare()
+        }
+        compose.waitUntil(15000){compose.onAllNodesWithText("Повторить").fetchSemanticsNodes().isNotEmpty()}
+        mode.set(0)
+        compose.onNodeWithText("Повторить").performClick()
+        compose.waitUntil(20000){var ready=false;i.runOnMainSync {ready=player.playbackState==androidx.media3.common.Player.STATE_READY};ready}
+        i.runOnMainSync {
+            Assert.assertFalse("Retry preserves pause",player.playWhenReady)
+            Assert.assertTrue("Retry preserves position",player.currentPosition>=1900)
+            Assert.assertFalse(same.isFinishing);same.finish()
+        }
+    }
+
 }

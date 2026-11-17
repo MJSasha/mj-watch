@@ -84,11 +84,19 @@ class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=nu
  }
  suspend fun refresh()=refreshIfCurrent(access())
  fun saveTokens(result:JSONObject) {val key="${base.origin()}:${config.scope}";secrets.put("refresh:$key",result.getString("refreshToken"));secrets.put("access:$key",result.getString("accessToken"));secrets.put("expires:$key",(System.currentTimeMillis()+result.optLong("expiresIn",900)*1000).toString())}
+ /** Preserve rotated credentials when handing a verified bootstrap session to the account scope. */
+ fun sessionTokens():JSONObject {
+  val key="${base.origin()}:${config.scope}"
+  val remaining=((secrets.get("expires:$key").toLongOrNull() ?: 0)-System.currentTimeMillis())/1000
+  return JSONObject().put("accessToken",access()).put("refreshToken",secrets.get("refresh:$key")).put("expiresIn",remaining.coerceAtLeast(0))
+ }
  suspend fun authorized(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null):JSONObject {
   val expiry=secrets.get("expires:${base.origin()}:${config.scope}").toLongOrNull()
   if(expiry!=null&&System.currentTimeMillis()+60000>=expiry) refresh()
   val previous=access()
-  return try {request(path,method,body,revision)} catch(e:HttpFailure) {if(e.status!=401)throw e;refreshIfCurrent(previous);request(path,method,body,revision)}
+  // Explicit authorization also works before /me establishes the account scope.
+  suspend fun send()=request(path,method,body,revision,headers=mapOf("Authorization" to "Bearer ${access()}"))
+  return try {send()} catch(e:HttpFailure) {if(e.status!=401)throw e;refreshIfCurrent(previous);send()}
  }
 
 }

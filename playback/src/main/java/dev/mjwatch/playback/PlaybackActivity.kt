@@ -53,6 +53,8 @@ class PlaybackActivity : ComponentActivity() {
     var firstFrameSeen=false; private set
     private var terminalError=false
     private var firstFrame=false
+    private var recoveryJob:Job?=null
+    private var stablePlayback:Job?=null
     private var retries=0
     private var panel: android.app.AlertDialog?=null
     private var startedAt=0L
@@ -103,7 +105,7 @@ class PlaybackActivity : ComponentActivity() {
             val headers=mutableMapOf<String,String>()
             val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
             val http=OkHttpDataSource.Factory((if(config.managed) managedClient(config,SecretStore(applicationContext)) else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
-            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(0)))
+            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -131,12 +133,16 @@ class PlaybackActivity : ComponentActivity() {
                     if(state==Player.STATE_READY&&firstFrame) status=null
                     if(state==Player.STATE_ENDED) { save(true); status=PlaybackStatus("Просмотр завершён") }
                 }
-                override fun onIsPlayingChanged(isPlaying: Boolean) { if(!isPlaying) save() }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    stablePlayback?.cancel()
+                    if(!isPlaying)save() else stablePlayback=scope.launch {delay(20_000);retries=0}
+                }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
-                    save(); val network=error.errorCode in 2000..2999 && error.errorCode!=PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                    if(network&&retries<2) { val delay=if(retries++==0) 1000L else 3000L;status=PlaybackStatus("Восстанавливаем соединение","Попытка $retries из 2",loading=true,compact=firstFrame); handler.postDelayed({ if(!isFinishing&&!released) { player.prepare(); player.play() } },delay) }
-                    else { terminalError=true;status=if(error.errorCode in 4000..5999) PlaybackStatus("Формат не поддерживается","Выберите другую дорожку или раздачу.") else PlaybackStatus("Видео недоступно","Проверьте соединение или выберите другую раздачу.",retry=true) }
+                    save()
+                    val http=generateSequence<Throwable>(error) {it.cause}.filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
+                    if(recoverablePlaybackError(error.errorCode,http,config.managed)&&retries<3) recoverPlayback(automatic=true)
+                    else showPlaybackFailure(error.errorCode in 4000..5999)
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
@@ -146,7 +152,7 @@ class PlaybackActivity : ComponentActivity() {
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>180_000) {terminalError=true;player.stop();status=PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
+                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();player.stop();status=PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
                     else if(elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
                 }
             }
@@ -158,7 +164,7 @@ class PlaybackActivity : ComponentActivity() {
         if(!::player.isInitialized||released||index==episodeIndex||episodeLoad?.isActive==true)return
         if(!episode.uri.startsWith("asset:")&&runCatching {episode.uri.toHttpUrl().origin()==endpoint(if(config.managed)config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true)return
         save()
-        episodeLoad?.cancel();handler.removeCallbacksAndMessages(null)
+        episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         firstFrame=false;firstFrameSeen=false;terminalError=false;retries=0
         view.setKeepContentOnPlayerReset(false)
         player.stop()
@@ -171,11 +177,61 @@ class PlaybackActivity : ComponentActivity() {
             startedAt=System.currentTimeMillis();player.prepare();player.play()
         }
     }
-    private fun retryPlayback() {
-        if(!::player.isInitialized||released)return
-        terminalError=false;retries=0;startedAt=System.currentTimeMillis()
-        status=PlaybackStatus("Повторная загрузка","Подключаемся к потоку",loading=true)
-        player.prepare();player.play()
+    private fun retryPlayback() {recoverPlayback(automatic=false)}
+    private fun showPlaybackFailure(format:Boolean=false) {
+        terminalError=true
+        status=if(format)PlaybackStatus("Формат не поддерживается","Выберите другую дорожку или раздачу.")
+        else PlaybackStatus("Видео недоступно","Не удалось восстановить поток. Повторите попытку или проверьте сервер.",retry=true)
+    }
+    private fun recoverPlayback(automatic:Boolean) {
+        if(!::player.isInitialized||released||recoveryJob?.isActive==true)return
+        val config=playbackConfig ?: return
+        if(!automatic)retries=0
+        val position=player.currentPosition.coerceAtLeast(0)
+        val playing=player.playWhenReady
+        terminalError=false;startedAt=System.currentTimeMillis()
+        recoveryJob=scope.launch {
+            while(isActive&&!released) {
+                status=PlaybackStatus("Восстанавливаем соединение",if(automatic)"Попытка ${retries+1} из 3" else "Подключаемся к потоку",loading=true,compact=firstFrame)
+                if(automatic||retries>0)delay(listOf(1000L,3000L,8000L)[retries.coerceAtMost(2)])
+                retries++
+                try {
+                    val source=withContext(Dispatchers.IO) {
+                        val secrets=SecretStore(applicationContext)
+                        if(Settings(applicationContext).config.first().profileKey!=config.profileKey)error("Подключение изменено")
+                        if(config.managed)ManagedApi(config,secrets).authorized("me")
+                        val raw=intent.getStringExtra("recoveryRelease")
+                        if(raw==null)null else {
+                            val json=org.json.JSONObject(raw)
+                            val hash=json.getString("hash")
+                            val release=Release(json.getString("id"),json.getString("title"),json.getString("source"),hash=hash,
+                                magnet=json.optString("magnet").takeIf {it.isNotBlank()},download=json.optString("download").takeIf {it.isNotBlank()})
+                            val client=if(config.managed&&endpoint(config.jackett).origin()==endpoint(config.managedUrl).origin())managedClient(config,secrets) else guardedClient(config)
+                            val torrents=TorznabRepository(config,secrets.get("jackett:${config.jackett}"),client)
+                            val gateway=if(config.managed)ManagedGateway(ManagedApi(config,secrets),torrents) else TorrServerGateway(config,secrets.get("torrAuth:${config.torrServer}"),client,torrents)
+                            val handle=recoverTorrent(gateway,release,intent.getStringExtra("torrentHandle") ?: hash,hash,path)
+                            handle to handle.files.associate {it.path to gateway.stream(handle,it).uri}
+                        }
+                    }
+                    if(released)return@launch
+                    if(source!=null) {
+                        intent.putExtra("torrentHandle",source.first.hash)
+                        val file=source.first.files.single {it.path==path};fileId=file.serverFileId
+                        intent.putExtra("fileId",fileId).putExtra("uri",source.second.getValue(path))
+                        episodes=episodes.map {episode->source.first.files.singleOrNull {it.path==episode.path}?.let {episode.copy(uri=source.second.getValue(it.path),fileId=it.serverFileId)} ?: episode}
+                        intent.putExtra("episodes",PlaybackEpisode.encode(episodes))
+                    }
+                    startedAt=System.currentTimeMillis()
+                    player.setMediaItem(MediaItem.fromUri(intent.getStringExtra("uri")!!),position)
+                    player.prepare();player.playWhenReady=playing
+                    return@launch
+                } catch(e:TimeoutCancellationException) {
+                    if(!automatic||retries>=3) {showPlaybackFailure();return@launch}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {
+                    if(!automatic||retries>=3||e is HttpFailure&&e.status in listOf(400,401,403)||e is IllegalStateException) {showPlaybackFailure();return@launch}
+                }
+            }
+        }
     }
     private fun save(ended:Boolean=false): Job? {
         if(!::player.isInitialized||released||!firstFrame||playbackConfig?.historyEnabled!=true) return null
@@ -241,7 +297,7 @@ class PlaybackActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
-    private fun releasePlayer() {if(!released) {released=true;session?.release();if(::player.isInitialized) player.release()}}
+    private fun releasePlayer() {if(!released) {released=true;recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
         val pending=save() ?: finalWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
         if(active?.get()===this) active=null

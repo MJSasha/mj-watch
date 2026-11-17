@@ -497,7 +497,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             PlaybackEpisode(model.stream(f).uri,f.path,f.serverFileId,if(s.config.managed) contentKey(s.handle!!.contentHash!!,f.path,f.size) else "")
         }
         android.util.Log.d("MJWatch","Dispatching playback activity")
-        playerLauncher.launch(Intent(context,PlaybackActivity::class.java).putExtra("episodes",PlaybackEpisode.encode(episodes)).putExtra("contentKey",if(s.config.managed) contentKey(s.handle!!.contentHash!!,file.path,file.size) else "").putExtra("uri",request.uri).putExtra("releaseId",s.selected!!.id).putExtra("fileId",file.serverFileId).putExtra("path",file.path).putExtra("mobile",!tv).putExtra("title",s.selectedMetadata?.title ?: s.selected?.displayTitle()))
+        val selected=s.selected!!
+        val recovery=org.json.JSONObject().put("id",selected.id).put("title",selected.title).put("source",selected.source).put("magnet",selected.magnet).put("download",selected.download).put("hash",s.handle!!.contentHash ?: s.handle!!.hash)
+        playerLauncher.launch(Intent(context,PlaybackActivity::class.java).putExtra("recoveryRelease",recovery.toString()).putExtra("torrentHandle",s.handle!!.hash).putExtra("episodes",PlaybackEpisode.encode(episodes)).putExtra("contentKey",if(s.config.managed) contentKey(s.handle!!.contentHash!!,file.path,file.size) else "").putExtra("uri",request.uri).putExtra("releaseId",s.selected!!.id).putExtra("fileId",file.serverFileId).putExtra("path",file.path).putExtra("mobile",!tv).putExtra("title",s.selectedMetadata?.title ?: s.selected?.displayTitle()))
     }
     LaunchedEffect(s.handle?.hash,s.resumePath) {
         if(autoLaunched) return@LaunchedEffect

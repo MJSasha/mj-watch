@@ -1,0 +1,9 @@
+# 0.8.14
+
+Fix the final server installation HTTP 401: explicit authorized requests carry the access token even before /me establishes an account scope. The automatic origin interceptor still requires a known scope and never sends credentials across origins. When verification refreshes a bootstrap session, save the current access/refresh tokens and remaining expiry when handing it to the account controller.
+
+Verified on an isolated HTTPS fixture with a private CA and real SQLite service using BootstrapConnectionTest (Android API 36): fresh bootstrap, rejected access token with valid refresh token, me/admin status/probe, account persistence, reload and a second refresh all pass. The fixture flag keeps this test away from real servers. Existing core unit tests, mobile/TV lint and debug builds pass locally; the release pipeline also gates publication on release builds and full phone/TV runtime suites.
+
+After upgrading the APK, resume the existing installation and use Check status and connect. Reinstalling the server or changing the SSH password is unnecessary. Server supply stays at 0.1.4.
+
+Issue #25: default Media3 load retries plus bounded activity recovery cover transient HTTP/network errors and managed-session expiry. Retry revalidates the acknowledged torrent, adds it again only after 404, verifies the content hash and exact path, updates server file IDs/queue URLs, and retains position/play state. Denials, TLS and codec failures are not automatically retried. The budget resets after 20 seconds of stable playback. Recovery is cancelled on episode change/release. Unit checks cover classification, missing-torrent re-add and identity rejection; BufferingUiTest uses a real Media3/HTTP video with repeated 503s, a missing torrent/current file ID, and manual retry preserving pause/position.

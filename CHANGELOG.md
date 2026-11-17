@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.14
+
+- Recover transient player HTTP/network failures with bounded backoff, reset the retry budget after stable playback, refresh managed sessions and reprepare missing torrents. Retry rebuilds the stream for the exact original file while preserving position and pause state (#25).
+
+- Authenticate explicitly during the final server-installation check before the account scope exists; retain refreshed access/refresh credentials when saving the verified connection. Fixes HTTP 401 after successful SSH installation, including expired bootstrap sessions.
+
 ## 0.8.13
 
 - Keep the APK download dialog open after verification and offer installation or Later in the same window, with TV focus and the existing APK/permission checks.

@@ -291,7 +291,7 @@ private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchMo
  val key="installOperation:${target.host}:${target.port}";var operation=model.secrets.get(key);if(operation.isBlank()){operation=UUID.randomUUID().toString();model.secrets.put(key,operation)}
  val bootstrap=ssh.bootstrap(target,operation);val host=if(target.host.contains(':'))"[${target.host}]" else target.host;val url="https://$host${bootstrap.getString("listen")}";val c=model.state.value.config.copy(connectionMode="managed",managedUrl=url,serverId="",userId="",demo=false)
  model.secrets.put("ca:${endpoint(url).origin()}",bootstrap.getString("ca"));val api=ManagedApi(c,model.secrets);api.saveTokens(bootstrap);val me=api.authorized("me");check(me.getString("role")=="admin"){"Сервер не подтвердил права администратора"};val status=api.authorized("admin/status");check(status.getBoolean("databaseHealthy")&&status.getBoolean("torrserverHealthy")){"HTTPS доступен, но база данных или TorrServer не прошли проверку"};api.authorized("admin/probe","POST")
- model.managed.connected(c,bootstrap)
+ model.managed.connected(c,api.sessionTokens())
  if(save){val id=me.getString("serverId")+":"+me.getString("userId");model.secrets.put("ssh:$id",JSONObject().put("host",target.host).put("port",target.port).toString());model.secrets.put("sshPassword:$id",target.password)}
  message("Сервер готов. Приложение уже подключено.")
 }
