@@ -1,0 +1,20 @@
+[
+  {
+    "file": "01-soft-keys.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "9f5ee5f37859fb92acd1eead08375a48d0e251e2617451178f671d2844d1153e"
+  },
+  {
+    "file": "02-ribbon.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "d81cd7f010f47063148f8a4f6f3b18e3d0a3231bd09394b9e043f315e768dfe7"
+  },
+  {
+    "file": "03-type-control.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "d9d2a5da3e47386968797b91df3b1365ceb49b1600dfa396673645b5c31d9b19"
+  }
+]
