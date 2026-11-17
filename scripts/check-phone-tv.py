@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real APK/HTTPS/MediaSession check on three disposable issue26 AVDs (no Cast claim)."""
+"""Real APK/HTTPS/MediaSession check on four disposable issue26 AVDs (no Cast claim)."""
 import argparse
 import json
 import os
@@ -142,7 +142,16 @@ def main():
         adb(args.phone,'shell','wm','density','240')
         instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.PhoneTvTest#renameInUnifiedDevicesDialogAndLargeFont',folder)
         adb(args.phone,'pull',proof_path,folder/'screenshots-tablet')
-        print('PASSED. Evidence: ' + str(folder), flush=True)
+        adb(args.phone,'shell','wm','size','1080x2340');adb(args.phone,'shell','wm','density','420')
+        adb(args.phone,'shell','settings','put','secure','enabled_accessibility_services','com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService')
+        adb(args.phone,'shell','settings','put','secure','accessibility_enabled','1')
+        instrument(args.phone,'dev.mjwatch.mobile','dev.mjwatch.mobile.TalkBackFocusTest',folder)
+        adb(args.phone,'pull',proof_path,folder/'screenshots-talkback')
+        adb(args.phone,'shell','settings','put','secure','enabled_accessibility_services','null')
+        adb(args.phone,'shell','settings','put','secure','accessibility_enabled','0')
+        instrument(args.tv1,'dev.mjwatch.tv','dev.mjwatch.tv.DeviceRenameTvTest',folder)
+        adb(args.tv1,'pull','/sdcard/Android/data/dev.mjwatch.tv/files/phone-tv-proof',folder/'screenshots-tv')
+        print('PASSED. Evidence: '  + str(folder), flush=True)
     finally:
         # Preserve actual failure screens/logs as well as successful runs.
         for serial, package in [(args.phone,'dev.mjwatch.mobile'),(args.phone2,'dev.mjwatch.mobile'),(args.tv1,'dev.mjwatch.tv'),(args.tv2,'dev.mjwatch.tv')]:
@@ -155,7 +164,7 @@ def main():
                     subprocess.run([str(ADB),'-s',serial,'exec-out','screencap','-p'],stdout=output,check=True)
             except subprocess.CalledProcessError as error:
                 (folder/(serial+'-capture-error.txt')).write_text(str(error))
-        for command in [('settings','put','system','font_scale','1.0'),('wm','size','reset'),('wm','density','reset')]:
+        for command in [('settings','put','secure','enabled_accessibility_services','null'),('settings','put','secure','accessibility_enabled','0'),('settings','put','system','font_scale','1.0'),('wm','size','reset'),('wm','density','reset')]:
             subprocess.run([str(ADB),'-s',args.phone,'shell',*command],capture_output=True)
         if 'probe' in locals():
             probe.shutdown();probe.server_close()

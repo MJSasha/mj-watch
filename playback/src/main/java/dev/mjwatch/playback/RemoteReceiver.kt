@@ -41,12 +41,14 @@ object RemoteReceiver {
                         instance=withContext(Dispatchers.IO){api.authorized("remote/receiver/open","POST")}.getString("instance")
                     }
                     val observed=PlaybackActivity.remoteVideo() ?: failure ?: RemoteVideo()
+                    val requestedAt=android.os.SystemClock.elapsedRealtime()
                     val result=withContext(Dispatchers.IO){api.authorized("remote/receiver","POST",JSONObject().put("instance",instance).put("ack",ack).put("ready",foreground?.get()!=null).put("state",observed.json()))}
+                    val expiresAt=requestedAt+result.optLong("commandTtlMs").coerceIn(0,8000)
                     val command=result.optJSONObject("command")
                     val id=command?.optString("id").orEmpty()
                     if(id.isNotBlank()&&id!=last&&foreground?.get()!=null) {
                         last=id;ack=id
-                        if(command!!.getString("instance")==instance&&command.optString("session")==observed.session&&System.currentTimeMillis()/1000-command.optLong("created")<=8) {
+                        if(command!!.getString("instance")==instance&&command.optString("session")==observed.session&&android.os.SystemClock.elapsedRealtime()<expiresAt) {
                             if(command.getString("action")=="load") {
                                 try {
                                     val handle=command.getString("handle")
@@ -59,7 +61,7 @@ object RemoteReceiver {
                                     val current=PlaybackActivity.remoteVideo() ?: failure ?: RemoteVideo()
                                     if(current.contentId!=contentId||!current.active) {
                                         check(current.session==command.optString("session")){"Session changed"}
-                                        check(System.currentTimeMillis()/1000-command.optLong("created")<=8){"Expired command"}
+                                        check(android.os.SystemClock.elapsedRealtime()<expiresAt){"Expired command"}
                                         val activity=foreground?.get() ?: error("Receiver left foreground")
                                         val uri=api.base.newBuilder().addPathSegments("api/v1/playback/$handle/stream").addQueryParameter("file",file.getInt("id").toString()).build().toString()
                                         activity.startActivity(Intent(activity,PlaybackActivity::class.java).putExtra("uri",uri).putExtra("torrentHandle",handle).putExtra("remoteSession",id).putExtra("remotePosition",command.optLong("position")).putExtra("remoteContentId",contentId).putExtra("title",command.getString("title")).putExtra("metadataId",command.optString("metadataId")).putExtra("releaseId",command.optString("releaseId")).putExtra("path",file.getString("path")).putExtra("fileId",file.getInt("id")).putExtra("mobile",false).putExtra("contentKey",contentKey(response.getString("hash"),file.getString("path"),file.optLong("length"))))

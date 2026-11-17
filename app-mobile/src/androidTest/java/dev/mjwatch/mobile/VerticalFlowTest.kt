@@ -37,7 +37,8 @@ class VerticalFlowTest {
     compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
     compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
     capture("detail-no-tv")
-    compose.onNodeWithTag("detail-cast").performClick()
+    compose.onNodeWithTag("detail-cast").performTouchInput {click()}
+    compose.waitUntil(5000){compose.onAllNodesWithText("Где смотреть?").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Где смотреть?").assertExists()
     compose.onNodeWithText("Для подключения ТВ войдите в аккаунт MJWatch. В direct удалённое управление пока недоступно.").assertExists()
     UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()

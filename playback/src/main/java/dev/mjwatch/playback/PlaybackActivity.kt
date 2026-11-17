@@ -165,7 +165,7 @@ class PlaybackActivity : ComponentActivity() {
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
-            player.setMediaItem(MediaItem.fromUri(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
+            player.setMediaItem(mediaItem(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
             while(isActive) { delay(15000); save()
@@ -177,6 +177,8 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
+    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri).setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
     private fun switchEpisode(index:Int) {
         val episode=episodes.getOrNull(index) ?: return
         val config=playbackConfig ?: return
@@ -194,7 +196,7 @@ class PlaybackActivity : ComponentActivity() {
         controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
         episodeLoad=scope.launch {
             val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress()} else null
-            player.setMediaItem(MediaItem.fromUri(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
+            player.setMediaItem(mediaItem(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
             startedAt=System.currentTimeMillis();player.prepare();player.play()
         }
     }
@@ -243,7 +245,7 @@ class PlaybackActivity : ComponentActivity() {
                         intent.putExtra("episodes",PlaybackEpisode.encode(episodes))
                     }
                     startedAt=System.currentTimeMillis()
-                    player.setMediaItem(MediaItem.fromUri(intent.getStringExtra("uri")!!),position)
+                    player.setMediaItem(mediaItem(intent.getStringExtra("uri")!!),position)
                     player.prepare();player.playWhenReady=playing
                     return@launch
                 } catch(e:TimeoutCancellationException) {

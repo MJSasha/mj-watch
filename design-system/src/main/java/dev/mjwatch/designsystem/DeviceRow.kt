@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
@@ -20,7 +22,13 @@ import org.json.JSONObject
 @Composable internal fun DeviceRow(device:ManagedDevice,current:Boolean,s:WatchState,model:WatchModel,tv:Boolean,onRevoke:()->Unit) {
     var menu by remember {mutableStateOf(false)}
     var renaming by remember {mutableStateOf(false)}
+    var restoreFocus by remember {mutableStateOf(false)}
     val focus=remember {FocusRequester()}
+    val host=LocalView.current
+    LaunchedEffect(renaming,restoreFocus){if(!renaming&&restoreFocus){
+        withTimeoutOrNull(1500){while(!host.hasWindowFocus())delay(16)}
+        delay(100);focus.requestFocus();restoreFocus=false
+    }}
     val remote by model.remote.collectAsState()
     val connected=remote.connected&&remote.target?.id==device.id
     SettingsGroup(tv) {
@@ -32,7 +40,7 @@ import org.json.JSONObject
                     Text("${device.typeLabel} · ${device.shortId}"+(if(current)" · Это устройство" else ""),style=MaterialTheme.typography.bodySmall)
                 }
                 Box {
-                    IconButton(onClick={menu=true},enabled=!device.revoked,modifier=Modifier.size(48.dp).focusRequester(focus).tvFocusRing(tv).testTag("device-menu-${device.id}")){Icon(Icons.Outlined.MoreVert,"Действия · ${device.name}")}
+                    IconButton(onClick={menu=true},enabled=!device.revoked,modifier=Modifier.size(48.dp).focusRequester(focus).focusProperties {canFocus=true}.tvFocusRing(tv).testTag("device-menu-${device.id}")){Icon(Icons.Outlined.MoreVert,"Действия · ${device.name}")}
                     DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                         DropdownMenuItem(text={Text("Переименовать")},onClick={menu=false;renaming=true},modifier=Modifier.heightIn(min=48.dp))
                         if(!current)DropdownMenuItem(text={Text("Отключить ${device.name}")},onClick={menu=false;onRevoke()},enabled=!device.revoked,modifier=Modifier.heightIn(min=48.dp))
@@ -42,7 +50,7 @@ import org.json.JSONObject
             Text(when {device.revoked->"Доступ отозван";connected->"Подключён для просмотра";device.type=="tv"->if(!device.remoteVideo)"Удалённый просмотр недоступен. Обновите MJWatch на ТВ." else if(device.available)"Доступен" else "Нет связи";else->"Последняя активность: ${activityTime(device.lastSeen)}"})
         }
     }
-    if(renaming)RenameDeviceDialog(device,s,model,tv){renaming=false;focus.requestFocus()}
+    if(renaming)RenameDeviceDialog(device,s,model,tv){renaming=false;restoreFocus=true}
 }
 
 @Composable private fun RenameDeviceDialog(device:ManagedDevice,s:WatchState,model:WatchModel,tv:Boolean,onDismiss:()->Unit) {

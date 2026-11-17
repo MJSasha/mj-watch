@@ -11,6 +11,8 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  phone-tv:
+    uses: ./.github/workflows/phone-tv.yml
   build:
     runs-on: ubuntu-latest
     steps:
@@ -111,7 +113,7 @@ jobs:
             app-*/build/reports/androidTests/
             playback/build/reports/androidTests/
   publish-release:
-    needs: [build, runtime]
+    needs: [build, runtime, phone-tv]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:

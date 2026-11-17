@@ -1,17 +1,15 @@
 package dev.mjwatch.designsystem
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -23,11 +21,38 @@ import kotlinx.coroutines.*
 @Composable internal fun RemoteCastButton(s:WatchState,model:WatchModel,hasArt:Boolean=false) {
     val remote by model.remote.collectAsState()
     var show by remember {mutableStateOf(false)}
-    val focus=remember {FocusRequester()}
-    IconButton(onClick={show=true},modifier=Modifier.size(48.dp).focusRequester(focus).testTag("detail-cast").background(if(hasArt)MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,CircleShape)) {
-        Icon(if(remote.connected)Icons.Outlined.CastConnected else Icons.Outlined.Cast,"Где смотреть?"+(remote.target?.let {" · ${it.name}"} ?: ""),tint=if(remote.connected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-    }
-    if(show)TargetSheet(s,model,onDismiss={show=false;focus.requestFocus()})
+    var restoreFocus by remember {mutableStateOf(false)}
+    var button by remember {mutableStateOf<android.widget.ImageButton?>(null)}
+    val host=LocalView.current
+    val tint=if(remote.connected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val background=if(hasArt)MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface
+    val description="Где смотреть?"+(remote.target?.let {" · ${it.name} · "+if(remote.connected)"Подключён" else "Нет связи"} ?: "")
+    LaunchedEffect(show,restoreFocus){if(!show&&restoreFocus){
+        withTimeoutOrNull(1500){while(!host.hasWindowFocus())delay(16)}
+        delay(100)
+        button?.apply {
+            requestFocusFromTouch()
+            if(context.getSystemService(android.view.accessibility.AccessibilityManager::class.java).isTouchExplorationEnabled)
+                performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS,null)
+        }
+        restoreFocus=false
+    }}
+    // A native focus target supports restoring TalkBack focus as well as keyboard
+    // focus. Compose's FocusRequester only restores the latter for virtual nodes.
+    androidx.compose.ui.viewinterop.AndroidView(modifier=Modifier.size(48.dp).testTag("detail-cast"),factory={context->
+        android.widget.ImageButton(context).apply {
+            isFocusable=true
+            val padding=(12*resources.displayMetrics.density).toInt();setPadding(padding,padding,padding,padding)
+            button=this
+        }
+    },update={view->
+        view.contentDescription=description
+        view.setImageResource(if(remote.connected)R.drawable.ic_cast_connected else R.drawable.ic_cast)
+        view.imageTintList=android.content.res.ColorStateList.valueOf(tint.toArgb())
+        view.background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(tint.copy(alpha=.16f).toArgb()),android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(background.toArgb())},null)
+        view.setOnClickListener {show=true}
+    })
+    if(show)TargetSheet(s,model,onDismiss={show=false;restoreFocus=true})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,7 +67,7 @@ import kotlinx.coroutines.*
         if(s.config.historyEnabled)try {devices=withContext(Dispatchers.IO){managedDevices(ManagedApi(s.config,model.secrets).authorized("devices"))}}
         catch(e:CancellationException){throw e}catch(e:Exception){message="Не удалось получить устройства. Повторите попытку."}
     }
-    ModalBottomSheet(onDismissRequest=onDismiss) {
+    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Text("Где смотреть?",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.semantics{heading()})
             if(!s.config.historyEnabled)Text("Для подключения ТВ войдите в аккаунт MJWatch. В direct удалённое управление пока недоступно.")

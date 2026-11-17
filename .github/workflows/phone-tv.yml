@@ -1,8 +1,7 @@
 name: Two phones and two TVs
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/issue-26-phone-tv]
+  workflow_call:
 permissions:
   contents: read
 concurrency:
@@ -34,17 +33,18 @@ jobs:
           if ! command -v ffmpeg; then sudo apt-get update -qq && sudo apt-get install -y ffmpeg; fi
           mkdir -p dist/phone-tv
           ffmpeg -hide_banner -loglevel error -stream_loop 29 -i playback/src/main/assets/demo.mp4 -c copy dist/phone-tv-long.mp4
-      - name: Boot phone and two independent TVs
+      - name: Boot two phones and two independent TVs
         run: |
           set -e
+          test -x "$ANDROID_HOME/emulator/emulator"
           echo no | avdmanager create avd --force -n issue26-phone -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-phone2 -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-tv1 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
           echo no | avdmanager create avd --force -n issue26-tv2 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
-          emulator -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
-          emulator -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
-          emulator -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
-          emulator -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1024 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
           python3 - <<'PY'
           import subprocess,time
           deadline=time.monotonic()+300

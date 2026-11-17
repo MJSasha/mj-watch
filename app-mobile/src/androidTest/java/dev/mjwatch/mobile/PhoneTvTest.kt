@@ -20,7 +20,7 @@ import java.io.File
 
 class PhoneTvTest {
     @get:Rule(order=0)val seed=object:org.junit.rules.ExternalResource(){override fun before()=runBlocking<Unit> {
-        Assume.assumeTrue("Isolated three-emulator fixture only",InstrumentationRegistry.getArguments().getString("isolatedRemote")=="true")
+        Assume.assumeTrue("Isolated four-emulator fixture only",InstrumentationRegistry.getArguments().getString("isolatedRemote")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val response=JSONObject(java.net.URL("http://127.0.0.1:18444/bootstrap").readText())
         val config=Config(connectionMode="managed",managedUrl=response.getString("url"),serverId=response.getString("serverId"),userId=response.getString("userId"),metadataProvider="none",theme="dark")
@@ -52,18 +52,24 @@ class PhoneTvTest {
         val tvs=runBlocking(Dispatchers.IO){withTimeout(25000){var rows:List<ManagedDevice>;do {rows=managedDevices(api().authorized("devices")).filter {it.type=="tv"&&it.available};if(rows.size<2)delay(500)}while(rows.size<2);rows}}
         val first=tvs.first {it.name=="Гостиная"};val second=tvs.first {it.name=="Спальня"}
         compose.runOnIdle {model.open(Release("demo:remote","Тихая орбита","fixture",magnet="magnet:?xt=urn:btih:0123456789012345678901234567890123456789"),metadata=Metadata("tmdb:movie:1","Тихая орбита",null,"История о встрече за пределами знакомого мира.",year=2026))}
-        compose.onNodeWithTag("detail-cast").assertExists()
+        val cast=compose.onNodeWithTag("detail-cast").assertExists().fetchSemanticsNode().boundsInRoot
+        val bookmark=compose.onNodeWithTag("detail-bookmark").fetchSemanticsNode().boundsInRoot
+        val density=compose.activity.resources.displayMetrics.density
+        Assert.assertTrue(cast.width/density>=48&&cast.height/density>=48)
+        Assert.assertTrue(bookmark.width/density>=48&&bookmark.left-cast.right>=8*density-.5f)
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
         compose.runOnIdle {model.prepare();Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)}
         compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
         compose.waitUntil(10000){model.library.value.any {it.id=="tmdb:movie:1"&&it.bookmarked}}
         proof("01-no-connection")
-        compose.onNodeWithTag("detail-cast").performClick()
-        compose.onNodeWithText("Где смотреть?").assertExists()
+        compose.onNodeWithTag("detail-cast").performTouchInput {click()}
         compose.waitUntil(10000){compose.onAllNodesWithTag("target-${first.id}").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Где смотреть?").assertExists()
+        proof("09-target-chooser")
         device.pressBack()
+        compose.waitUntil(5000){runCatching {Assert.assertTrue(device.findObject(androidx.test.uiautomator.By.descStartsWith("Где смотреть?")).isFocused);true}.getOrDefault(false)}
         Assert.assertNull(RemotePlaybackService.state.value.target)
-        compose.onNodeWithTag("detail-cast").performClick()
+        compose.onNodeWithTag("detail-cast").performTouchInput {click()}
         compose.waitUntil(10000){compose.onAllNodesWithTag("target-${first.id}").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("target-${first.id}").performClick()
         waitFor("Connection was acknowledged"){RemotePlaybackService.state.value.canLaunch}
@@ -77,7 +83,7 @@ class PhoneTvTest {
         waitFor("Receiver rendered the first frame"){RemotePlaybackService.state.value.target?.video?.status=="playing"}
         waitFor("Load completed"){!RemotePlaybackService.state.value.busy}
         Assert.assertFalse("Phone never opens its own video player",PlaybackActivity.hasActivePlayback())
-        val target=RemotePlaybackService.state.value.target!!;val originalSession=target.video.session
+        val target=RemotePlaybackService.state.value.target!!;var originalSession=target.video.session
         Assert.assertEquals(first.id,target.id);compose.onNodeWithTag("remote-status").assertExists();proof("03-playing-on-tv")
         instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.MEDIA_CONTENT_CONTROL")
         val sessions=context.getSystemService(MediaSessionManager::class.java)
@@ -92,6 +98,10 @@ class PhoneTvTest {
         val newVolume=if(oldVolume>0)oldVolume-1 else 1
         controller.setVolumeTo(newVolume,0)
         waitFor("Volume changes on the TV"){snapshot(first.id,target.instance).video.volume==newVolume}
+        val physicalVolume=if(newVolume>0)newVolume-1 else 1
+        device.pressKeyCode(if(newVolume>0)android.view.KeyEvent.KEYCODE_VOLUME_DOWN else android.view.KeyEvent.KEYCODE_VOLUME_UP)
+        waitFor("Phone volume keys adjust receiver volume"){snapshot(first.id,target.instance).video.volume==physicalVolume}
+        proof("12-system-remote-volume");device.pressBack()
         controller.transportControls.play()
         waitFor("System play reached the actual TV"){snapshot(first.id,target.instance).video.status=="playing"}
         waitFor("Android card reflects playing state"){controller.playbackState?.state==PlaybackState.STATE_PLAYING}
@@ -136,6 +146,13 @@ class PhoneTvTest {
         compose.onNodeWithText("Заменить видео?").assertExists();proof("05-replacement")
         compose.onNodeWithText("Отмена").performClick()
         Assert.assertEquals(originalSession,snapshot(first.id,target.instance).video.session)
+        compose.runOnIdle {RemotePlaybackService.load(same.copy(fileId=18,contentId="${handle.contentHash}:18",title="Другое видео"))}
+        compose.onNodeWithText("Заменить").performClick()
+        waitFor("Confirmed replacement reaches actual receiver") {
+            RemotePlaybackService.state.value.target?.video?.let {it.status=="playing"&&it.session!=originalSession&&it.contentId=="${handle.contentHash}:18"}==true
+        }
+        waitFor("Replacement acknowledged"){!RemotePlaybackService.state.value.busy}
+        originalSession=RemotePlaybackService.state.value.target!!.video.session
         compose.runOnIdle {RemotePlaybackService.connect(context,second.id)}
         waitFor("Second TV selected"){RemotePlaybackService.state.value.connected&&RemotePlaybackService.state.value.target?.id==second.id}
         Assert.assertEquals("Old TV keeps its video",originalSession,snapshot(first.id,target.instance).video.session)

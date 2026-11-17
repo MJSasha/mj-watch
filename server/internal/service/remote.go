@@ -97,7 +97,14 @@ func (s *Server) remote(w http.ResponseWriter, r *http.Request, path string, i i
 			fail(w, 503, "database_unavailable")
 			return
 		}
-		respond(w, 200, map[string]any{"command": json.RawMessage(raw)})
+		ttl := int64(0)
+		if raw != "{}" {
+			ttl = (command.Created + 8 - time.Now().Unix()) * 1000
+			if ttl < 0 {
+				ttl = 0
+			}
+		}
+		respond(w, 200, map[string]any{"command": json.RawMessage(raw), "commandTtlMs": ttl})
 		return
 	}
 	parts := strings.Split(path, "/")

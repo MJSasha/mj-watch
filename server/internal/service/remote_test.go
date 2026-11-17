@@ -102,7 +102,11 @@ func TestRemoteTargetSessionAndReceiverTruth(t *testing.T) {
 	if observed["pendingId"] != c.ID {
 		t.Fatal("command receipt was mistaken for receiver acknowledgment", observed)
 	}
-	queued := report(tv, instance, "", idle)["command"].(map[string]any)
+	delivery := report(tv, instance, "", idle)
+	if ttl := delivery["commandTtlMs"].(float64); ttl <= 0 || ttl > 8000 {
+		t.Fatal("invalid monotonic receiver budget", delivery)
+	}
+	queued := delivery["command"].(map[string]any)
 	if queued["id"] != c.ID || queued["contentId"] != "content-hash:1" {
 		t.Fatal(queued)
 	}

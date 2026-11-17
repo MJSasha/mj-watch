@@ -420,7 +420,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     if(!tv)RemoteCastButton(s,model,hasArt)
-                    IconButton(onClick={model.bookmark()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
+                    IconButton(onClick={model.bookmark()},modifier=Modifier.size(48.dp).testTag("detail-bookmark").tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -452,7 +452,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 if(r!=null&&m==null) {Text("Исходное название",fontWeight=FontWeight.Bold);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Свойства дорожек и устройства проверяются при воспроизведении.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                 saved?.let {p->Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text("Вы остановились на ${time(p.positionMs)}",fontSize=16.sp,modifier=Modifier.testTag("saved-position"))
-                    if((p.durationMs ?: 0)>0)LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!.toFloat()).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().clearAndSetSemantics {})
+                    if((p.durationMs ?: 0)>0)LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!.toFloat()).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().clearAndSetSemantics {},gapSize=0.dp,drawStopIndicator={})
                 }}
                 }
             }
