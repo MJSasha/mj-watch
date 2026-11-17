@@ -43,6 +43,7 @@ jobs:
           set -e
           test -x "$ANDROID_HOME/emulator/emulator"
           mkdir -p "$ANDROID_AVD_HOME"
+          adb start-server
           echo no | avdmanager create avd --force -n issue26-phone -p "$ANDROID_AVD_HOME/issue26-phone.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-phone2 -p "$ANDROID_AVD_HOME/issue26-phone2.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-tv1 -p "$ANDROID_AVD_HOME/issue26-tv1.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
@@ -51,10 +52,11 @@ jobs:
             test -f "$ANDROID_AVD_HOME/$name.ini"
           done
           "$ANDROID_HOME/emulator/emulator" -list-avds
-          "$ANDROID_HOME/emulator/emulator" -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
+          # Disposable CI AVDs need no interactive host-debugging trust dialog.
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
           python3 - <<'PY'
           import subprocess,time
           deadline=time.monotonic()+300
@@ -64,7 +66,9 @@ jobs:
                   result=subprocess.run(['adb','-s',serial,'shell','getprop','sys.boot_completed'],capture_output=True,text=True)
                   if result.stdout.strip()=='1':waiting.remove(serial)
               time.sleep(2)
-          if waiting:raise SystemExit('Boot timeout: '+str(waiting))
+          if waiting:
+              subprocess.run(['adb','devices','-l'])
+              raise SystemExit('Boot timeout: '+str(waiting))
           PY
       - name: Check real UI, receiver frames, system commands and recovery
         run: python3 scripts/check-phone-tv.py --video dist/phone-tv-long.mp4
