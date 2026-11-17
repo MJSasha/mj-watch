@@ -44,6 +44,7 @@ class PhoneTvTest {
         compose.waitForIdle();instrumentation.waitForIdleSync();Thread.sleep(350)
         val dir=File(context.getExternalFilesDir(null),"phone-tv-proof").apply{mkdirs()}
         Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
+        Assert.assertNull("Android displayed an ANR dialog; see $name.png",device.findObject(androidx.test.uiautomator.By.textContains("isn't responding")))
     }
     @Test fun realReceiverAndAndroidSystemSession() {
         lateinit var model:WatchModel

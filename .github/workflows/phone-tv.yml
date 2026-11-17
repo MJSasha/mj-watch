@@ -46,17 +46,27 @@ jobs:
           adb start-server
           echo no | avdmanager create avd --force -n issue26-phone -p "$ANDROID_AVD_HOME/issue26-phone.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
           echo no | avdmanager create avd --force -n issue26-phone2 -p "$ANDROID_AVD_HOME/issue26-phone2.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
-          echo no | avdmanager create avd --force -n issue26-tv1 -p "$ANDROID_AVD_HOME/issue26-tv1.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
-          echo no | avdmanager create avd --force -n issue26-tv2 -p "$ANDROID_AVD_HOME/issue26-tv2.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
+          echo no | avdmanager create avd --force -n issue26-tv1 -p "$ANDROID_AVD_HOME/issue26-tv1.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_720p
+          echo no | avdmanager create avd --force -n issue26-tv2 -p "$ANDROID_AVD_HOME/issue26-tv2.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_720p
           for name in issue26-phone issue26-phone2 issue26-tv1 issue26-tv2; do
             test -f "$ANDROID_AVD_HOME/$name.ini"
           done
           "$ANDROID_HOME/emulator/emulator" -list-avds
+          # Keep four guests within the runner's CPU/GPU budget; the primary
+          # phone retains the design-reference viewport in the test runner.
+          python3 - <<'PYCODE'
+          import os,pathlib
+          for config in pathlib.Path(os.environ['ANDROID_AVD_HOME']).glob('*.avd/config.ini'):
+              lines=[line for line in config.read_text().splitlines() if not line.startswith('hw.lcd.vsync=')]
+              config.write_text('\n'.join(lines+['hw.lcd.vsync=30'])+'\n')
+          PYCODE
+          nproc
+          free -m
           # Disposable CI AVDs need no interactive host-debugging trust dialog.
-          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
-          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv2-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 2048 -cores 1 > dist/phone-tv/phone-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-phone2 -skin 720x1280 -dpi-device 280 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 2048 -cores 1 > dist/phone-tv/phone2-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 2048 -cores 1 > dist/phone-tv/tv1-boot.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -skip-adb-auth -avd issue26-tv2 -port 5574 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 2048 -cores 1 > dist/phone-tv/tv2-boot.log 2>&1 &
           python3 - <<'PY'
           import subprocess,time
           deadline=time.monotonic()+300
@@ -69,6 +79,8 @@ jobs:
           if waiting:
               subprocess.run(['adb','devices','-l'])
               raise SystemExit('Boot timeout: '+str(waiting))
+          # Boot-completed precedes first-launch system-service initialization.
+          time.sleep(30)
           PY
       - name: Check real UI, receiver frames, system commands and recovery
         run: python3 scripts/check-phone-tv.py --video dist/phone-tv-long.mp4
