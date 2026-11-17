@@ -17,8 +17,8 @@ def healthy(config):
  for service in ['mjwatch.service','mjwatch-torrserver.service']:run('systemctl','is-active','--quiet',service)
  for attempt in range(30):
   try:
-   # A real TLS-authenticated request with newly bootstrapped root session.
-   token=json.loads(run('/opt/mjwatch/current/mjwatch','bootstrap','/etc/mjwatch/config.json',input=json.dumps(dict(Device='Maintenance check',OperationID='health-'+str(time.time_ns())))))['accessToken']
+   # A short-lived status-only credential; no user device or refresh session.
+   token=json.loads(run('/opt/mjwatch/current/mjwatch','health-token','/etc/mjwatch/config.json'))['accessToken']
    host=json.loads((ROOT/'plan.json').read_text())['host'];host='['+host+']' if ':' in host else host
    request=__import__('urllib.request',fromlist=['Request']);ctx=health_tls_context('/etc/mjwatch/ca.crt')
    req=request.Request('https://'+host+config['listen']+'/api/v1/admin/status',headers={'Authorization':'Bearer '+token})

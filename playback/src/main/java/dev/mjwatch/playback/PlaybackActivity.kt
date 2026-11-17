@@ -74,7 +74,11 @@ class PlaybackActivity : ComponentActivity() {
         episodes=PlaybackEpisode.decode(intent.getStringExtra("episodes"))
         episodeIndex=episodes.indexOfFirst {it.path==path&&it.fileId==fileId}
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build(); dao=db.dao()
-        val root=FrameLayout(this); view=PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
+        window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
+        val root=FrameLayout(this).apply {setBackgroundColor(android.graphics.Color.BLACK)}
+        val backdrop=VideoBackdrop(this)
+        root.addView(backdrop,FrameLayout.LayoutParams(-1,-1))
+        view=PlayerView(this).apply {setBackgroundColor(android.graphics.Color.TRANSPARENT);setShutterBackgroundColor(android.graphics.Color.BLACK);setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
@@ -82,6 +86,7 @@ class PlaybackActivity : ComponentActivity() {
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
+        scope.launch {while(isActive) {delay(1000);if(!released&&firstFrame&&lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))backdrop.sample(view.videoSurfaceView)}}
         androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if(panel!=null) { panel?.dismiss() } else if(!intent.getBooleanExtra("mobile",true)&&tvBackHandler!=null) tvBackHandler?.invoke() else exitPlayback() } })
         scope.launch {

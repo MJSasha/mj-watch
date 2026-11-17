@@ -83,7 +83,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         val activity=androidx.activity.compose.LocalActivity.current
         var exitRequested by remember {mutableStateOf(false)}
         val updateState by model.updates.state.collectAsStateWithLifecycle()
-        if(updateState.downloading) UpdateDownloadDialog(updateState,tv) {model.updates.cancel()}
+        var updateDialogDismissed by rememberSaveable {mutableStateOf(false)}
+        LaunchedEffect(updateState.downloading) {if(updateState.downloading)updateDialogDismissed=false}
+        if(updateState.downloading||updateState.ready!=null&&!updateDialogDismissed) UpdateDownloadDialog(
+            updateState,tv,onCancel={model.updates.cancel()},onDismiss={updateDialogDismissed=true},
+            installButton={modifier->UpdateInstallAction(model.updates,tv,modifier)}
+        )
         if(exitRequested) ExitAppDialog(tv,onDismiss={exitRequested=false},onExit={
             model.cancel();model.updates.cancel();PlaybackActivity.stopActivePlayback();activity?.finishAndRemoveTask()
         })
@@ -332,7 +337,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     NativeCard(tv,modifier,onClick=onClick) {
         Column {
             MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)))
-            Column(Modifier.padding(vertical=10.dp,horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,maxLines=2);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            Column(Modifier.padding(vertical=10.dp,horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,minLines=2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
 }

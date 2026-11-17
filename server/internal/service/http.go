@@ -30,7 +30,7 @@ type identity struct {
 	Epoch                       int64
 }
 
-var Version = "0.1.3"
+var Version = "0.1.4"
 
 type Server struct {
 	passwordSlots chan struct{}
@@ -127,6 +127,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if path == "admin/status" && r.Method == "GET" && s.validMaintenanceToken(token) {
+		s.admin(w, r, path, identity{Role: "admin"})
+		return
+	}
 	i, e := s.identity(token)
 	if e != nil {
 		fail(w, 401, "login_required")

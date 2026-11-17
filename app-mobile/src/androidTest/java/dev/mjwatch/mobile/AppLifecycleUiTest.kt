@@ -57,7 +57,7 @@ class AppLifecycleUiTest {
         var state by mutableStateOf(UpdateState(available=update,downloading=true))
         var shown by mutableStateOf(true)
         var theme by mutableStateOf("dark")
-        compose.runOnUiThread {compose.activity.setContent {WatchTheme(theme) {if(shown) UpdateDownloadDialog(state,false) {shown=false}}}}
+        compose.runOnUiThread {compose.activity.setContent {WatchTheme(theme) {if(shown) UpdateDownloadDialog(state,false,onCancel={shown=false})}}}
         compose.onNodeWithText("0%").assertIsDisplayed()
         compose.runOnIdle {state=state.copy(downloaded=update.size/2)}
         compose.onNodeWithText("50%").assertIsDisplayed()
@@ -73,6 +73,31 @@ class AppLifecycleUiTest {
         if(false) cancel.performKeyInput {pressKey(Key.DirectionCenter)} else cancel.performClick()
         compose.onNodeWithTag("update-download-progress").assertDoesNotExist()
         compose.runOnIdle {Assert.assertFalse(shown)}
+    }
+    @Test fun verifiedDownloadKeepsDialogAndOffersInstall() {
+        val update=AppUpdate(10000,"0.8.13","dev.mjwatch.mobile","","",20L*1024*1024,"","")
+        var state by mutableStateOf(UpdateState(available=update,downloading=true,downloaded=update.size))
+        var shown by mutableStateOf(true)
+        var installs=0
+        compose.runOnUiThread {compose.activity.setContent {WatchTheme("dark") {if(shown) UpdateDownloadDialog(
+            state,false,onCancel={shown=false},onDismiss={shown=false},
+            installButton={modifier->androidx.compose.material3.Button(onClick={installs++},modifier=modifier) {androidx.compose.material3.Text("Установить обновление")}}
+        )}}}
+        compose.onNodeWithText("Проверяем APK и подпись…").assertIsDisplayed()
+        compose.onNodeWithText("Установить обновление").assertDoesNotExist()
+        compose.runOnIdle {state=state.copy(downloading=false,ready=File(compose.activity.cacheDir,"verified-test.apk"))}
+        compose.onNodeWithText("Обновление готово").assertIsDisplayed()
+        compose.onNodeWithTag("update-download-progress").assertDoesNotExist()
+        val install=compose.onNodeWithText("Установить обновление")
+        if(false) {
+            compose.waitUntil(5000) {install.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused)==true}
+            install.performKeyInput {pressKey(Key.DirectionCenter)}
+        } else install.performClick()
+        compose.runOnIdle {Assert.assertEquals(1,installs)}
+        compose.onNodeWithText("Обновление готово").assertIsDisplayed()
+        val later=compose.onNodeWithText("Позже")
+        if(false) later.performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused().performKeyInput {pressKey(Key.DirectionCenter)} else later.performClick()
+        compose.onNodeWithText("Обновление готово").assertDoesNotExist()
     }
     @Test fun explicitExitRemovesActivityAndKeepsConfiguration() {
         lateinit var model:WatchModel

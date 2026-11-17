@@ -51,3 +51,9 @@ Service units are `mjwatch.service`, `mjwatch-torrserver.service`, `mjwatch-rene
 `check.sh` runs service/control contracts, race detector, vet and packaging syntax. `cmd/fixture` is test-only and is not included in server supply/APK: private-CA HTTPS API on 18443, loopback fixture control on 18444, SQLite and controlled MP4 upstream. Never deploy it. Android tests require explicit reverse ports to a dedicated emulator. Live installation/update/restore evidence and untested scenarios: [`../docs/testing/SERVER-MANAGEMENT-V1.md`](../docs/testing/SERVER-MANAGEMENT-V1.md).
 
 Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair](../docs/testing/PYTHON314-HEALTH.md). Server 0.1.3 preserves existing CA trust and adds explicit critical signing key usage for new CAs.
+
+## Maintenance probes (0.1.4)
+
+Server 0.1.4 replaces the old Maintenance check bootstrap sessions with a root-issued, 90-second credential scoped only to GET `/api/v1/admin/status`. It creates neither devices nor refresh sessions and keeps the authenticated TLS health check. The old helper's `bootstrap` health invocation is recognized during an in-place upgrade, so the worker already running before the binary switch cannot recreate the problem.
+
+On the next health check, matching `health-<timestamp>.bootstrap` receipts are read only if regular, private and owned by the executing root user. A device is deleted only when its ID, admin ownership, exact Maintenance check name and stored refresh-token hash all match the receipt. Its sessions cascade away and the obsolete receipt is removed. Other devices and all user/history data remain unchanged. Old probes without verifiable receipts are preserved rather than guessed. Apply the signed 0.1.4 supply through Settings → My server → Maintenance → Update server to clean an existing installation.

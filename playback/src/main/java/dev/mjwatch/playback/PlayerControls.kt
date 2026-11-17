@@ -58,12 +58,12 @@ internal val PlayerLime=Color(0xFFC7FF68)
                 })
             })
             if(visible) {
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC0C0E15),Color.Transparent))).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000),Color.Transparent))).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=20.sp,fontWeight=FontWeight.Bold,maxLines=1);Text(episodeLabel.ifBlank {"MJWatch"},maxLines=1,fontSize=12.sp,color=Color(0xFFABB5C5))}
                     IconButton(modifier=Modifier.testTag("player-tracks").focusRequester(tracksFocus).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
-                if(ready)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xF00C0E15)))).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                if(ready)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xF0000000)))).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                     Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.testTag("player-timeline").focusRequester(timelineFocus).focusProperties {if(!mobile){up=tracksFocus;down=playFocus}}.onPreviewKeyEvent {event->
                         if(mobile||event.key !in listOf(Key.DirectionUp,Key.DirectionDown,Key.DirectionLeft,Key.DirectionRight))false else {
                             if(event.type==KeyEventType.KeyDown)touch {
@@ -91,7 +91,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 }
             }
-            if(seekFeedback.isNotEmpty()) Text(seekFeedback,Modifier.align(Alignment.Center).background(Color(0xCC0C0E15),CircleShape).padding(20.dp),fontSize=24.sp,fontWeight=FontWeight.Bold)
+            if(seekFeedback.isNotEmpty()) Text(seekFeedback,Modifier.align(Alignment.Center).background(Color(0xCC000000),CircleShape).padding(20.dp),fontSize=24.sp,fontWeight=FontWeight.Bold)
             if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusOverlay(status,onRetry,onBack)}
         }
     }

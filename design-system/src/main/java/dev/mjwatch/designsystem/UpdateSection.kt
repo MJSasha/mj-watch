@@ -30,9 +30,6 @@ import kotlinx.coroutines.*
 @Composable internal fun UpdateSection(manager:UpdateManager,tv:Boolean,compact:Boolean=false) {
     val state by manager.state.collectAsState()
     val context=LocalContext.current
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val scope=rememberCoroutineScope()
-    var installing by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf("")}
     val entryFocus=remember {FocusRequester()}
     LaunchedEffect(tv,compact) {if(tv&&!compact) {withFrameNanos {};entryFocus.requestFocus()}}
@@ -58,25 +55,37 @@ import kotlinx.coroutines.*
             if(state.downloading) {
                 Text("Обновление загружается…")
             } else if(state.ready!=null) {
-                val allowed=remember(lifecycleState) {context.packageManager.canRequestPackageInstalls()}
-                UpdateButton(if(allowed) "Установить обновление" else "Разрешить установку",!installing) {
-                    if(!allowed) {
-                        try {context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${context.packageName}")))} catch(_:Exception) {error="Откройте настройки Android и разрешите установку из MJWatch"}
-                    } else {
-                        installing=true;error=""
-                        scope.launch {try {
-                            val apk=withContext(Dispatchers.IO) {manager.readyFile()} ?: throw IllegalStateException("APK не прошёл проверку")
-                            val uri=FileProvider.getUriForFile(context,"${context.packageName}.updates",apk)
-                            PlaybackActivity.stopActivePlayback()
-                            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                        } catch(_:Exception) {error="Не удалось открыть установщик. Загрузите APK снова или откройте GitHub Releases"} finally {installing=false}}
-                    }
-                }
-                UpdateButton("Загрузить заново",!installing) {manager.download()}
+                UpdateInstallAction(manager,tv,Modifier.fillMaxWidth())
+                UpdateButton("Загрузить заново") {manager.download()}
             } else UpdateButton("Скачать обновление",!state.checking) {manager.download()}
         }
         if(state.message.isNotBlank()) Text(state.message,Modifier.semantics {liveRegion=LiveRegionMode.Polite},color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable internal fun UpdateInstallAction(manager:UpdateManager,tv:Boolean,modifier:Modifier=Modifier) {
+    val context=LocalContext.current
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val scope=rememberCoroutineScope()
+    var installing by remember {mutableStateOf(false)}
+    var error by remember {mutableStateOf("")}
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        val allowed=remember(lifecycleState) {context.packageManager.canRequestPackageInstalls()}
+        Action(if(allowed) "Установить обновление" else "Разрешить установку",tv,modifier,enabled=!installing) {
+            if(!allowed) {
+                try {context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${context.packageName}")))} catch(_:Exception) {error="Откройте настройки Android и разрешите установку из MJWatch"}
+            } else {
+                installing=true;error=""
+                scope.launch {try {
+                    val apk=withContext(Dispatchers.IO) {manager.readyFile()} ?: throw IllegalStateException("APK не прошёл проверку")
+                    val uri=FileProvider.getUriForFile(context,"${context.packageName}.updates",apk)
+                    PlaybackActivity.stopActivePlayback()
+                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                } catch(_:Exception) {error="Не удалось открыть установщик. Загрузите APK снова или откройте GitHub Releases"} finally {installing=false}}
+            }
+        }
+        if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error)
     }
 }
 

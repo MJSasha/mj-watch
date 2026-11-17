@@ -46,20 +46,23 @@ import dev.mjwatch.core.UpdateState
 }
 
 /** Outside the settings list so progress stays visible after focus or page changes. */
-@Composable fun UpdateDownloadDialog(state:UpdateState,tv:Boolean,onCancel:()->Unit) {
+@Composable fun UpdateDownloadDialog(state:UpdateState,tv:Boolean,onCancel:()->Unit,onDismiss:()->Unit={},installButton:@Composable (Modifier)->Unit={}) {
     val update=state.available ?: return
     val focus=remember {FocusRequester()}
     val fraction=(state.downloaded.toFloat()/update.size.coerceAtLeast(1)).coerceIn(0f,1f)
-    AlertDialog(onDismissRequest={},title={Text("Загрузка MJWatch ${update.versionName}")},text={
+    AlertDialog(onDismissRequest={if(state.ready!=null)onDismiss()},title={Text(if(state.ready!=null) "Обновление готово" else "Загрузка MJWatch ${update.versionName}")},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+            if(state.ready==null) {
             Text("${(fraction*100).toInt()}%",fontSize=28.sp,fontWeight=FontWeight.Bold)
             LinearProgressIndicator(progress={fraction},modifier=Modifier.fillMaxWidth().height(8.dp).testTag("update-download-progress"))
             Text("Загружено ${state.downloaded/1024/1024} из ${update.size/1024/1024} МБ")
             Text(if(state.downloaded>=update.size) "Проверяем APK и подпись…" else "После загрузки проверим APK. Установку подтверждает Android.")
+            } else Text("MJWatch ${update.versionName} загружен. APK и подпись проверены. Можно установить обновление.")
         }
     },confirmButton={
         val windowFocused=LocalWindowInfo.current.isWindowFocused
-        LaunchedEffect(windowFocused) {if(tv&&windowFocused)focus.requestFocus()}
-        Action("Отменить загрузку",tv,Modifier.focusRequester(focus),secondary=true,onClick=onCancel)
-    })
+        LaunchedEffect(windowFocused,state.ready) {if(tv&&windowFocused)focus.requestFocus()}
+        if(state.ready!=null) installButton(Modifier.focusRequester(focus))
+        else Action("Отменить загрузку",tv,Modifier.focusRequester(focus),secondary=true,onClick=onCancel)
+    },dismissButton={if(state.ready!=null)Action("Позже",tv,secondary=true,onClick=onDismiss)})
 }

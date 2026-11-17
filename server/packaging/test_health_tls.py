@@ -1,5 +1,6 @@
 """Exercise real TLS for legacy installed CAs and newly generated strict CAs."""
-import http.server, json, pathlib, ssl, subprocess, tempfile, threading, unittest, urllib.request
+import http.server, io, json, pathlib, ssl, subprocess, tempfile, threading, unittest, urllib.request
+from unittest import mock
 
 BASE=pathlib.Path(__file__).parent
 
@@ -64,6 +65,23 @@ class HealthTlsTest(unittest.TestCase):
   self.openssl('verify','-x509_strict','-CAfile',str(self.new/'ca.crt'),str(self.root/'new-leaf.crt'))
 
 class RecoveryTest(unittest.TestCase):
+ def test_health_uses_scoped_token_without_bootstrap_or_device_receipts(self):
+  scope=definitions('maintenance.py');commands=[]
+  def run(*args,input=None):
+   commands.append((args,input))
+   if args[0]=='systemctl':return ''
+   self.assertEqual('health-token',args[1]);self.assertIsNone(input)
+   return json.dumps({'accessToken':'status-only-token'})
+  with tempfile.TemporaryDirectory() as folder:
+   root=pathlib.Path(folder);(root/'plan.json').write_text('{"host":"127.0.0.1"}')
+   scope.update(ROOT=root,run=run,health_tls_context=lambda path:'verified-ca-context')
+   def response(req,context,timeout):
+    self.assertEqual('Bearer status-only-token',req.get_header('Authorization'))
+    self.assertEqual('verified-ca-context',context)
+    return io.StringIO('{"databaseHealthy":true,"torrserverHealthy":true}')
+   with mock.patch('urllib.request.urlopen',side_effect=response):scope['healthy']({'listen':':443'})
+   self.assertEqual(1,sum(args[1]=='health-token' for args,_ in commands))
+   self.assertEqual(['plan.json'],[p.name for p in root.iterdir()])
  def test_patch_is_atomic_idempotent_and_preserves_backup_and_mode(self):
   import runpy
   recovery=runpy.run_path(str(BASE/'fix-python314-health.py'))

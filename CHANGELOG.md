@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.13
+
+- Keep the APK download dialog open after verification and offer installation or Later in the same window, with TV focus and the existing APK/permission checks.
+- Replace blue player letterboxing with dark colours sampled locally from video frames, with black before frames are available (#24).
+- Reserve two title lines and one metadata line so catalogue cards keep equal height.
+- Bundle server 0.1.4: root maintenance uses a short-lived status-only credential rather than creating devices. Updating the server removes old Maintenance check sessions only when their root bootstrap receipts prove their origin; real devices and user data remain intact.
+
 ## 0.8.12
 
 - Replace separate TV/mobile pairing entry points with one scanner icon in the account header and one shared device confirmation flow.

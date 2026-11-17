@@ -154,12 +154,12 @@ import kotlinx.coroutines.delay
             } else false
         }.focusRequester(rootFocus).focusable()) {
             if(visible) {
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC0C0E15),Color.Transparent))).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000),Color.Transparent))).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.testTag("player-back").onFocusChanged {if(it.isFocused)focusedArea="controls"}.focusRequester(backFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=20.sp,fontWeight=FontWeight.Bold,maxLines=1);Text(episodes.getOrNull(episodeIndex)?.path ?: "MJWatch",maxLines=1,fontSize=12.sp,color=Color(0xFFABB5C5))}
                     IconButton(modifier=Modifier.focusRequester(topTracksFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.playerFocus(),onClick={interact();modalReturn="topTracks";onTracks()}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
-                if(ready) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xF00C0E15)))).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                if(ready) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xF0000000)))).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                     val shown=remote.preview ?: position
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
                         modifier=Modifier.testTag("player-timeline").focusRequester(timelineFocus).onFocusChanged {if(it.isFocused)focusedArea="timeline";if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->

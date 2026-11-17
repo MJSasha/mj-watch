@@ -139,6 +139,16 @@ func run() error {
 		return e
 	}
 	defer db.Close()
+	if command == "health-token" {
+		if err := cleanupMaintenanceChecks(db, "/var/lib/mjwatch-install"); err != nil {
+			return err
+		}
+		out, err := service.MaintenanceToken(db)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
+	}
 	if command == "identity" {
 		var id string
 		if e = db.QueryRow("SELECT value FROM settings WHERE key='server_id'").Scan(&id); e != nil {
@@ -153,6 +163,17 @@ func run() error {
 		}
 		if len(v.OperationID) < 16 || strings.ContainsAny(v.OperationID, "/\\.") {
 			return fmt.Errorf("operation_id")
+		}
+		// A pre-update maintenance worker may still use the old bootstrap command.
+		if v.Device == "Maintenance check" && healthOperation.MatchString(v.OperationID) {
+			if err := cleanupMaintenanceChecks(db, "/var/lib/mjwatch-install"); err != nil {
+				return err
+			}
+			out, err := service.MaintenanceToken(db)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
 		receipt := filepath.Join("/var/lib/mjwatch-install", v.OperationID+".bootstrap")
 		if b, e := os.ReadFile(receipt); e == nil {
