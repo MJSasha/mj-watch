@@ -1,5 +1,6 @@
 package dev.mjwatch.mobile
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -29,8 +30,10 @@ class MobileQrLoginTest {
     @Test fun qrIsOptionalRefreshesRejectsAndBackRestoresManualLogin() {
         val model=open()
         compose.onNodeWithContentDescription("HTTPS-адрес MJWatch").performTextReplacement("https://saved.example")
-        compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performClick()
-        compose.waitUntil(10000) {model.managed.qr.tv.value.link!=null}
+        compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.onNodeWithText("Войти по QR",substring=false).assertIsDisplayed()
+        compose.waitUntil(10000) {model.managed.qr.tv.value.let {it.link!=null||it.message.isNotBlank()}}
+        Assert.assertNotNull(model.managed.qr.tv.value.message,model.managed.qr.tv.value.link)
         compose.onNodeWithContentDescription("QR для входа на новом устройстве").assertIsDisplayed()
         val first=requireNotNull(model.managed.qr.tv.value.link)
         val peer=TvQrPhone(first)
@@ -53,8 +56,10 @@ class MobileQrLoginTest {
         val actor=Config(connectionMode="managed",managedUrl=fixture.getString("url"),serverId=fixture.getString("serverId"),userId=fixture.getString("userId"))
         val api=ManagedApi(actor,model.secrets,fixture.getString("ca"))
         api.saveTokens(fixture)
-        compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performClick()
-        compose.waitUntil(10000) {model.managed.qr.tv.value.link!=null}
+        compose.onNodeWithText("Войти по QR с другого устройства").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) {it()}
+        compose.onNodeWithText("Войти по QR",substring=false).assertIsDisplayed()
+        compose.waitUntil(10000) {model.managed.qr.tv.value.let {it.link!=null||it.message.isNotBlank()}}
+        Assert.assertNotNull(model.managed.qr.tv.value.message,model.managed.qr.tv.value.link)
         val peer=TvQrPhone(requireNotNull(model.managed.qr.tv.value.link))
         runBlocking(Dispatchers.IO) {peer.send(encodeManagedTvSetup(actor.managedUrl,fixture.getString("ca")),"owner",actor.serverId,actor.userId)}
         compose.waitUntil(5000) {model.managed.qr.tv.value.proposal!=null}
