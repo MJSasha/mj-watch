@@ -67,4 +67,6 @@ The prior mobile local-playback UI entry assertions have been converted to the c
 
 ## Release gate
 
-The user requested a release after readiness. The managed candidate is concrete and tested locally, but the requested direct behavior needs a separate authenticated pairing/channel decision; the existing scanner/pairing remains unchanged. Do not mark all #26 accepted or publish a full-feature claim. Keep PR #31 draft until release scope is resolved and the final Android + four-device CI passes. Use the existing main-branch stable signing/publishing pipeline; do not sign production artifacts with the disposable local fixture key.
+The user approved a **managed-only 0.9.0 release**; direct remote playback is out of this release's scope. The existing scanner/pairing remains unchanged. Do not mark all original #26/Cast scenarios accepted. Use the existing stable signing/main publishing pipeline after Android and four-device CI passes; do not sign production artifacts with the disposable local fixture key.
+
+The Android build, server checks, mobile API 35 runtime and TV API 36/player runtime all passed on `1c66118` ([run](https://github.com/MJSasha/mj-watch/actions/runs/44132045072)). The dedicated four-device job failed before tests because avdmanager and emulator resolved different AVD homes. Their user/AVD paths are now explicit and checked before boot. The same four-device suite passed locally; a corrected CI run is required before publication.

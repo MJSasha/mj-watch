@@ -11,6 +11,10 @@ jobs:
   emulator-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      ANDROID_USER_HOME: ${{ runner.temp }}/issue26-android
+      ANDROID_EMULATOR_HOME: ${{ runner.temp }}/issue26-android
+      ANDROID_AVD_HOME: ${{ runner.temp }}/issue26-android/avd
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -37,10 +41,15 @@ jobs:
         run: |
           set -e
           test -x "$ANDROID_HOME/emulator/emulator"
-          echo no | avdmanager create avd --force -n issue26-phone -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
-          echo no | avdmanager create avd --force -n issue26-phone2 -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
-          echo no | avdmanager create avd --force -n issue26-tv1 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
-          echo no | avdmanager create avd --force -n issue26-tv2 -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --force -n issue26-phone -p "$ANDROID_AVD_HOME/issue26-phone.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
+          echo no | avdmanager create avd --force -n issue26-phone2 -p "$ANDROID_AVD_HOME/issue26-phone2.avd" -k 'system-images;android-36;google_apis;x86_64' -d pixel_2
+          echo no | avdmanager create avd --force -n issue26-tv1 -p "$ANDROID_AVD_HOME/issue26-tv1.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
+          echo no | avdmanager create avd --force -n issue26-tv2 -p "$ANDROID_AVD_HOME/issue26-tv2.avd" -k 'system-images;android-36;android-tv;x86_64' -d tv_1080p
+          for name in issue26-phone issue26-phone2 issue26-tv1 issue26-tv2; do
+            test -f "$ANDROID_AVD_HOME/$name.ini"
+          done
+          "$ANDROID_HOME/emulator/emulator" -list-avds
           "$ANDROID_HOME/emulator/emulator" -avd issue26-phone -port 5570 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone-boot.log 2>&1 &
           "$ANDROID_HOME/emulator/emulator" -avd issue26-phone2 -port 5576 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/phone2-boot.log 2>&1 &
           "$ANDROID_HOME/emulator/emulator" -avd issue26-tv1 -port 5572 -no-window -gpu swiftshader -noaudio -no-boot-anim -no-snapshot -memory 1536 -cores 2 > dist/phone-tv/tv1-boot.log 2>&1 &
