@@ -6,7 +6,7 @@
 - Publish Android system play/pause/seek and remote TV volume from a foreground media session; retain independent TV playback and physical remote controls. No in-app remote transport.
 - Unify account devices with type icons and server-confirmed Unicode aliases, editable by ordinary users through ⋮ and a compact dialog. Preserve existing pairing/scanning.
 - Keep independent cast/bookmark buttons, gate all phone launch/resume paths on a live target, and show connection loss/retry inside the film card. Restore TalkBack focus to the cast button after closing the chooser.
-- Bundle server 0.1.5 with account-isolated remote sessions, target/session fencing, idempotent commands and revocation checks. Require the four-emulator integration before release publication.
+- Bundle server 0.1.5 with account-isolated remote sessions, target/session fencing, idempotent commands and revocation checks. Add a reproducible four-emulator integration workflow; its complete local run validates the managed path.
 - Compatibility: remote playback requires managed mode and the foreground MJWatch TV app. Direct remote pairing and automatic Google Cast/LAN notifications are not implemented; issue #26 remains partially open.
 
 ## 0.8.16
