@@ -156,6 +156,10 @@ class TvRemoteControlsTest {
         compose.mainClock.advanceTimeBy(300)
         compose.onNodeWithText("Повторить").assertIsFocused()
         captureBuffering("tv-error-focus")
+        key(Key.DirectionRight);compose.onNodeWithText("К раздаче").assertIsFocused()
+        compose.onAllNodes(isFocused()).assertCountEquals(1)
+        captureBuffering("tv-error-secondary-focus")
+        key(Key.DirectionLeft);compose.onNodeWithText("Повторить").assertIsFocused()
         key(Key.DirectionCenter);assertEquals(1,retries)
         pressBack();assertEquals(1,exits)
     }

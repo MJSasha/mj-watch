@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
 ) {
+    val statusRipple=LocalRippleConfiguration.current
     val remote=remember {TvPlaybackState()}
     val rootFocus=remember {FocusRequester()}; val backFocus=remember {FocusRequester()}
     val playFocus=remember {FocusRequester()}; val timelineFocus=remember {FocusRequester()}
@@ -167,9 +168,9 @@ import kotlinx.coroutines.delay
             if(visible) {
                 Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(160.dp).background(Brush.verticalGradient(0f to Color(0xF5101722),.65f to Color(0xD9101722),1f to Color.Transparent)))
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
-                    IconButton(modifier=Modifier.size(48.dp).testTag("player-back").onFocusChanged {if(it.isFocused)focusedArea="controls"}.focusRequester(backFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal&&!blockingStatus),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
+                    IconButton(modifier=Modifier.size(48.dp).testTag("player-back").onFocusChanged {if(it.isFocused)focusedArea="controls"}.focusRequester(backFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodes.getOrNull(episodeIndex)?.path ?: "MJWatch",maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
-                    IconButton(modifier=Modifier.size(48.dp).focusRequester(topTracksFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal&&!blockingStatus),onClick={interact();modalReturn="topTracks";onTracks()}) {Icon(Icons.Outlined.Tune,"Дорожки")}
+                    IconButton(modifier=Modifier.size(48.dp).focusRequester(topTracksFocus).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal),onClick={interact();modalReturn="topTracks";onTracks()}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
                 if(ready) {
                     Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(224.dp).background(Brush.verticalGradient(0f to Color.Transparent,.45f to Color(0xCC101722),1f to Color(0xF5101722))))
@@ -188,7 +189,7 @@ import kotlinx.coroutines.delay
                                 AndroidKey.KEYCODE_DPAD_DOWN -> {if(down) {remote.cancelSeek();playFocus.requestFocus()};true}
                                 else -> false
                             }
-                        }.tvPlayerFocus(!modal&&!blockingStatus),thumb={},track={
+                        }.tvPlayerFocus(!modal),thumb={},track={
                             Box(Modifier.fillMaxWidth().height(7.dp).offset(y=8.dp).drawBehind {
                                 val y=size.height/2
                                 val x=size.width*(shown.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
@@ -199,7 +200,7 @@ import kotlinx.coroutines.delay
                         })
                     Row(Modifier.fillMaxWidth().offset(y=(-8).dp),horizontalArrangement=Arrangement.SpaceBetween) {Text(playerTime(shown),fontSize=12.sp);Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF0F2EC))}
                     Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                        @Composable fun buttonModifier()=Modifier.size(48.dp).onFocusChanged {if(it.isFocused)focusedArea="controls"}.focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal&&!blockingStatus)
+                        @Composable fun buttonModifier()=Modifier.size(48.dp).onFocusChanged {if(it.isFocused)focusedArea="controls"}.focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal)
                         if(episodes.size>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.testTag("player-previous-episode").focusProperties {left=FocusRequester.Cancel}.then(buttonModifier()),onClick={interact();onEpisode(episodeIndex-1)}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
                         IconButton(modifier=Modifier.focusProperties {if(episodeIndex<=0)left=FocusRequester.Cancel}.then(buttonModifier()),enabled=seekable,onClick={interact();seek(-1)}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
                         IconButton(onClick={interact();player()?.let {if(it.playWhenReady)it.pause() else it.play()}},modifier=Modifier.size(width=52.dp,height=48.dp).testTag("player-play").focusRequester(playFocus).then(buttonModifier())) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
@@ -214,14 +215,18 @@ import kotlinx.coroutines.delay
                 }
             }
             if(prompt!=null) Row(Modifier.align(Alignment.CenterEnd).padding(28.dp).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                Button(modifier=Modifier.testTag("player-prompt").onFocusChanged {if(it.isFocused)focusedArea="prompt"}.focusRequester(promptFocus).tvPlayerFocus(!modal&&!blockingStatus),onClick={
+                Button(modifier=Modifier.testTag("player-prompt").onFocusChanged {if(it.isFocused)focusedArea="prompt"}.focusRequester(promptFocus).tvPlayerFocus(!modal),onClick={
                     interact()
                     if(prompt=="opening") {episodes.getOrNull(episodeIndex)?.openingTarget(position,duration)?.let {player()?.seekTo(it)};dismissPrompt()}
                     else onEpisode(episodeIndex+1)
                 }) {Text(if(prompt=="opening")"Пропустить опенинг" else if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}" else "Следующая серия")}
-                TextButton(modifier=Modifier.onFocusChanged {if(it.isFocused)focusedArea="prompt"}.tvPlayerFocus(!modal&&!blockingStatus),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
+                TextButton(modifier=Modifier.onFocusChanged {if(it.isFocused)focusedArea="prompt"}.tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
             }
-            if(status!=null) Box(Modifier.align(Alignment.Center)) {PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true)}
+            if(status!=null) Box(Modifier.align(Alignment.Center)) {
+                CompositionLocalProvider(LocalRippleConfiguration provides statusRipple) {
+                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true)
+                }
+            }
             if(episodePanel) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={Column(Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState())) {
                 val selectedFocus=remember {FocusRequester()}
                 LaunchedEffect(Unit) {selectedFocus.requestFocus()}
