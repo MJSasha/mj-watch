@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.ConnectionQrReaderTest:...
+
+Time: 0.421
+
+OK (3 tests)
+
+

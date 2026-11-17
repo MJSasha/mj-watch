@@ -50,7 +50,7 @@ class MobileQrLoginTest {
         for(size in listOf(image.width,280,216,160)) {
             val scaled=Bitmap.createScaledBitmap(image,size,size,true)
             val pixels=IntArray(size*size);scaled.getPixels(pixels,0,size,0,0,size,size)
-            val decoded=try {MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(size,size,pixels)))).text} catch(e:ReaderException) {throw AssertionError("Styled QR did not decode at $size px",e)}
+            val decoded=try {ConnectionQrReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(size,size,pixels)))).text} catch(e:ReaderException) {throw AssertionError("Styled QR did not decode at $size px",e)}
             Assert.assertEquals("Styled QR at $size px",first.encode(),decoded)
         }
         val peer=TvQrPhone(first)
