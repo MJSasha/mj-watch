@@ -1,0 +1,25 @@
+{
+  "versionName": "0.9.8",
+  "versionCode": 1132,
+  "source": "348d2937c579de451d1a4f08a5d7d86c7d640d91",
+  "releaseUrl": "https://github.com/MJSasha/mj-watch/releases/tag/test-132",
+  "latestUpdateMatches": true,
+  "packages": {
+    "mobile": {
+      "package": "dev.mjwatch.mobile",
+      "sha256": "f4a242c05626654740ba46088e9e32f139890ab681c6a77b32c9ff7da9501230",
+      "size": 80430274,
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false,
+      "tvFocusCodePresent": true
+    },
+    "tv": {
+      "package": "dev.mjwatch.tv",
+      "sha256": "410ab69a38a03dd9ee1f9201770d5cf05fd0be212814d54ae2b4a922e54d4713",
+      "size": 80356378,
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false,
+      "tvFocusCodePresent": true
+    }
+  }
+}

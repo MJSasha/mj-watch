@@ -1,0 +1,27 @@
+{
+  "app-tv/build/reports/androidTests/connected/debug/dev.mjwatch.tv.TvButtonsUiTest.html": {
+    "tests": 3,
+    "failures": 0,
+    "skipped": 0
+  },
+  "app-tv/build/reports/androidTests/connected/debug/dev.mjwatch.tv.TvCarouselUiTest.html": {
+    "tests": 1,
+    "failures": 0,
+    "skipped": 0
+  },
+  "app-tv/build/reports/androidTests/connected/debug/index.html": {
+    "tests": 54,
+    "failures": 0,
+    "skipped": 14
+  },
+  "playback/build/reports/androidTests/connected/debug/index.html": {
+    "tests": 23,
+    "failures": 0,
+    "skipped": 0
+  },
+  "app-mobile/build/reports/androidTests/connected/debug/index.html": {
+    "tests": 84,
+    "failures": 0,
+    "skipped": 34
+  }
+}
