@@ -23,9 +23,12 @@ import org.json.JSONObject
 @Composable internal fun AccountLinks(s:WatchState,model:WatchModel,tv:Boolean) {
     val state by model.managed.state.collectAsState()
     val me=state.takeIf {it.scope==s.config.scope}?.me
-    Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и синхронизация",me?.optString("name") ?: "Проверяем подключение",tv){model.page("managed-account")}}
-        if(me?.optString("role")=="admin")SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.AdminPanelSettings,"Мой сервер",s.config.managedUrl,tv){model.page("server-overview")}}
+    SettingsGroup(tv) {
+        SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и синхронизация",me?.optString("name") ?: "Проверяем подключение",tv){model.page("managed-account")}
+        if(me?.optString("role")=="admin") {
+            SettingsDivider()
+            SettingsActionRow(Icons.Outlined.AdminPanelSettings,"Мой сервер",s.config.managedUrl,tv){model.page("server-overview")}
+        }
     }
 }
 
