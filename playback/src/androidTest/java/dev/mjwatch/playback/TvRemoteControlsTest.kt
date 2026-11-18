@@ -77,6 +77,22 @@ class TvRemoteControlsTest {
             assertTrue(compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,output))
         }
     }
+    @Test fun timelineSitsBetweenBothTimes() {
+        start(shown=true)
+        compose.waitForIdle()
+        val start=compose.onNodeWithTag("player-position").fetchSemanticsNode().boundsInRoot
+        val timeline=compose.onNodeWithTag("player-timeline").fetchSemanticsNode().boundsInRoot
+        val end=compose.onNodeWithTag("player-duration").fetchSemanticsNode().boundsInRoot
+        assertTrue(start.right<timeline.left)
+        assertTrue(timeline.right<end.left)
+        assertEquals(start.center.y,timeline.center.y,1f)
+        assertEquals(end.center.y,timeline.center.y,1f)
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val file=java.io.File(context.getExternalFilesDir(null),"tv-polish/player-timeline.png")
+        file.parentFile!!.mkdirs()
+        file.outputStream().use {compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+    }
+
     @Test fun hiddenDirectionsSelectCorrectRowAndSeekWithoutShowingControls() {
         start();key(Key.DirectionLeft);assertEquals(40_000L,position);assertFalse(visible)
         key(Key.DirectionRight);assertEquals(50_000L,position);assertFalse(visible)

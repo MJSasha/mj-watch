@@ -1,6 +1,14 @@
 package dev.mjwatch.playback
 
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -26,6 +34,22 @@ class MobileGesturesTest {
         "hashCode"->1
         else->null
     }} as Player
+
+    @Test fun timelineSitsBetweenBothTimes() {
+        compose.setContent {Box(Modifier.width(360.dp).fillMaxHeight().background(Color.Black).testTag("mobile-timeline-preview")) {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},{})}}
+        compose.waitForIdle()
+        val start=compose.onNodeWithTag("player-position").fetchSemanticsNode().boundsInRoot
+        val timeline=compose.onNodeWithTag("player-timeline").fetchSemanticsNode().boundsInRoot
+        val end=compose.onNodeWithTag("player-duration").fetchSemanticsNode().boundsInRoot
+        assertTrue(start.right<timeline.left)
+        assertTrue(timeline.right<end.left)
+        assertEquals(start.center.y,timeline.center.y,1f)
+        assertEquals(end.center.y,timeline.center.y,1f)
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val file=java.io.File(context.getExternalFilesDir(null),"tv-polish/mobile-timeline.png")
+        file.parentFile!!.mkdirs()
+        file.outputStream().use {compose.onNodeWithTag("mobile-timeline-preview").captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+    }
 
     @Test fun doubleTapSeeksWithVisibleAndHiddenControlsAndClampsToVideo() {
         compose.setContent {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},{})}

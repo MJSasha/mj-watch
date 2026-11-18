@@ -39,13 +39,11 @@ class VerticalFlowTest {
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить и продолжить"))
     remoteClick("Сохранить и продолжить")
     compose.waitUntil(15000) {compose.onAllNodesWithTag("home-list").fetchSemanticsNodes().isNotEmpty()}
-    compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
-    compose.mainClock.advanceTimeBy(500)
-    compose.onNodeWithTag("hero-open").assertIsFocused()
+    val homeFilm=compose.onNode(hasText("Тихая орбита • тестовое видео 720p") and hasClickAction())
+    compose.waitUntil(5000) {runCatching {homeFilm.assertIsFocused();true}.getOrDefault(false)}
     compose.onNodeWithText("Для вас").assertIsDisplayed()
     capture("home")
-    compose.onNodeWithTag("hero-open").performSemanticsAction(SemanticsActions.RequestFocus)
-    compose.onNodeWithTag("hero-open").performKeyInput {pressKey(Key.DirectionCenter)}
+    homeFilm.performKeyInput {pressKey(Key.DirectionCenter)}
     compose.onNodeWithTag("detail-sources").assertExists()
     capture("detail")
     compose.onNodeWithTag("detail-sources").performSemanticsAction(SemanticsActions.RequestFocus)

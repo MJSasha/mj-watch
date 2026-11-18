@@ -256,36 +256,100 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
-@Composable private fun HomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
-    val category=s.catalogSection.label;var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
-    val catalogue=s.catalog
-    val hero=catalogue.firstOrNull {it.id==featured} ?: catalogue.firstOrNull()
-    val cinematic=hero!=null||s.config.demo
-    val inset=if(tv) tvUnit(40f) else 20.dp
-    val heroFocus=remember {FocusRequester()}
-    LaunchedEffect(s.focusKey,cinematic) {if(tv&&cinematic&&(s.focusKey.isEmpty()||s.focusKey.startsWith("hero:"))) {delay(100);heroFocus.requestFocus()}}
-    WatchTheme(if(tv&&cinematic) "dark" else s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        val columns=if(!tv&&maxWidth>=680.dp) 2 else 1
-        if(tv&&cinematic) Box(Modifier.fillMaxWidth().height(tvUnit(475f))) {Artwork(hero,s.config,Modifier.fillMaxSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.fillMaxSize(),true);ArtScrim(Modifier.fillMaxSize())}
-        LazyColumn(Modifier.testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(if(tv) 12.dp else 16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
-            if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
-                if(tv) {
-                    Box(Modifier.fillMaxWidth().heightIn(min=tvUnit(if(cinematic)390f else 100f)).padding(horizontal=inset)) {
-                        Row(Modifier.fillMaxWidth().padding(top=tvUnit(30f)),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                            WatchTabs(CatalogSection.entries.map {it.label},category,true) {label->model.catalogSection(CatalogSection.entries.first {it.label==label})}
-                            if(s.config.demo) Badge("ДЕМО",true)
+@Composable private fun TvHomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel) {
+    var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
+    var lastCard by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
+    val restoreCard=remember(s.catalogSection) {lastCard}
+    val hero=s.catalog.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: s.catalog.firstOrNull()
+    val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
+    val inset=tvUnit(40f)
+    val hasCategories=s.config.metadataProvider=="tmdb"||s.config.demo
+    val tabsFocus=remember {FocusRequester()}
+    val shelfFocus=remember {FocusRequester()}
+    var lastShelfFocus by remember(s.catalogSection) {mutableStateOf<FocusRequester?>(null)}
+    val trackShelfFocus:(FocusRequester,Boolean)->Unit=remember(s.catalogSection) {{target,focused->
+        if(focused)lastShelfFocus=target else if(lastShelfFocus===target)lastShelfFocus=null
+    }}
+    var started by remember {mutableStateOf(false)}
+    val hasCards=continuing.isNotEmpty()||s.catalog.isNotEmpty()||s.config.demo
+    LaunchedEffect(hasCards) {if(hasCards&&!started) {started=true;delay(100);if(lastCard==null)shelfFocus.requestFocus()}}
+    val rows=buildList {
+        if(s.catalog.isEmpty()&&!s.config.demo)add("status")
+        if(continuing.isNotEmpty())add("continue")
+        if(s.catalog.isNotEmpty())add("catalog")
+        if(s.config.demo)add("demo")
+        if(s.catalogMessage.isNotBlank()&&s.catalogMessage!="Каталог из кеша"&&s.catalog.isNotEmpty()&&!s.config.demo)add("message")
+        add("updates")
+    }
+    WatchTheme(if(hero!=null||s.config.demo) "dark" else s.config.theme) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            if(hero!=null||s.config.demo) {
+                Artwork(hero,s.config,Modifier.fillMaxSize(),backdrop=true,demo=hero==null&&s.config.demo)
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha=.5f)))
+                ArtScrim(Modifier.fillMaxSize(),true);ArtScrim(Modifier.fillMaxSize())
+            }
+            Column(Modifier.fillMaxSize()) {
+                if(s.config.metadataProvider=="tmdb"||s.config.demo) Row(
+                    Modifier.fillMaxWidth().testTag("home-categories").background(MaterialTheme.colorScheme.background.copy(alpha=.94f))
+                        .padding(horizontal=inset,vertical=8.dp)
+                        .focusProperties {down=lastShelfFocus ?: shelfFocus}.focusRestorer().focusGroup(),
+                    verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(Modifier.weight(1f)) {WatchTabs(CatalogSection.entries.map {it.label},s.catalogSection.label,true,selectedFocus=tabsFocus) {label->model.catalogSection(CatalogSection.entries.first {it.label==label})}}
+                    if(s.config.demo)Badge("ДЕМО",true)
+                }
+                CompositionLocalProvider(LocalTvShelfFocus provides trackShelfFocus) {
+                    key(s.catalogSection) {TvHomeShelves(rows,shelfFocus,Modifier.weight(1f)) {row->when(row) {
+                        "continue"->{
+                            Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить просмотр")}
+                            TvCarousel(inset,14.dp,up=if(hasCategories)tabsFocus else null) {items(continuing,key={it.entry.id}) {e->
+                                Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true,
+                                    restoreFocus=restoreCard=="library:${e.entry.id}",onFocus={lastCard="library:${e.entry.id}";e.metadata?.let {featured=it.id}})}
+                            }}
                         }
-                        if(cinematic)Column(Modifier.align(Alignment.BottomStart).padding(bottom=tvUnit(26f)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "ВАШ СЛЕДУЮЩИЙ ВЕЧЕР",fontSize=11.sp,letterSpacing=1.4.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(hero?.title ?: "Тихая орбита",fontSize=40.sp,lineHeight=48.sp,fontWeight=FontWeight.Bold)
-                            Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(Modifier.padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Action(if(hero?.kind=="tv") "О сериале" else "О фильме",true,Modifier.testTag("hero-open").focusRequester(heroFocus),icon=Icons.Outlined.PlayArrow) {if(hero!=null) model.metadata(hero,"hero:${hero.id}") else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")}
-                                Action("В моё",true,secondary=true,icon=Icons.Outlined.BookmarkAdd) {if(hero!=null) model.metadata(hero,"hero:${hero.id}") else model.open(DemoReleases.items.first());model.bookmark()}
+                        "catalog"->{
+                            Box(Modifier.padding(horizontal=inset)) {SectionTitle("Ваши подборки")}
+                            TvCarousel(inset,up=if(continuing.isEmpty()&&hasCategories)tabsFocus else null) {items(s.catalog,key={it.id}) {m->
+                                Box(Modifier.width(tvUnit(180f))) {MetadataCard(m,s.config,true,restoreCard=="metadata:${m.id}",onFocus={lastCard="metadata:${m.id}";featured=m.id}) {model.metadata(m)}}
+                            }}
+                        }
+                        "demo"->{
+                            Box(Modifier.padding(horizontal=inset)) {SectionTitle("Тестовые раздачи")}
+                            TvCarousel(inset) {items(DemoReleases.items,key={it.id}) {r->Box(Modifier.width(tvUnit(360f))) {ReleaseCard(r,true,s.focusKey==r.id) {model.open(r)}}}}
+                        }
+                        "status"->Box(Modifier.padding(horizontal=inset)) {
+                            when {
+                                s.catalogBusy->LoadingIndicator("Загрузка каталога")
+                                s.config.metadataProvider!="tmdb"->Empty("Кино. На вашем экране.","Найдите раздачу по названию. Каталог и постеры можно подключить в настройках.",true,"Поиск раздач") {model.page("search")}
+                                else->Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Heading(if(s.catalogMessage.isNotBlank())"Не удалось загрузить раздел" else "В разделе пока нет карточек")
+                                    Text("Раздел «${s.catalogSection.label}». Попробуйте обновить каталог или найдите название через поиск.")
+                                    Action("Обновить раздел",true){model.refreshCatalog(true)}
+                                    Action("Поиск",true,secondary=true){model.page("search")}
+                                }
                             }
                         }
-                    }
-                } else {
+                        "message"->Text(s.catalogMessage,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=inset))
+                        "updates"->Box(Modifier.padding(horizontal=inset)) {UpdateSection(model.updates,true,compact=true)}
+                    }}}
+                }
+            }
+        }}
+    }
+}
+
+@Composable private fun HomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
+    if(tv) {TvHomeScreen(s,entries,progress,model);return}
+    val category=s.catalogSection.label;var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
+    val catalogue=s.catalog
+    val hero=catalogue.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: catalogue.firstOrNull()
+    val cinematic=hero!=null||s.config.demo
+    val inset=20.dp
+    WatchTheme(s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val columns=if(maxWidth>=680.dp) 2 else 1
+        Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+            if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
                     Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
                         if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=if(LocalConfiguration.current.screenHeightDp<480) 240.dp else 374.dp).clip(RoundedCornerShape(24.dp))) {
@@ -298,7 +362,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             }
                         }
                     }
-                }
             }
             if(!cinematic&&s.config.metadataProvider!="tmdb") item {Box(Modifier.padding(horizontal=inset)) {Empty("Кино. На вашем экране.","Найдите раздачу по названию. Каталог и постеры можно подключить в настройках.",tv,"Поиск раздач") {model.page("search")}}}
             if(s.catalogBusy&&s.catalog.isEmpty()&&!s.config.demo) item {LoadingIndicator("Загрузка каталога",Modifier.padding(horizontal=inset))}
@@ -312,9 +375,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             }
             val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
             if(continuing.isNotEmpty()) {
-                item {Box(Modifier.padding(horizontal=inset)) {SectionTitle(if(tv) "Продолжить просмотр" else "Продолжить",if(tv) "Вся история" else "") {model.page("history")}}}
-                if(tv) item {TvCarousel(inset,14.dp) {items(continuing,key={it.entry.id}) {e->Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true)}}}}
-                else items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
+                item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить","") {model.page("history")}}}
+                items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                         row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,progress,model,false)}}
                         repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
@@ -324,9 +386,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(catalogue.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Ваши подборки")}}
                 item {
-                    val cards:androidx.compose.foundation.lazy.LazyListScope.()->Unit={items(catalogue,key={it.id}) {m->Box(Modifier.width(if(tv) tvUnit(180f) else 156.dp)) {MetadataCard(m,s.config,tv,s.focusKey==m.id,onFocus={featured=m.id}) {model.metadata(m)}}}}
-                    if(tv) key(s.catalogSection) {TvCarousel(inset,content=cards)}
-                    else LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp),content=cards)
+                    val cards:androidx.compose.foundation.lazy.LazyListScope.()->Unit={items(catalogue,key={it.id}) {m->Box(Modifier.width(156.dp)) {MetadataCard(m,s.config,tv,s.focusKey==m.id,onFocus={featured=m.id}) {model.metadata(m)}}}}
+                    LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp),content=cards)
                 }
             }
             if(s.config.demo) {
@@ -340,7 +401,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             }
             if(s.catalogMessage.isNotBlank()&&!s.config.demo) item {Text(s.catalogMessage,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=inset))}
             item {Box(Modifier.padding(horizontal=inset)) {UpdateSection(model.updates,tv,compact=true)}}
-            if(tv) item {Text("OK · Открыть     Удерживать OK · Действия",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth().padding(horizontal=inset),textAlign=androidx.compose.ui.text.style.TextAlign.End)}
+        }
         }
     }
 }}}
@@ -393,10 +454,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
     LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
     val modifier=Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus}
-    NativeCard(tv,modifier,onClick=onClick) {
+    NativeCard(tv,modifier,onClick=onClick,outlined=!tv) {
         Column {
-            MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)))
-            Column(Modifier.padding(vertical=10.dp,horizontal=4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,minLines=2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(tv) Box(Modifier.padding(TvPosterClearance).tvPosterFocus(focused)) {MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)).testTag("poster-${m.id}"))}
+            else MetadataImage(m,c,Modifier.fillMaxWidth().aspectRatio(2f/3).clip(RoundedCornerShape(16.dp)))
+            Column(Modifier.padding(vertical=10.dp,horizontal=if(tv) TvPosterClearance else 4.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(m.title,fontWeight=FontWeight.Bold,minLines=if(tv) 1 else 2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis);Text("${m.year ?: "Год не указан"} · ${if(m.kind=="tv") "Сериал" else "Фильм"}",maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
 }
@@ -646,7 +708,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
     NativeCard(tv,modifier,selected,onClick=onClick) {content()}
 }
-@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={}) {
+@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={},onFocus:()->Unit={}) {
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
     if(menu) {
@@ -659,10 +721,28 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val metadata=item.metadata ?: cardState.catalog.firstOrNull {it.id==e.metadataId}
     val requester=remember {FocusRequester()}
     LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
-    NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester).testTag("library-${e.id}"),onLongClick={menu=true},onClick={onOpen();model.restore(e)}) {
+    var focused by remember {mutableStateOf(false)}
+    NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus;if(it.isFocused)onFocus()}.testTag("library-${e.id}"),onLongClick={menu=true},onClick={onOpen();model.restore(e)},outlined=!tv||!wide) {
         if(wide) Column {
-            Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
-            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
+            if(tv) {
+                Box(Modifier.padding(TvPosterClearance).tvPosterFocus(focused)) {
+                    Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f).clip(RoundedCornerShape(16.dp)),backdrop=true,demo=e.id.startsWith("demo:"))
+                    p?.episodeLabel()?.let {episode->Text(episode,fontSize=11.sp,lineHeight=14.sp,
+                        color=androidx.compose.ui.graphics.Color.White,modifier=Modifier.padding(8.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xDC09101B),RoundedCornerShape(4.dp)).padding(horizontal=6.dp,vertical=4.dp))}
+                }
+                Column(Modifier.padding(horizontal=TvPosterClearance,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    val remaining=p?.durationMs?.takeIf {it>0}?.let {((it-p.positionMs).coerceAtLeast(0)+59_999)/60_000}
+                    Text(p?.let {time(it.positionMs)+(remaining?.let {minutes->" · осталось $minutes мин"} ?: "")} ?: "Нет позиции просмотра",
+                        fontSize=12.sp,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(p?.durationMs?.let {it>0}==true) LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp),gapSize=0.dp,drawStopIndicator={})
+                    else Spacer(Modifier.height(3.dp))
+                }
+            } else {
+                Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
+                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
+            }
         } else Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
             Box(Modifier.width(96.dp).aspectRatio(2f/3f).clip(RoundedCornerShape(10.dp)).testTag("library-poster-${e.id}")) {Artwork(metadata,config,Modifier.matchParentSize(),demo=e.id.startsWith("demo:"))}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,minLines=2,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
@@ -926,6 +1006,6 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)
-    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=Modifier.padding(TvFocusClearance).then(modifier).semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
+    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
     else Surface(onClick=onClick,modifier=modifier.tvFocusRing(true,shape).semantics {this.selected=selected;role=Role.Tab},shape=shape,color=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Icon(icon,label,Modifier.size(24.dp))}}
 }

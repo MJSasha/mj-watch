@@ -23,15 +23,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 
-@Composable internal fun tvFocusBorder(radius:Dp):Border {
-    // Border.inset locates the stroke's centre: 5 dp leaves a 4 dp gap with a 2 dp stroke.
-    return Border(BorderStroke(2.dp,MaterialTheme.colorScheme.primary),inset=5.dp,shape=RoundedCornerShape(radius+5.dp))
+@Composable internal fun tvFocusBorder(radius:Dp,color:Color=MaterialTheme.colorScheme.primary):Border {
+    // An inset stroke keeps compact TV buttons safe in clipped containers.
+    return Border(BorderStroke(2.dp,color),inset=(-1).dp,shape=RoundedCornerShape(radius-1.dp))
 }
 
-// Reserve the entire external focus stroke inside scrollable layout bounds.
-internal val TvFocusClearance=6.dp
+// Poster frames have their own clearance; buttons need no external padding.
+internal val TvPosterClearance=8.dp
 
-/** TV action states from the MJ Family reference; focus and press never resize the button. */
+/** Compact TV actions; focus and press never resize the button. */
 @Composable fun TvActionButton(text:String,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,interactionSource:MutableInteractionSource?=null,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
     val shape=MaterialTheme.shapes.medium
@@ -42,18 +42,18 @@ internal val TvFocusClearance=6.dp
     val baseForeground=if(secondary) colors.onSurface else colors.onPrimary
     val container=if(!enabled&&!loading)baseContainer.copy(alpha=.45f).compositeOver(colors.background) else baseContainer
     val foreground=if(!enabled&&!loading)baseForeground.copy(alpha=.45f).compositeOver(colors.background) else baseForeground
-    val focusBorder=tvFocusBorder(16.dp)
+    val focusBorder=tvFocusBorder(16.dp,colors.surface)
     // TV Material 1.0.1 adds an unavoidable disabled-content alpha. Own the disabled
     // semantics and activation guard so loading stays legible and retains D-pad focus.
     Button(onClick={if(!blocked)onClick()},interactionSource=source,
-        modifier=Modifier.padding(TvFocusClearance).then(modifier).heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
+        modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
             if(blocked) disabled()
             if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
         },
         shape=ButtonDefaults.shape(shape=shape),
         scale=ButtonDefaults.scale(focusedScale=1f,pressedScale=1f,disabledScale=1f,focusedDisabledScale=1f),
         colors=ButtonDefaults.colors(containerColor=container,contentColor=foreground,
-            focusedContainerColor=container,focusedContentColor=foreground,
+            focusedContainerColor=colors.onSurface,focusedContentColor=colors.surface,
             pressedContainerColor=if(blocked)container else container.copy(red=container.red*.85f,green=container.green*.85f,blue=container.blue*.85f),
             pressedContentColor=if(blocked)foreground else foreground.copy(red=foreground.red*.85f,green=foreground.green*.85f,blue=foreground.blue*.85f)),
         border=ButtonDefaults.border(focusedBorder=focusBorder,pressedBorder=if(focused)focusBorder else Border.None,focusedDisabledBorder=if(loading)focusBorder else Border.None),

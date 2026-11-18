@@ -81,6 +81,20 @@ class TvButtonsUiTest {
         compose.runOnIdle {Assert.assertEquals(2,clicks)}
     }
 
+    @Test fun neighbouringButtonsKeepTheDeclaredGap() {
+        compose.runOnUiThread {compose.activity.setContent {
+            WatchTheme("dark") {
+                Row(Modifier.padding(40.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    TvActionButton("О фильме",Modifier.width(180.dp).testTag("left-button")) {}
+                    TvActionButton("В моё",Modifier.width(180.dp).testTag("right-button")) {}
+                }
+            }
+        }}
+        val left=compose.onNodeWithTag("left-button").fetchSemanticsNode().boundsInRoot
+        val right=compose.onNodeWithTag("right-button").fetchSemanticsNode().boundsInRoot
+        Assert.assertEquals(12f*compose.activity.resources.displayMetrics.density,right.left-left.right,1f)
+    }
+
     @Test fun focusStrokeFitsAtBothEndsOfAClippedList() {
         val first=FocusRequester()
         val last=FocusRequester()
@@ -104,11 +118,11 @@ class TvButtonsUiTest {
             val bounds=compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
             val pixels=compose.onRoot().captureToImage().toPixelMap()
             val x=bounds.center.x.roundToInt()
-            for(y in listOf(bounds.top-5*density,bounds.bottom+5*density)) {
+            for(y in listOf(bounds.top+1*density,bounds.bottom-1*density)) {
                 val ring=pixels[x,y.roundToInt()].luminance()
-                val gapY=if(y<bounds.top)bounds.top-2*density else bounds.bottom+2*density
+                val gapY=if(y<bounds.center.y)bounds.top+4*density else bounds.bottom-4*density
                 val fill=pixels[x,gapY.roundToInt()].luminance()
-                Assert.assertTrue("The external stroke must survive viewport clipping",kotlin.math.abs(ring-fill)>.05f)
+                Assert.assertTrue("The inset stroke must survive viewport clipping",kotlin.math.abs(ring-fill)>.05f)
             }
         }
     }
@@ -152,9 +166,9 @@ class TvButtonsUiTest {
             val bounds=compose.onNodeWithTag("focused").fetchSemanticsNode().boundsInRoot
             val density=compose.activity.resources.displayMetrics.density
             val x=bounds.center.x.roundToInt()
-            val ring=Color(bitmap.getPixel(x,(bounds.top-5*density).roundToInt())).luminance()
-            val gap=Color(bitmap.getPixel(x,(bounds.top-2*density).roundToInt())).luminance()
-            Assert.assertTrue("Focus must be visible outside the fill",(maxOf(ring,gap)+.05f)/(minOf(ring,gap)+.05f)>=3f)
+            val ring=Color(bitmap.getPixel(x,(bounds.top+1*density).roundToInt())).luminance()
+            val gap=Color(bitmap.getPixel(x,(bounds.top+4*density).roundToInt())).luminance()
+            Assert.assertTrue("Focus must contrast inside the fill",(maxOf(ring,gap)+.05f)/(minOf(ring,gap)+.05f)>=3f)
             bitmap.recycle()
         }
     }

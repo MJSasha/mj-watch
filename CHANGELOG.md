@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.12
+
+- Match Android TV home to the approved prototype: fixed categories, compact shelf gaps, a poster-only focus frame, measured shelf centring and smooth movement of previous rows beyond the viewport. Remove the featured title/actions strip and OK hint.
+- Restore each shelf’s last focused card, including after opening details; return Up to the selected category. Show season/episode over continue-watching previews, tighten TV poster captions and hide the cache-status label.
+- Keep TV action gaps compact and focus outlines inside clipped controls. Place the player timeline between current time and duration on both TV and mobile. Mobile home layout remains unchanged.
+- Preserve server 0.1.8, resource/viewing-limit settings and the existing APK update signature.
+
 ## 0.9.11
 
 - Bundle server 0.1.8 and let owners configure global and per-account viewing limits with RAM-based automatic defaults, immediate application and preservation of active views.
