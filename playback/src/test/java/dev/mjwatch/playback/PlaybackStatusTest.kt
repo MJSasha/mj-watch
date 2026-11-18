@@ -25,6 +25,7 @@ class PlaybackStatusTest {
         assertEquals("Не удалось вывести звук",playbackFailureStatus(5001,"audio/ac3").title)
         assertEquals("Ошибка декодирования",playbackFailureStatus(4003).title)
         assertEquals("Не удалось прочитать контейнер",playbackFailureStatus(3003).title)
+        assertTrue(playbackFailureStatus(3003).retry)
         assertTrue(playbackFailureStatus(2002).retry)
         assertTrue(playbackFailureStatus(null).retry)
     }

@@ -35,7 +35,7 @@ internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String=""
         else -> "Видео недоступно" to "Не удалось восстановить поток. Повторите попытку или проверьте сервер."
     }
     val diagnostic=listOfNotNull(code?.let {"Код: $it"},mime,details.takeIf {it.isNotBlank()}).joinToString(" · ")
-    return PlaybackStatus(title,message+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 3000..5999)
+    return PlaybackStatus(title,message+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 4000..5999)
 }
 
 @Composable internal fun PlaybackStatusOverlay(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
