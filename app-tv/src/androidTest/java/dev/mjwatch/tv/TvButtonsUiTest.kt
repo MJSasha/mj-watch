@@ -87,7 +87,7 @@ class TvButtonsUiTest {
         compose.runOnUiThread {compose.activity.setContent {
             WatchTheme("dark") {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(40.dp)) {
-                    LazyColumn(Modifier.width(320.dp).height(180.dp)) {
+                    LazyColumn(Modifier.width(320.dp).height(180.dp).testTag("edge-list")) {
                         item {TvActionButton("Первая",Modifier.fillMaxWidth().focusRequester(first).testTag("edge-first")) {}}
                         item {Spacer(Modifier.height(300.dp))}
                         item {TvActionButton("Последняя",Modifier.fillMaxWidth().focusRequester(last).testTag("edge-last")) {}}
@@ -97,7 +97,7 @@ class TvButtonsUiTest {
         }}
         val density=compose.activity.resources.displayMetrics.density
         for((tag,requester) in listOf("edge-first" to first,"edge-last" to last)) {
-            if(tag=="edge-last") compose.onNodeWithTag(tag).performScrollTo()
+            if(tag=="edge-last") compose.onNodeWithTag("edge-list").performScrollToNode(hasTestTag(tag))
             compose.runOnIdle {requester.requestFocus()}
             compose.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
             compose.waitForIdle()
