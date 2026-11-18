@@ -1,0 +1,41 @@
+{
+  "run": 44314916345,
+  "source": "f11aaa7436705b851604c51558c90caeea4c9388",
+  "reports": [
+    {
+      "tests": 84,
+      "failures": 0,
+      "skipped": 34,
+      "passed": 50,
+      "report": "app-mobile/build/reports/androidTests/connected/debug/index.html"
+    },
+    {
+      "tests": 50,
+      "failures": 0,
+      "skipped": 14,
+      "passed": 36,
+      "report": "app-tv/build/reports/androidTests/connected/debug/index.html"
+    },
+    {
+      "tests": 20,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 20,
+      "report": "playback/build/reports/androidTests/connected/debug/index.html"
+    }
+  ],
+  "matroska": [
+    {
+      "platform": "mobile",
+      "tests": 2,
+      "failures": 0,
+      "skipped": 0
+    },
+    {
+      "platform": "tv",
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "tag": "test-122",
+  "source": "f11aaa7436705b851604c51558c90caeea4c9388",
+  "packages": [
+    {
+      "platform": "tv",
+      "versionCode": 1122,
+      "sha256": "c7325058822612b02b01b2d50ce54c46c520a2c5c9fa99784943595afab20db3",
+      "certificate": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad"
+    },
+    {
+      "platform": "mobile",
+      "versionCode": 1122,
+      "sha256": "cd4c7149795c981782be566c6c97676bc25535e4071a1427fe095c496b9f8755",
+      "certificate": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad"
+    }
+  ],
+  "server": {
+    "version": "0.1.6",
+    "sha256": "19e7560ebfdf01d18279f3c4eb116af72baa97c077d3c0045a435bfb888ebbbc",
+    "stableKey": true,
+    "signedManifest": true
+  },
+  "debugFixtureExcluded": true,
+  "notDebuggable": true
+}
