@@ -108,11 +108,11 @@ import kotlinx.coroutines.launch
 }
 @Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        if(demo) Image(painterResource(R.drawable.demo_orbit),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=BiasAlignment(.38f,0f))
+        if(demo) Image(painterResource(R.drawable.demo_orbit),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=if(backdrop) BiasAlignment(.38f,0f) else Alignment.CenterEnd)
         else {
             Icon(Icons.Outlined.Movie,null,Modifier.align(Alignment.Center).size(40.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             val uri=if(config.metadataProvider=="tmdb") if(backdrop) metadata?.backdrop ?: metadata?.poster else metadata?.poster else null
-            if(uri!=null) AsyncImage(model=uri,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=BiasAlignment(.38f,0f))
+            if(uri!=null) AsyncImage(model=uri,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
         }
     }
 }

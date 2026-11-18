@@ -39,6 +39,8 @@ class OpenIssuesUiTest {
         val film=ui.onNodeWithTag("library-demo:film").getUnclippedBoundsInRoot()
         val series=ui.onNodeWithTag("library-demo:series").getUnclippedBoundsInRoot()
         Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
+        val poster=ui.onNodeWithTag("library-poster-demo:series",useUnmergedTree=true).getUnclippedBoundsInRoot()
+        Assert.assertEquals(2f/3f,((poster.right-poster.left)/(poster.bottom-poster.top)),0.01f)
         capture("cards")
         ui.onNodeWithContentDescription("Действия с «Сериал с длинным названием»").performClick()
         ui.onNodeWithText("Удалить").assertIsDisplayed()
