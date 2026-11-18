@@ -32,3 +32,9 @@ Cache wording now explicitly says **per torrent**, and shows the projected torre
 - `git diff --check` and release-script syntax passed.
 
 Admin form screenshots are unloaded demo states; no settings were applied over SSH to a live server, no backup was created/downloaded, and no invitation was sent. Wizard tests stop at confirmation. Screenshot checks do not establish complete accessibility compliance. Full production phone/TV CI gates release publication.
+
+## Published release
+
+[0.9.13 / Latest / test-138](https://github.com/MJSasha/mj-watch/releases/tag/test-138), versionCode 1138, source `b2e19954c1d3f49b25c7cfc88ad4d94e5d8072aa`. Published after 0.9.12 completed successfully. [CI](https://github.com/MJSasha/mj-watch/actions/runs/44395844401) passed build, phone, TV and player checks. The phone job completed 125 tests, TV 72 and player 25, including fixture/opt-in skips. Publication alone was retried after Maven Central returned HTTP 429; application checks did not need retries.
+
+Published APKs and the 0.1.8 supply were independently downloaded. GitHub digests, sizes, update.json and SHA256SUMS matched. Both APKs have the expected package/version, preserved signing certificate and no debuggable flag. The supply manifest signature, all file hashes and its existing public-key identity passed, and both APKs embed the verified supply. See [release-verification.json](release-verification.json).
