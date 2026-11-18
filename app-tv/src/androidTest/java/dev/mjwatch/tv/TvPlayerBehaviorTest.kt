@@ -104,7 +104,7 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_DPAD_DOWN);key(KeyEvent.KEYCODE_DPAD_CENTER)
         capture("07-speed-panel")
         key(KeyEvent.KEYCODE_BACK);focused("player-video");capture("08-video-return")
-        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline")
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline");capture("09a-timeline-focused")
         key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("09-seek-preview")
         key(KeyEvent.KEYCODE_BACK);focused("player-timeline")
         key(KeyEvent.KEYCODE_DPAD_UP)

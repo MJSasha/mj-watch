@@ -64,6 +64,7 @@ import kotlinx.coroutines.delay
     var modalReturn by remember {mutableStateOf("tracks")}
     var centerHandled by remember {mutableStateOf(false)}
     var repeats by remember {mutableIntStateOf(0)}
+    var timelineFocused by remember {mutableStateOf(false)}
     val modal=externalPanel||episodePanel
     val blockingStatus=status!=null&&!status.compact
     val blocked=modal||remote.preview!=null||status!=null
@@ -192,7 +193,7 @@ import kotlinx.coroutines.delay
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
-                        modifier=Modifier.height(48.dp).testTag("player-timeline").focusRequester(timelineFocus).onFocusChanged {if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
+                        modifier=Modifier.height(48.dp).testTag("player-timeline").focusRequester(timelineFocus).onFocusChanged {timelineFocused=it.isFocused;if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
                             val down=event.type==KeyEventType.KeyDown
                             when(event.nativeKeyEvent.keyCode) {
                                 AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT -> {
@@ -204,13 +205,19 @@ import kotlinx.coroutines.delay
                                 AndroidKey.KEYCODE_DPAD_DOWN -> {if(down) {remote.cancelSeek();playFocus.requestFocus()};true}
                                 else -> false
                             }
-                        }.tvPlayerFocus(!modal),thumb={},track={
+                        },thumb={},track={
                             Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
                                 val y=size.height/2
                                 val x=size.width*(shown.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
-                                drawLine(Color(0xFF78818A),Offset(0f,y),Offset(size.width,y),2.dp.toPx(),StrokeCap.Round)
-                                drawLine(TvPlayerLime,Offset(0f,y),Offset(x,y),2.dp.toPx(),StrokeCap.Round)
-                                drawCircle(TvPlayerLime,3.5.dp.toPx(),Offset(x,y))
+                                val focused=timelineFocused&&!modal
+                                val thickness=(if(focused)3.dp else 2.dp).toPx()
+                                drawLine(Color(0xFF78818A),Offset(0f,y),Offset(size.width,y),thickness,StrokeCap.Round)
+                                drawLine(TvPlayerLime,Offset(0f,y),Offset(x,y),thickness,StrokeCap.Round)
+                                if(focused) {
+                                    drawCircle(Color(0xFF101722),7.5.dp.toPx(),Offset(x,y))
+                                    drawCircle(Color(0xFFF0F2EC),7.5.dp.toPx(),Offset(x,y),style=Stroke(1.5.dp.toPx()))
+                                }
+                                drawCircle(TvPlayerLime,(if(focused)4.5.dp else 3.5.dp).toPx(),Offset(x,y))
                             })
                         })
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Text(playerTime(shown),fontSize=12.sp);Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF0F2EC))}
