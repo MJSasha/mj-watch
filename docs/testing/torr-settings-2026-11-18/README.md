@@ -1,6 +1,6 @@
 # TorrServer settings and viewing capacity
 
-Release candidate 0.9.11 / server 0.1.8, 2026-11-18.
+Published 0.9.11 / server 0.1.8, 2026-11-18.
 
 ## Evidence and limits
 
@@ -25,3 +25,9 @@ Adjacent recommendation/maximum tiles expand to the same row height, including w
 No settings were applied over SSH to a live server. These checks do not measure throughput, OOM behaviour or real concurrent video decoding. RAM/disk limits remain conservative snapshots and are validated again by root control when allocating cache.
 
 CI release preparation: the first TV run timed out while an existing card-height test waited for a second Room instance's invalidation. Both cards are now seeded before activity launch, preserving the height assertion. A retry failed before tests with missing cached Maven artifacts; runtime jobs now refresh dependency metadata. No test was disabled or assertion relaxed.
+
+## Published release
+
+[0.9.11 / Latest / test-136](https://github.com/MJSasha/mj-watch/releases/tag/test-136), versionCode 1136, source `b9ee6ac931fd69752f9170d56a0f8a6fd1650853`. [CI](https://github.com/MJSasha/mj-watch/actions/runs/44383905268) passed build, mobile runtime, TV runtime and publication. The final TV run completed 68 app tests (14 fixture-dependent skips) and 23 player tests without failures.
+
+Published APKs and server supply were independently downloaded. Sizes, GitHub digests, update.json and SHA256SUMS matched; both APKs have the existing signing certificate, expected package/version and no debuggable flag. Server 0.1.8's manifest signature and all bundled file hashes passed; its signing key matches previous releases. Both APKs embed the same verified supply. See [release-verification.json](release-verification.json).

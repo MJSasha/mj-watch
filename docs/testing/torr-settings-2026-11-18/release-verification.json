@@ -1,0 +1,29 @@
+{
+  "release": "https://github.com/MJSasha/mj-watch/releases/tag/test-136",
+  "commit": "b9ee6ac931fd69752f9170d56a0f8a6fd1650853",
+  "packages": {
+    "mobile": {
+      "packageName": "dev.mjwatch.mobile",
+      "versionName": "0.9.11",
+      "versionCode": 1136,
+      "sha256": "e1e2ee7d4ff648fa052728078102c0284f4ef67381994d96dc783b545ba9f4b9",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    },
+    "tv": {
+      "packageName": "dev.mjwatch.tv",
+      "versionName": "0.9.11",
+      "versionCode": 1136,
+      "sha256": "a6fa5344a7722a1282b305adac64156d452a93aa9aac57aff92e7708eb3009f3",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    }
+  },
+  "server": {
+    "version": "0.1.8",
+    "signatureVerified": true,
+    "previousSigningKeyPreserved": true,
+    "keySha256": "84f4b89e1ee3057861847812ffb8c450e2d6c69a2bcf11535302a3494aeac8a6"
+  },
+  "verified": true
+}
