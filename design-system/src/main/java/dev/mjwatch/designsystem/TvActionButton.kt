@@ -46,7 +46,7 @@ internal val TvFocusClearance=6.dp
     // TV Material 1.0.1 adds an unavoidable disabled-content alpha. Own the disabled
     // semantics and activation guard so loading stays legible and retains D-pad focus.
     Button(onClick={if(!blocked)onClick()},interactionSource=source,
-        modifier=modifier.padding(TvFocusClearance).heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
+        modifier=Modifier.padding(TvFocusClearance).then(modifier).heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
             if(blocked) disabled()
             if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
         },
