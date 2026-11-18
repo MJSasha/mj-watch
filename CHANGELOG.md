@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.8
+
+- Keep TV carousel focus on a stable leading line and restore the last focused card when re-entering a row. Preserve the featured title when returning from details.
+- Reserve space for TV focus borders inside scrolling layouts, draw custom TV row outlines inside their bounds, and convert scroll clearance from dp to physical pixels.
+- Add remote-navigation and viewport-edge focus regressions.
+
 ## 0.9.4
 
 - Delete account devices and their sessions completely, including revoked devices. Deduplicate repeated sign-ins by account-scoped installation identity, preserving distinct devices with matching names; bundle server 0.1.6 (#36). Rotate session tokens atomically during concurrent stream/device writes.
