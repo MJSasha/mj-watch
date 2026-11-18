@@ -1,0 +1,24 @@
+{
+  "version": "0.9.2",
+  "versionCode": 1094,
+  "release": "https://github.com/MJSasha/mj-watch/releases/tag/test-94",
+  "source": "eea56371df12d2e4af1fb32a161c9e83edebcbc5",
+  "checks": [
+    {
+      "platform": "mobile",
+      "sha256": "31540b08bd4945b92577ee21bac2c3e91d4775aa7a24106a872b9cca636817d9",
+      "size": 80409794,
+      "package": "package: name='dev.mjwatch.mobile' versionCode='1094' versionName='0.9.2' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    },
+    {
+      "platform": "tv",
+      "sha256": "776eae5bd919e551ff1f464d02eb86d3e00512bbdf16c22c4e9f0907a1c92d44",
+      "size": 80335898,
+      "package": "package: name='dev.mjwatch.tv' versionCode='1094' versionName='0.9.2' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    }
+  ]
+}
