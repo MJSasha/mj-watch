@@ -177,7 +177,8 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
-    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri).setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
+    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri)
+        .apply {if(path.substringAfterLast('.').equals("mkv",ignoreCase=true))setMimeType(MimeTypes.VIDEO_MATROSKA)}.setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
         .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
     private fun switchEpisode(index:Int) {
         val episode=episodes.getOrNull(index) ?: return

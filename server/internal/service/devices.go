@@ -34,7 +34,8 @@ func (s *Server) renameDevice(w http.ResponseWriter, r *http.Request, id string,
 }
 func (s *Server) deviceProfile(w http.ResponseWriter, r *http.Request, i identity) {
 	var v struct {
-		Type string `json:"type"`
+		Type         string `json:"type"`
+		Installation string `json:"installationId"`
 	}
 	if !decodeLimit(w, r, &v, 1024) {
 		return
@@ -43,8 +44,33 @@ func (s *Server) deviceProfile(w http.ResponseWriter, r *http.Request, i identit
 		fail(w, 400, "device_type")
 		return
 	}
-	_, err := s.DB.Exec("INSERT INTO device_profiles(device_id,type) VALUES(?,?) ON CONFLICT(device_id) DO UPDATE SET type=excluded.type", i.Device, v.Type)
+	if v.Installation != "" && (len(v.Installation) < 16 || len(v.Installation) > 128 || strings.ContainsFunc(v.Installation, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' })) {
+		fail(w, 400, "installation_id")
+		return
+	}
+	tx, err := s.DB.Begin()
 	if err != nil {
+		fail(w, 503, "database_unavailable")
+		return
+	}
+	defer tx.Rollback()
+	if v.Installation != "" {
+		// Identify an installation, never merge distinct devices sharing a model or alias.
+		_, err = tx.Exec("DELETE FROM devices WHERE user_id=? AND id<>? AND id IN (SELECT device_id FROM device_installations WHERE user_id=? AND installation=?)", i.User, i.Device, i.User, v.Installation)
+		if err == nil {
+			_, err = tx.Exec("INSERT INTO device_installations VALUES(?,?,?) ON CONFLICT(user_id,installation) DO UPDATE SET device_id=excluded.device_id", i.User, v.Installation, i.Device)
+		}
+		if err != nil {
+			fail(w, 503, "database_unavailable")
+			return
+		}
+	}
+	_, err = tx.Exec("INSERT INTO device_profiles(device_id,type) VALUES(?,?) ON CONFLICT(device_id) DO UPDATE SET type=excluded.type", i.Device, v.Type)
+	if err != nil {
+		fail(w, 503, "database_unavailable")
+		return
+	}
+	if err = tx.Commit(); err != nil {
 		fail(w, 503, "database_unavailable")
 		return
 	}

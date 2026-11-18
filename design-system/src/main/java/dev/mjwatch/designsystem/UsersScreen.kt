@@ -110,7 +110,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text(device.name,fontWeight=FontWeight.Medium)
                             Text(if(device.revoked)"Доступ отозван" else "Последняя активность: ${activityTime(device.lastSeen)}")
-                            DangerAction("Отключить ${device.name}",tv,enabled=!current.busy&&!device.revoked){confirm("Отключить ${device.name}?","Пользователю ${user.name} потребуется снова войти на этом устройстве.","Отключить"){controller.revokeDevices(user.id,device.id)}}
+                            DangerAction("Удалить устройство ${device.name}",tv,enabled=!current.busy){confirm("Удалить ${device.name}?","Устройство исчезнет из списка, доступ будет отозван. Пользователю ${user.name} потребуется снова войти.","Удалить устройство"){controller.revokeDevices(user.id,device.id)}}
                         }
                     }}
                     Action("Обновить устройства",tv,secondary=true,enabled=!current.busy){controller.loadDevices(user.id)}

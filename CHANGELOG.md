@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.4
+
+- Delete account devices and their sessions completely, including revoked devices. Deduplicate repeated sign-ins by account-scoped installation identity, preserving distinct devices with matching names; bundle server 0.1.6 (#36). Rotate session tokens atomically during concurrent stream/device writes.
+- Align continue-watching cards, stretch posters to the text height, simplify the history dialog and account screen, normalize phone/TV launch buttons, and make the home server shortcut show live connection state and open server settings. Reduce player scrims (#37).
+- Explicitly select Matroska for MKV paths, including extensionless managed stream URLs; add real H.264/AAC MKV first-frame, audio and seek coverage (#38).
+- Rewrite the README around features and visible screenshots; add the repository description (#41).
+- Animate double-tap seeking on the touched side with a fading ripple and directional arrows, retaining seek bounds and hidden controls (#42).
+
 ## 0.9.2
 
 - Restore starting new videos and resuming saved playback on phones/tablets independently of a paired or unavailable TV. Keep local and TV launch actions separate.

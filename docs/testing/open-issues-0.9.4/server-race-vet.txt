@@ -1,0 +1,4 @@
+?   	dev.mjwatch/server/cmd/fixture	[no test files]
+ok  	dev.mjwatch/server/cmd/mjwatch	(cached)
+ok  	dev.mjwatch/server/internal/control	(cached)
+ok  	dev.mjwatch/server/internal/service	25.320s

@@ -1,0 +1,14 @@
+--- FAIL: TestConcurrentDeviceRefreshIsAtomic (0.56s)
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+--- FAIL: TestConcurrentDeviceRefreshIsAtomic (0.55s)
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+--- FAIL: TestConcurrentDeviceRefreshIsAtomic (0.55s)
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+    devices_test.go:106: concurrent refresh: 503 map[code:database_unavailable]
+FAIL
+FAIL	dev.mjwatch/server/internal/service	2.297s
+FAIL

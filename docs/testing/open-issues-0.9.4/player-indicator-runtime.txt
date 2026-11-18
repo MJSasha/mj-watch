@@ -1,0 +1,8 @@
+
+dev.mjwatch.mobile.MatroskaPlaybackTest:..
+dev.mjwatch.mobile.MobilePlayerDesignTest:.
+dev.mjwatch.mobile.OpenIssuesUiTest:..
+
+Time: 18.001
+
+OK (5 tests)

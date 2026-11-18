@@ -30,7 +30,7 @@ type identity struct {
 	Epoch                       int64
 }
 
-var Version = "0.1.5"
+var Version = "0.1.6"
 
 type Server struct {
 	passwordSlots chan struct{}
@@ -161,7 +161,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "me" && r.Method == "GET":
 		var name string
 		s.DB.QueryRow("SELECT name FROM users WHERE id=?", i.User).Scan(&name)
-		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1})
+		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "deviceInstallationIdentity": true})
 	case (path == "capabilities" || path == "config") && r.Method == "GET":
 		respond(w, 200, map[string]any{"apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "tmdb": s.publicTMDB(), "sync": true})
 	case path == "auth/logout" && r.Method == "POST":
@@ -179,7 +179,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "devices" && r.Method == "GET":
 		s.devices(w, i.User)
 	case strings.HasPrefix(path, "devices/") && r.Method == "DELETE":
-		result, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
+		result, err := s.DB.Exec("DELETE FROM devices WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
 		if err != nil {
 			fail(w, 503, "database_unavailable")
 			return
@@ -267,25 +267,17 @@ func (s *Server) auth(w http.ResponseWriter, r *http.Request, path string) bool 
 		if !decode(w, r, &v) {
 			return true
 		}
-		tx, e := s.DB.Begin()
-		if e != nil {
-			fail(w, 503, "database_unavailable")
-			return true
-		}
-		defer tx.Rollback()
-		var sid string
-		e = tx.QueryRow("SELECT s.id FROM sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id WHERE s.refresh=? AND s.refresh_exp>? AND d.revoked=0 AND u.blocked=0", Hash(v.RefreshToken), time.Now().Unix()).Scan(&sid)
-		if e != nil {
-			fail(w, 401, "login_required")
-			return true
-		}
 		a, b := Token(), Token()
-		_, e = tx.Exec("UPDATE sessions SET access=?,refresh=?,access_exp=?,refresh_exp=? WHERE id=?", Hash(a), Hash(b), time.Now().Unix()+900, time.Now().Unix()+30*86400, sid)
-		if e == nil {
-			e = tx.Commit()
-		}
+		now := time.Now().Unix()
+		// Reserve the write before checking the token; a deferred read/write transaction
+		// can fail with SQLITE_BUSY_SNAPSHOT while another device or stream commits.
+		result, e := s.DB.Exec(`UPDATE sessions SET access=?,refresh=?,access_exp=?,refresh_exp=?
+            WHERE refresh=? AND refresh_exp>? AND device_id IN
+            (SELECT d.id FROM devices d JOIN users u ON u.id=d.user_id WHERE d.revoked=0 AND u.blocked=0)`, Hash(a), Hash(b), now+900, now+30*86400, Hash(v.RefreshToken), now)
 		if e != nil {
 			fail(w, 503, "database_unavailable")
+		} else if n, _ := result.RowsAffected(); n != 1 {
+			fail(w, 401, "login_required")
 		} else {
 			respond(w, 200, map[string]any{"accessToken": a, "refreshToken": b, "expiresIn": 900})
 		}

@@ -56,12 +56,12 @@ import org.json.JSONObject
             ) {Icon(Icons.Outlined.QrCodeScanner,"Сканировать QR")}
         }
         if(managed.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-        OperationMessage(managed.message)
+        OperationMessage(managed.message.takeUnless {s.page=="managed-account"&&it==managed.syncMessage}.orEmpty())
         when(s.page) {
             "managed-devices"->{
                 val devices=managed.data?.takeIf {it.has("devices")}?.let {managedDevices(it)}
                 if(devices?.isEmpty()==true){Text("Устройств пока нет");Text("Устройства появятся после первого входа.")}
-                devices?.forEach {device->key(device.id){DeviceRow(device,device.id==managed.me?.optString("deviceId"),s,model,tv){confirm="Отключить ${device.name}? Для просмотра на нём потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}}}
+                devices?.forEach {device->key(device.id){DeviceRow(device,device.id==managed.me?.optString("deviceId"),s,model,tv){confirm="Удалить ${device.name} из списка? Доступ будет отозван. Для просмотра потребуется повторный вход." to {controller.action("devices/${device.id}","DELETE",reload="devices")}}}}
                 Action("Обновить устройства",tv,secondary=true,enabled=!managed.busy){controller.load("devices")}
             }
             "managed-pairing"->{
@@ -101,9 +101,19 @@ import org.json.JSONObject
                 }
             }
             else->{
-                Text(s.config.managedUrl)
-                Text(managed.syncMessage.ifBlank {"Проверяем синхронизацию"},modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
-                Action("Синхронизировать",tv,enabled=!managed.busy){controller.syncNow()}
+                SettingsGroup(tv) {
+                    Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Icon(if(managed.syncedAt>0)Icons.Outlined.CloudDone else Icons.Outlined.CloudSync,null,tint=if(managed.syncedAt>0)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(Modifier.weight(1f)) {
+                                Text("Синхронизация",style=MaterialTheme.typography.titleMedium)
+                                Text(managed.syncMessage.ifBlank {"Проверяем синхронизацию"},style=MaterialTheme.typography.bodySmall,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+                            }
+                            IconButton(enabled=!managed.busy,onClick={controller.syncNow()},modifier=Modifier.size(48.dp).tvFocusRing(tv)){Icon(Icons.Outlined.Sync,"Синхронизировать")}
+                        }
+                        Text(s.config.managedUrl,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 SettingsGroup(tv) {
                     SettingsActionRow(Icons.Outlined.Devices,"Устройства","Просмотр и отключение устройств",tv){model.page("managed-devices")}
                     if(scanQr==null) {SettingsDivider();SettingsActionRow(Icons.Outlined.DevicesOther,"Подключить устройство","По коду подключения",tv){model.page("managed-pairing")}}
@@ -121,7 +131,7 @@ import org.json.JSONObject
                     Action("Использовать эту",tv){confirm="Отправить изменения этого устройства вместо актуальной серверной версии?" to {controller.resolve(pending,true)}}
                 }
                 var advanced by rememberSaveable {mutableStateOf(false)}
-                Action("Дополнительные действия",tv,secondary=true){advanced=!advanced}
+                SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.MoreHoriz,"Дополнительные действия","Импорт прежней истории",tv){advanced=!advanced}}
                 if(advanced) {
                     var count by remember {mutableIntStateOf(0)}
                     LaunchedEffect(s.config.scope){count=model.dao.library().first().count {it.openedAt>0}+model.dao.progress().first().size}

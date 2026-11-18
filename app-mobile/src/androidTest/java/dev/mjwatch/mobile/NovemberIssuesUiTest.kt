@@ -62,9 +62,9 @@ class NovemberIssuesUiTest {
         compose.onNodeWithText("Сезон 2 · Серия 3").assertIsDisplayed()
         capture("history-episode")
         compose.onNodeWithContentDescription("Действия с «Тест истории»").performClick()
-        compose.onNodeWithText("Удалить из истории").assertIsDisplayed()
+        compose.onNodeWithText("Удалить").assertIsDisplayed()
         capture("history-actions")
-        compose.onNodeWithText("Удалить из истории").performClick()
+        compose.onNodeWithText("Удалить").performClick()
         compose.waitUntil(10000) {m.scopedLibrary.value.entries.isEmpty()}
         compose.onNodeWithText("Пока пусто").assertExists()
     }

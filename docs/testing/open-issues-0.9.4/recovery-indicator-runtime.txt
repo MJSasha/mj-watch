@@ -1,0 +1,7 @@
+
+dev.mjwatch.mobile.BufferingUiTest:..
+dev.mjwatch.mobile.OpenIssuesUiTest:..
+
+Time: 26.186
+
+OK (4 tests)

@@ -1,0 +1,25 @@
+?   	dev.mjwatch/server/cmd/fixture	[no test files]
+ok  	dev.mjwatch/server/cmd/mjwatch	(cached)
+ok  	dev.mjwatch/server/internal/control	(cached)
+ok  	dev.mjwatch/server/internal/service	27.928s
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.028s
+
+OK
+<string>:59: SyntaxWarning: invalid escape sequence '\.'
+<string>:87: SyntaxWarning: invalid escape sequence '\.'
+....<string>:59: SyntaxWarning: invalid escape sequence '\.'
+<string>:87: SyntaxWarning: invalid escape sequence '\.'
+./var/folders/90/931lty_d6fx2jz1d22ynfc640000gn/T/tmp7cczkpfs/maintenance.py:59: SyntaxWarning: invalid escape sequence '\.'
+  if not re.fullmatch('[A-Za-z0-9_-]+\.mjwb',archive):raise RuntimeError('archive_id')
+/var/folders/90/931lty_d6fx2jz1d22ynfc640000gn/T/tmp7cczkpfs/maintenance.py:87: SyntaxWarning: invalid escape sequence '\.'
+  if not re.fullmatch('[0-9]+\.[0-9]+\.[0-9]+',version) or manifest.get('schemaVersion')!=1:raise RuntimeError('incompatible_release')
+.
+----------------------------------------------------------------------
+Ran 6 tests in 0.788s
+
+OK
+<unknown>:59: SyntaxWarning: invalid escape sequence '\.'
+<unknown>:87: SyntaxWarning: invalid escape sequence '\.'
+Packaging syntax verified

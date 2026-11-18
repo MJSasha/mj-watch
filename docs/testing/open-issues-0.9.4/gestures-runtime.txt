@@ -1,0 +1,6 @@
+
+dev.mjwatch.playback.MobileGesturesTest:.
+
+Time: 2.206
+
+OK (1 test)
