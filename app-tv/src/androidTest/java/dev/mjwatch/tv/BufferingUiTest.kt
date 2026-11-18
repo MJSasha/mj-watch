@@ -22,6 +22,10 @@ import java.util.concurrent.TimeUnit
 class BufferingUiTest {
     private val server=MockWebServer()
     @get:Rule(order=0) val seed=object:org.junit.rules.ExternalResource(){override fun before()=runBlocking {
+        server.dispatcher=object:okhttp3.mockwebserver.QueueDispatcher() {
+            override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse =
+                if(request.path=="/echo")MockResponse().setBody("MatriX.145.2") else super.dispatch(request)
+        }
         server.start()
         val c=InstrumentationRegistry.getInstrumentation().targetContext
         c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
