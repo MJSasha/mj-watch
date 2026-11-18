@@ -1,0 +1,328 @@
+> Task :core:preBuild UP-TO-DATE
+> Task :core:preDebugBuild UP-TO-DATE
+> Task :core:writeDebugAarMetadata UP-TO-DATE
+> Task :design-system:preBuild UP-TO-DATE
+> Task :design-system:preDebugBuild UP-TO-DATE
+> Task :playback:preBuild UP-TO-DATE
+> Task :playback:preDebugBuild UP-TO-DATE
+> Task :playback:writeDebugAarMetadata UP-TO-DATE
+> Task :design-system:checkDebugAarMetadata UP-TO-DATE
+> Task :design-system:mergeDebugJniLibFolders UP-TO-DATE
+> Task :design-system:mergeDebugNativeLibs NO-SOURCE
+> Task :design-system:stripDebugDebugSymbols NO-SOURCE
+> Task :design-system:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:generateDebugResValues UP-TO-DATE
+> Task :core:generateDebugResources UP-TO-DATE
+> Task :core:packageDebugResources UP-TO-DATE
+> Task :core:processDebugNavigationResources UP-TO-DATE
+> Task :core:parseDebugLocalResources UP-TO-DATE
+> Task :core:generateDebugRFile UP-TO-DATE
+> Task :core:kspDebugKotlin UP-TO-DATE
+> Task :core:compileDebugKotlin UP-TO-DATE
+> Task :core:javaPreCompileDebug UP-TO-DATE
+> Task :core:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :design-system:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :design-system:generateDebugResValues UP-TO-DATE
+> Task :design-system:generateDebugResources UP-TO-DATE
+> Task :design-system:packageDebugResources UP-TO-DATE
+> Task :design-system:processDebugNavigationResources UP-TO-DATE
+> Task :design-system:parseDebugLocalResources UP-TO-DATE
+> Task :design-system:generateDebugRFile UP-TO-DATE
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:generateDebugResValues UP-TO-DATE
+> Task :playback:generateDebugResources UP-TO-DATE
+> Task :playback:packageDebugResources UP-TO-DATE
+> Task :playback:processDebugNavigationResources UP-TO-DATE
+> Task :playback:parseDebugLocalResources UP-TO-DATE
+> Task :playback:generateDebugRFile UP-TO-DATE
+> Task :playback:compileDebugKotlin UP-TO-DATE
+> Task :playback:javaPreCompileDebug UP-TO-DATE
+> Task :playback:compileDebugJavaWithJavac NO-SOURCE
+> Task :playback:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :design-system:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :design-system:mergeDebugShaders UP-TO-DATE
+> Task :design-system:compileDebugShaders NO-SOURCE
+> Task :design-system:generateDebugAssets UP-TO-DATE
+> Task :design-system:mergeDebugAssets UP-TO-DATE
+> Task :design-system:javaPreCompileDebug UP-TO-DATE
+> Task :design-system:prepareDebugArtProfile UP-TO-DATE
+> Task :design-system:prepareLintJarForPublish UP-TO-DATE
+> Task :design-system:processDebugManifest UP-TO-DATE
+> Task :design-system:writeDebugAarMetadata UP-TO-DATE
+> Task :playback:checkDebugAarMetadata UP-TO-DATE
+> Task :playback:mergeDebugJniLibFolders UP-TO-DATE
+> Task :playback:mergeDebugNativeLibs NO-SOURCE
+> Task :playback:stripDebugDebugSymbols NO-SOURCE
+> Task :playback:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :playback:extractDebugAnnotations UP-TO-DATE
+> Task :playback:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :playback:mergeDebugShaders UP-TO-DATE
+> Task :playback:compileDebugShaders NO-SOURCE
+> Task :playback:generateDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugAssets UP-TO-DATE
+> Task :playback:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :playback:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :playback:prepareDebugArtProfile UP-TO-DATE
+> Task :playback:prepareLintJarForPublish UP-TO-DATE
+> Task :playback:processDebugManifest UP-TO-DATE
+> Task :playback:processDebugJavaRes UP-TO-DATE
+> Task :playback:mergeDebugJavaResource UP-TO-DATE
+> Task :playback:syncDebugLibJars UP-TO-DATE
+> Task :playback:bundleDebugLocalLintAar UP-TO-DATE
+> Task :core:checkDebugAarMetadata UP-TO-DATE
+> Task :core:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:mergeDebugNativeLibs NO-SOURCE
+> Task :core:stripDebugDebugSymbols NO-SOURCE
+> Task :core:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :core:extractDebugAnnotations UP-TO-DATE
+> Task :core:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :core:mergeDebugShaders UP-TO-DATE
+> Task :core:compileDebugShaders NO-SOURCE
+> Task :core:generateDebugAssets UP-TO-DATE
+> Task :core:mergeDebugAssets UP-TO-DATE
+> Task :core:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :core:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :core:prepareDebugArtProfile UP-TO-DATE
+> Task :core:prepareLintJarForPublish UP-TO-DATE
+> Task :core:processDebugManifest UP-TO-DATE
+> Task :core:processDebugJavaRes UP-TO-DATE
+> Task :core:mergeDebugJavaResource UP-TO-DATE
+> Task :core:syncDebugLibJars UP-TO-DATE
+> Task :core:bundleDebugLocalLintAar UP-TO-DATE
+> Task :app-mobile:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app-mobile:preBuild UP-TO-DATE
+> Task :app-mobile:preDebugBuild UP-TO-DATE
+> Task :app-mobile:checkDebugAarMetadata UP-TO-DATE
+> Task :app-mobile:processDebugNavigationResources UP-TO-DATE
+> Task :app-mobile:compileDebugNavigationResources UP-TO-DATE
+> Task :app-mobile:generateDebugResValues UP-TO-DATE
+> Task :app-mobile:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app-mobile:generateDebugResources UP-TO-DATE
+> Task :app-mobile:mergeDebugResources UP-TO-DATE
+> Task :app-mobile:packageDebugResources UP-TO-DATE
+> Task :app-mobile:parseDebugLocalResources UP-TO-DATE
+> Task :app-mobile:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app-mobile:extractDeepLinksDebug UP-TO-DATE
+> Task :core:extractDeepLinksDebug UP-TO-DATE
+> Task :design-system:extractDeepLinksDebug UP-TO-DATE
+> Task :playback:extractDeepLinksDebug UP-TO-DATE
+> Task :app-mobile:processDebugMainManifest UP-TO-DATE
+> Task :app-mobile:processDebugManifest UP-TO-DATE
+> Task :app-mobile:processDebugManifestForPackage UP-TO-DATE
+> Task :core:compileDebugLibraryResources UP-TO-DATE
+> Task :design-system:compileDebugLibraryResources UP-TO-DATE
+> Task :playback:compileDebugLibraryResources UP-TO-DATE
+> Task :app-mobile:processDebugResources UP-TO-DATE
+> Task :app-mobile:javaPreCompileDebug UP-TO-DATE
+> Task :app-mobile:preDebugAndroidTestBuild SKIPPED
+> Task :app-mobile:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:createFullJarDebug UP-TO-DATE
+> Task :core:writeDebugLintModelMetadata UP-TO-DATE
+> Task :design-system:writeDebugLintModelMetadata UP-TO-DATE
+> Task :playback:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :playback:createFullJarDebug UP-TO-DATE
+> Task :playback:writeDebugLintModelMetadata UP-TO-DATE
+> Task :app-mobile:extractProguardFiles UP-TO-DATE
+> Task :core:extractProguardFiles UP-TO-DATE
+> Task :core:generateDebugLintModel UP-TO-DATE
+> Task :design-system:extractProguardFiles UP-TO-DATE
+> Task :playback:extractProguardFiles UP-TO-DATE
+> Task :playback:generateDebugLintModel UP-TO-DATE
+> Task :app-mobile:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:lintAnalyzeDebug UP-TO-DATE
+> Task :playback:lintAnalyzeDebug UP-TO-DATE
+> Task :core:preDebugAndroidTestBuild UP-TO-DATE
+> Task :core:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :core:generateDebugAndroidTestLintModel UP-TO-DATE
+> Task :core:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:generateDebugUnitTestLintModel UP-TO-DATE
+> Task :core:lintAnalyzeDebugAndroidTest UP-TO-DATE
+> Task :core:lintAnalyzeDebugUnitTest UP-TO-DATE
+> Task :design-system:preDebugAndroidTestBuild UP-TO-DATE
+> Task :design-system:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :design-system:preDebugUnitTestBuild UP-TO-DATE
+> Task :playback:preDebugAndroidTestBuild UP-TO-DATE
+> Task :playback:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :playback:generateDebugAndroidTestLintModel UP-TO-DATE
+> Task :playback:preDebugUnitTestBuild UP-TO-DATE
+> Task :playback:generateDebugUnitTestLintModel UP-TO-DATE
+> Task :playback:lintAnalyzeDebugAndroidTest UP-TO-DATE
+> Task :playback:lintAnalyzeDebugUnitTest UP-TO-DATE
+> Task :app-tv:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app-tv:preBuild UP-TO-DATE
+> Task :app-tv:preDebugBuild UP-TO-DATE
+> Task :app-tv:checkDebugAarMetadata UP-TO-DATE
+> Task :app-tv:processDebugNavigationResources UP-TO-DATE
+> Task :app-tv:compileDebugNavigationResources UP-TO-DATE
+> Task :app-tv:generateDebugResValues UP-TO-DATE
+> Task :app-tv:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app-tv:generateDebugResources UP-TO-DATE
+> Task :app-tv:mergeDebugResources UP-TO-DATE
+> Task :app-tv:packageDebugResources UP-TO-DATE
+> Task :app-tv:parseDebugLocalResources UP-TO-DATE
+> Task :app-tv:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app-tv:extractDeepLinksDebug UP-TO-DATE
+> Task :app-tv:processDebugMainManifest UP-TO-DATE
+> Task :app-tv:processDebugManifest UP-TO-DATE
+> Task :app-tv:processDebugManifestForPackage UP-TO-DATE
+> Task :app-tv:processDebugResources UP-TO-DATE
+> Task :app-tv:javaPreCompileDebug UP-TO-DATE
+> Task :app-tv:preDebugAndroidTestBuild SKIPPED
+> Task :app-tv:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app-tv:extractProguardFiles UP-TO-DATE
+> Task :app-tv:preDebugUnitTestBuild UP-TO-DATE
+> Task :app-mobile:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app-mobile:mergeDebugShaders UP-TO-DATE
+> Task :app-mobile:compileDebugShaders NO-SOURCE
+> Task :app-mobile:generateDebugAssets UP-TO-DATE
+> Task :app-mobile:mergeDebugAssets UP-TO-DATE
+> Task :app-mobile:compressDebugAssets UP-TO-DATE
+> Task :app-mobile:desugarDebugFileDependencies UP-TO-DATE
+> Task :app-mobile:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app-mobile:mergeExtDexDebug UP-TO-DATE
+> Task :playback:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :core:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :app-mobile:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :design-system:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :playback:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app-mobile:mergeDebugNativeLibs UP-TO-DATE
+> Task :app-mobile:stripDebugDebugSymbols UP-TO-DATE
+> Task :app-mobile:validateSigningDebug UP-TO-DATE
+> Task :app-mobile:writeDebugAppMetadata UP-TO-DATE
+> Task :app-mobile:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app-tv:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app-tv:mergeDebugShaders UP-TO-DATE
+> Task :app-tv:compileDebugShaders NO-SOURCE
+> Task :app-tv:generateDebugAssets UP-TO-DATE
+> Task :app-tv:mergeDebugAssets UP-TO-DATE
+> Task :app-tv:compressDebugAssets UP-TO-DATE
+> Task :app-tv:desugarDebugFileDependencies UP-TO-DATE
+> Task :app-tv:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app-tv:mergeExtDexDebug UP-TO-DATE
+> Task :app-tv:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app-tv:mergeDebugNativeLibs UP-TO-DATE
+> Task :app-tv:stripDebugDebugSymbols UP-TO-DATE
+> Task :app-tv:validateSigningDebug UP-TO-DATE
+> Task :app-tv:writeDebugAppMetadata UP-TO-DATE
+> Task :app-tv:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app-mobile:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :app-mobile:processDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :app-mobile:compileDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :app-mobile:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :app-mobile:generateDebugAndroidTestResources UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :app-mobile:processDebugAndroidTestManifest UP-TO-DATE
+> Task :app-mobile:processDebugAndroidTestResources UP-TO-DATE
+> Task :app-mobile:javaPreCompileDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestShaders UP-TO-DATE
+> Task :app-mobile:compileDebugAndroidTestShaders NO-SOURCE
+> Task :app-mobile:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestAssets UP-TO-DATE
+> Task :app-mobile:compressDebugAndroidTestAssets UP-TO-DATE
+> Task :app-mobile:desugarDebugAndroidTestFileDependencies UP-TO-DATE
+> Task :app-mobile:checkDebugAndroidTestDuplicateClasses UP-TO-DATE
+> Task :app-mobile:mergeExtDexDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestJniLibFolders UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestNativeLibs NO-SOURCE
+> Task :app-mobile:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :app-mobile:validateSigningDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:writeDebugAndroidTestSigningConfigVersions UP-TO-DATE
+
+> Task :design-system:compileDebugKotlin
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:165:209 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:419:252 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:449:98 Unnecessary safe call on a non-null receiver of type 'Metadata'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:570:212 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:570:329 Unnecessary safe call on a non-null receiver of type 'Release'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:580:233 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:157 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:204 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:405 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:511 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Release'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:661 Unnecessary safe call on a non-null receiver of type 'Release'.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:744:155 'val Icons.Outlined.ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowForward.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:785:110 'val Icons.Outlined.ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ExitToApp.
+w: file:///private/tmp/mjwatch-mobile-playback-fix/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:809:109 'val Icons.Outlined.ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ExitToApp.
+
+> Task :design-system:extractDebugAnnotations
+> Task :design-system:compileDebugJavaWithJavac NO-SOURCE
+> Task :design-system:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :design-system:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :design-system:processDebugJavaRes UP-TO-DATE
+> Task :design-system:mergeDebugJavaResource UP-TO-DATE
+> Task :design-system:syncDebugLibJars
+> Task :design-system:bundleDebugLocalLintAar
+> Task :design-system:bundleLibCompileToJarDebug
+> Task :app-mobile:compileDebugKotlin UP-TO-DATE
+> Task :app-mobile:compileDebugJavaWithJavac NO-SOURCE
+> Task :app-mobile:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :design-system:generateDebugLintModel
+> Task :design-system:bundleLibRuntimeToJarDebug
+> Task :design-system:createFullJarDebug
+> Task :app-mobile:generateDebugAndroidTestLintModel
+> Task :app-mobile:generateDebugLintReportModel
+> Task :app-mobile:generateDebugUnitTestLintModel
+> Task :app-mobile:lintAnalyzeDebugAndroidTest
+> Task :app-mobile:lintAnalyzeDebugUnitTest
+> Task :design-system:generateDebugAndroidTestLintModel
+> Task :design-system:generateDebugUnitTestLintModel
+> Task :design-system:lintAnalyzeDebugAndroidTest
+> Task :design-system:lintAnalyzeDebugUnitTest
+> Task :app-tv:compileDebugKotlin UP-TO-DATE
+> Task :app-tv:compileDebugJavaWithJavac NO-SOURCE
+> Task :app-tv:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app-tv:generateDebugAndroidTestLintModel
+> Task :app-tv:generateDebugLintReportModel
+> Task :app-tv:generateDebugUnitTestLintModel
+> Task :app-tv:lintAnalyzeDebugAndroidTest
+> Task :app-tv:lintAnalyzeDebugUnitTest
+> Task :app-mobile:dexBuilderDebug UP-TO-DATE
+> Task :app-mobile:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app-mobile:processDebugJavaRes UP-TO-DATE
+> Task :app-mobile:mergeDebugJavaResource UP-TO-DATE
+> Task :design-system:bundleLibRuntimeToDirDebug
+> Task :design-system:lintAnalyzeDebug
+> Task :app-mobile:lintAnalyzeDebug
+
+> Task :app-mobile:lintReportDebug
+Wrote HTML report to file:///private/tmp/mjwatch-mobile-playback-fix/app-mobile/build/reports/lint-results-debug.html
+
+> Task :app-mobile:lintDebug
+> Task :app-mobile:mergeLibDexDebug
+> Task :app-mobile:mergeProjectDexDebug UP-TO-DATE
+> Task :app-mobile:packageDebug
+> Task :app-mobile:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app-mobile:assembleDebug
+> Task :app-tv:dexBuilderDebug UP-TO-DATE
+> Task :app-tv:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app-tv:processDebugJavaRes UP-TO-DATE
+> Task :app-tv:mergeDebugJavaResource UP-TO-DATE
+> Task :app-tv:lintAnalyzeDebug
+> Task :app-tv:mergeLibDexDebug
+> Task :app-tv:mergeProjectDexDebug UP-TO-DATE
+
+> Task :app-tv:lintReportDebug
+Wrote HTML report to file:///private/tmp/mjwatch-mobile-playback-fix/app-tv/build/reports/lint-results-debug.html
+
+> Task :app-tv:lintDebug
+> Task :app-mobile:compileDebugAndroidTestKotlin UP-TO-DATE
+> Task :app-mobile:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :app-mobile:dexBuilderDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestGlobalSynthetics UP-TO-DATE
+> Task :app-mobile:processDebugAndroidTestJavaRes UP-TO-DATE
+> Task :app-mobile:mergeDebugAndroidTestJavaResource UP-TO-DATE
+> Task :app-mobile:mergeLibDexDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:mergeProjectDexDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:packageDebugAndroidTest UP-TO-DATE
+> Task :app-mobile:createDebugAndroidTestApkListingFileRedirect UP-TO-DATE
+> Task :app-mobile:assembleDebugAndroidTest UP-TO-DATE
+> Task :app-tv:packageDebug
+> Task :app-tv:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app-tv:assembleDebug
+
+BUILD SUCCESSFUL in 18s
+247 actionable tasks: 34 executed, 213 up-to-date

@@ -1,0 +1,19 @@
+
+dev.mjwatch.mobile.PlaybackAfterPairingTest:
+Error in approvingTelevisionKeepsPhonePlaybackAvailable(dev.mjwatch.mobile.PlaybackAfterPairingTest):
+java.lang.AssertionError: Assert failed: The component with TestTag = 'source-continue' is not displayed!
+	at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+	at dev.mjwatch.mobile.PlaybackAfterPairingTest.approvingTelevisionKeepsPhonePlaybackAvailable(PlaybackAfterPairingTest.kt:68)
+
+
+Time: 2.657
+There was 1 failure:
+1) approvingTelevisionKeepsPhonePlaybackAvailable(dev.mjwatch.mobile.PlaybackAfterPairingTest)
+java.lang.AssertionError: Assert failed: The component with TestTag = 'source-continue' is not displayed!
+	at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+	at dev.mjwatch.mobile.PlaybackAfterPairingTest.approvingTelevisionKeepsPhonePlaybackAvailable(PlaybackAfterPairingTest.kt:68)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

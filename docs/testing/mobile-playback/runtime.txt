@@ -1,0 +1,14 @@
+
+dev.mjwatch.mobile.PlaybackAfterPairingTest:.
+dev.mjwatch.mobile.PhonePlaybackRouteTest:..
+dev.mjwatch.mobile.SeriesResumeUiTest:...
+dev.mjwatch.mobile.VerticalFlowTest:.
+dev.mjwatch.mobile.MetadataFlowTest:.
+dev.mjwatch.mobile.JacredFlowTest:.
+dev.mjwatch.mobile.AdaptiveLayoutTest:.
+
+Time: 40.876
+
+OK (11 tests)
+
+
