@@ -43,8 +43,11 @@ ProtectHome=true
 PrivateTmp=true
 ReadWritePaths={writable}
 LimitNOFILE=65536
-StandardOutput=null
-StandardError=null
+StandardOutput=journal
+StandardError=journal
+LogNamespace=mjwatch
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
 [Install]
 WantedBy=multi-user.target
 """
@@ -132,6 +135,8 @@ def main():
   current=pathlib.Path('/opt/mjwatch/current')
   if current.exists() and not current.is_symlink():raise RuntimeError('release_path_conflict')
   temporary=pathlib.Path('/opt/mjwatch/current.next');temporary.unlink(missing_ok=True);temporary.symlink_to(release);os.replace(temporary,current)
+  journal_dir=pathlib.Path('/etc/systemd/journald@mjwatch.conf.d');journal_dir.mkdir(parents=True,exist_ok=True)
+  (journal_dir/'20-mjwatch-retention.conf').write_text('[Journal]\nStorage=persistent\nSystemMaxUse=16M\nSystemMaxFileSize=2M\nRuntimeMaxUse=8M\nRuntimeMaxFileSize=1M\nMaxRetentionSec=7day\nForwardToSyslog=no\n')
   unit('mjwatch-torrserver.service','mjwatch-torr',f"/opt/mjwatch/current/torrserver --ip 127.0.0.1 --port {plan['torrPort']} --path /var/lib/torrserver-mjwatch --httpauth",'/var/lib/torrserver-mjwatch')
   unit('mjwatch.service','mjwatch','/opt/mjwatch/current/mjwatch serve /etc/mjwatch/config.json','/var/lib/mjwatch /var/backups/mjwatch')
   for helper in ['maintenance.py','renew.py']:shutil.copyfile(UPLOAD/helper,release/helper);(release/helper).chmod(0o700)
@@ -157,6 +162,7 @@ def main():
       if attempt==29:raise
       time.sleep(1)
    settings=json.loads(torr('get'));settings.update(EnableDLNA=False,EnableBonjour=False,EnableRutorSearch=False,EnableTorznabSearch=False,TrackTimecode=False,EnableLPD=False,UseDisk=False,TorrentsSavePath="/var/lib/torrserver-mjwatch/cache",DisableUPNP=True,PeersListenPort=plan['peerPort'],CacheSize=64*1024**2)
+   if os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')<=1024**3:settings.update(ConnectionsLimit=30,PreloadCache=25)
    torr('set',settings);(ROOT/'torr-initialized').touch(mode=0o600)
   # Existing firewall policy is never flushed, enabled or disabled.
   if shutil.which('ufw') and 'Status: active' in run('ufw','status'):

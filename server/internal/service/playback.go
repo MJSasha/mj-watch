@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -44,6 +45,7 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		case s.uploadSlots <- struct{}{}:
 			defer func() { <-s.uploadSlots }()
 		default:
+			w.Header().Set("Retry-After", "5")
 			fail(w, 429, "playback_busy")
 			return
 		}
@@ -99,6 +101,7 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 			s.DB.QueryRow("SELECT COUNT(*) FROM playback_jobs j JOIN playback p ON p.id=j.handle WHERE p.user_id=? AND j.state='pending' AND j.created>?", i.User, time.Now().Unix()-120).Scan(&pending)
 			if pending >= 2 {
 				s.DB.Exec("DELETE FROM playback_requests WHERE user_id=? AND id=?", i.User, v.RequestID)
+				w.Header().Set("Retry-After", "5")
 				fail(w, 429, "playback_busy")
 				return
 			}
@@ -106,6 +109,7 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 			case s.playbackSlots <- struct{}{}:
 			default:
 				s.DB.Exec("DELETE FROM playback_requests WHERE user_id=? AND id=?", i.User, v.RequestID)
+				w.Header().Set("Retry-After", "5")
 				fail(w, 429, "playback_busy")
 				return
 			}
@@ -213,6 +217,21 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		fail(w, 405, "method_not_allowed")
 		return
 	}
+	if len(parts) == 3 && parts[2] == "stream" {
+		index, err := strconv.Atoi(r.URL.Query().Get("file"))
+		if err != nil {
+			fail(w, 400, "invalid_file")
+			return
+		}
+		key := i.Session + ":" + hash + ":" + strconv.Itoa(index)
+		if !s.acquireStream(i.User, key) {
+			w.Header().Set("Retry-After", "5")
+			fail(w, 429, "stream_limit")
+			return
+		}
+		defer s.releaseStream(i.User, key)
+	}
+
 	b, _ := json.Marshal(map[string]string{"action": "get", "hash": hash})
 	var torrent map[string]any
 	if e := readTorr(s, r.Context(), "/torrents", bytes.NewReader(b), "application/json", &torrent); e != nil {
@@ -286,19 +305,6 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 	}
 	client := *s.Client
 	client.Timeout = 0
-	s.mu.Lock()
-	active := 0
-	for _, n := range s.active {
-		active += n
-	}
-	if s.active[i.User] >= 2 || active >= 4 {
-		s.mu.Unlock()
-		fail(w, 429, "stream_limit")
-		return
-	}
-	s.active[i.User]++
-	s.mu.Unlock()
-	defer func() { s.mu.Lock(); s.active[i.User]--; s.mu.Unlock() }()
 	resp, e := client.Do(req)
 	if e != nil {
 		fail(w, 502, "stream_unavailable")
@@ -316,7 +322,16 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 	}
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != "HEAD" {
-		io.CopyBuffer(w, resp.Body, make([]byte, 32*1024))
+		started := time.Now()
+		copied, err := io.CopyBuffer(w, resp.Body, make([]byte, 32*1024))
+		outcome := "complete"
+		if err != nil {
+			outcome = "interrupted"
+		}
+		if ctx.Err() != nil {
+			outcome = "client_or_session_closed"
+		}
+		log.Printf("event=stream_end outcome=%s bytes=%d duration_ms=%d", outcome, copied, time.Since(started).Milliseconds())
 	}
 }
 
@@ -362,4 +377,41 @@ func (s *Server) prepareMagnet(id, hash, magnet string) {
 		state = "ready"
 	}
 	s.DB.Exec("UPDATE playback_jobs SET state=? WHERE handle=?", state, id)
+}
+
+func (s *Server) acquireStream(user, key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Allow the brief overlap of old/new Range requests for the same viewing
+	// session when seeking or reconnecting; it uses the same torrent cache.
+	if requests := s.streamRequests[key]; requests > 0 {
+		if requests >= 2 {
+			return false
+		}
+		s.streamRequests[key]++
+		return true
+	}
+	active := 0
+	for _, n := range s.active {
+		active += n
+	}
+	if s.active[user] >= min(2, s.maxStreams) || active >= s.maxStreams {
+		return false
+	}
+	s.active[user]++
+	s.streamRequests[key] = 1
+	return true
+}
+func (s *Server) releaseStream(user, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.streamRequests[key] > 1 {
+		s.streamRequests[key]--
+		return
+	}
+	delete(s.streamRequests, key)
+	s.active[user]--
+	if s.active[user] <= 0 {
+		delete(s.active, user)
+	}
 }

@@ -55,4 +55,10 @@ class ManagedContractsTest {
   }finally{db.close()}
  }
 
+ @Test fun failedSyncBacksOffAndHealthySyncResetsImmediately(){
+  assertEquals(listOf(30000L,60000L,120000L,240000L,300000L,300000L),(0..5).map(::syncPauseMillis))
+  assertEquals(300000L,syncPauseMillis(Int.MAX_VALUE))
+  assertEquals(30000L,syncPauseMillis(0))
+ }
+
 }

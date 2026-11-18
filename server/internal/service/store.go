@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,user_id TEXT NOT NULL R
 CREATE TABLE IF NOT EXISTS snapshot_entities(snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,ordinal INTEGER NOT NULL,kind TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,revision INTEGER NOT NULL,deleted INTEGER NOT NULL,PRIMARY KEY(snapshot_id,ordinal));
 CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,value BLOB NOT NULL,mime TEXT NOT NULL,expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,action TEXT NOT NULL,created INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS changes_user_cursor ON changes(user_id,cursor);
+CREATE INDEX IF NOT EXISTS changes_entity_created ON changes(user_id,kind,key,created);
+CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
+CREATE INDEX IF NOT EXISTS sessions_device ON sessions(device_id);
+CREATE INDEX IF NOT EXISTS playback_user ON playback(user_id);
 PRAGMA user_version=1;
 `
 

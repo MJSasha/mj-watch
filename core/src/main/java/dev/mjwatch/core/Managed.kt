@@ -138,10 +138,10 @@ class SyncEngine(private val api:ManagedApi,private val dao:SyncDao) {
   val event=OutboxEntry(UUID.randomUUID().toString(),scope,kind,key,json.toString(),base,effectiveOperation,cursor.serverEpoch,cursor.historyEpoch,playSession,sequence)
   dao.put(event);dao.put(SyncEntity(scope,kind,key,json.toString(),old?.revision ?: 0,operation=="delete"))
  }
- suspend fun sync()=mutex.withLock {
+ suspend fun sync(knownMe:JSONObject?=null)=mutex.withLock {
   require(scope.isNotBlank());val cursor=dao.cursor(scope)
   if(cursor==null) {snapshot();return@withLock}
-  val me=api.authorized("me");if(cursor.serverEpoch!=me.getString("serverEpoch")||cursor.historyEpoch!=me.getLong("historyEpoch")){snapshot();return@withLock}
+  val me=knownMe ?: api.authorized("me");if(cursor.serverEpoch!=me.getString("serverEpoch")||cursor.historyEpoch!=me.getLong("historyEpoch")){snapshot();return@withLock}
   val canPush=android.os.SystemClock.elapsedRealtime()-(lastPush[scope] ?: -15000)>=15000
   for(p in if(canPush)dao.pending(scope) else emptyList()) {
    if(p.conflict.isNotBlank()) continue
@@ -167,3 +167,6 @@ fun LibraryEntry.syncJson()=JSONObject().put("id",id).put("title",title).put("so
 fun Progress.syncJson()=JSONObject().put("key",key).put("releaseId",releaseId).put("fileId",fileId).put("path",path).put("positionMs",positionMs).put("durationMs",durationMs).put("updatedAt",updatedAt).put("completed",completed)
 fun SyncEntity.libraryEntry():LibraryEntry {val j=JSONObject(json);return LibraryEntry(j.getString("id"),j.getString("title"),j.getString("source"),j.optLong("openedAt"),j.optBoolean("bookmarked"),metadataId=j.optString("metadataId").takeIf {it!="null"&&it.isNotBlank()})}
 fun SyncEntity.progress():Progress {val j=JSONObject(json);return Progress(j.getString("key"),j.getString("releaseId"),j.getInt("fileId"),j.getString("path"),j.getLong("positionMs"),if(j.isNull("durationMs")) null else j.getLong("durationMs"),j.optLong("updatedAt"),j.optBoolean("completed"))}
+
+/** Healthy polling stays at 30s; repeated failures back off to five minutes. */
+fun syncPauseMillis(failures:Int):Long=if(failures<=0)30000L else (30000L shl failures.coerceAtMost(4)).coerceAtMost(300000L)

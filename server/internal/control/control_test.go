@@ -1,11 +1,54 @@
 package control
 
 import (
+	"dev.mjwatch/server/internal/resources"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestCacheEstimateRequiresTorrentInventory(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/echo":
+			w.Write([]byte("MatriX.145.2"))
+		case "/settings":
+			w.Write([]byte(`{"CacheSize":67108864}`))
+		default:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer upstream.Close()
+	if snapshot, err := (TorrControl{URL: upstream.URL}).Read(); err == nil || snapshot != nil {
+		t.Fatal("estimated cache without knowing existing torrents", snapshot, err)
+	}
+}
+
+func TestCacheIncreaseRequiresHeadroomButDiskAndReductionRemainAvailable(t *testing.T) {
+	before := map[string]any{"CacheSize": float64(64 << 20), "UseDisk": false}
+	after := map[string]any{"CacheSize": float64(128 << 20), "UseDisk": false}
+	memory := resources.Memory{Total: 512 << 20, Available: 300 << 20}
+	if validateCacheMemory(before, after, false, memory, 1) == nil {
+		t.Fatal("cache increase ignored neighbours and reserve")
+	}
+	after["CacheSize"] = float64(32 << 20)
+	if err := validateCacheMemory(before, after, false, memory, 1); err != nil {
+		t.Fatal(err)
+	}
+	memory.Available = 0
+	if err := validateCacheMemory(before, after, false, memory, 1); err != nil {
+		t.Fatal("reduction blocked", err)
+	}
+	before["UseDisk"] = true
+	if validateCacheMemory(before, after, false, memory, 1) == nil {
+		t.Fatal("disk to RAM switch ignored pressure")
+	}
+	after["UseDisk"] = true
+	if err := validateCacheMemory(before, after, false, memory, 1); err != nil {
+		t.Fatal("disk cache treated as RAM", err)
+	}
+}
 
 func TestSettingsRevisionMergeAndUnknownFields(t *testing.T) {
 	settings := map[string]any{"CacheSize": float64(64 << 20), "ReaderReadAHead": float64(95), "PreloadCache": float64(50), "UnknownFutureField": "keep", "UnknownFutureObject": map[string]any{"enabled": true}}

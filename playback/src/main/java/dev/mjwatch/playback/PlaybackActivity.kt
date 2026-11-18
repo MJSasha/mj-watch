@@ -62,6 +62,8 @@ class PlaybackActivity : ComponentActivity() {
     private var released=false
     private var finalWrite:Job?=null
     private val decoderFallback=DecoderFallback()
+    private var bufferPlan=PlaybackBuffer(4*1048576,4*1048576)
+    private var bufferTargetBytes=4*1048576
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
     private var session: MediaSession?=null
@@ -126,7 +128,17 @@ class PlaybackActivity : ComponentActivity() {
             val headers=mutableMapOf<String,String>()
             val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
             val http=OkHttpDataSource.Factory((if(config.managed) managedClient(config,SecretStore(applicationContext)) else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
-            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
+            val memory=android.app.ActivityManager.MemoryInfo()
+            val manager=getSystemService(android.app.ActivityManager::class.java)
+            manager.getMemoryInfo(memory)
+            val runtime=Runtime.getRuntime()
+            bufferPlan=playbackBuffer(runtime.maxMemory(),runtime.totalMemory()-runtime.freeMemory(),memory.availMem,manager.isLowRamDevice)
+            val requested=getSharedPreferences("playback-preferences",MODE_PRIVATE).getInt("buffer-mib",0)
+            bufferTargetBytes=if(requested<=0)bufferPlan.recommendedBytes else (requested.toLong()*1048576).coerceIn(4L*1048576,bufferPlan.maximumBytes.toLong()).toInt()
+            val loadControl=androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(15000,120000,1500,3000)
+                .setTargetBufferBytes(bufferTargetBytes).setPrioritizeTimeOverSizeThresholds(false).build()
+            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -311,7 +323,7 @@ class PlaybackActivity : ComponentActivity() {
     private fun videoSettings() {
         if(!::player.isInitialized||released)return
         val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
-        val names=arrayOf("Качество", "Скорость · ${player.playbackParameters.speed}×", "Масштаб", "Автопереход · ${if(preferences.getBoolean("auto-next",true))"Вкл" else "Выкл"}", "Автопропуск опенинга/эндинга · ${if(preferences.getBoolean("auto-skip",false))"Вкл" else "Выкл"}")
+        val names=arrayOf("Качество", "Скорость · ${player.playbackParameters.speed}×", "Масштаб", "Автопереход · ${if(preferences.getBoolean("auto-next",true))"Вкл" else "Выкл"}", "Автопропуск опенинга/эндинга · ${if(preferences.getBoolean("auto-skip",false))"Вкл" else "Выкл"}", "Буфер · ${bufferTargetBytes/1048576} МиБ")
         showVideoPanel("Параметры видео",names) {which -> when(which) {
             0 -> {
                 val heights=player.currentTracks.groups.filter {it.type==C.TRACK_TYPE_VIDEO}.flatMap {g->(0 until g.length).filter {g.isTrackSupported(it)}.map {g.getTrackFormat(it).height}}.filter {it>0}.distinct().sortedDescending()
@@ -328,6 +340,16 @@ class PlaybackActivity : ComponentActivity() {
             }
             3 -> preferences.edit().putBoolean("auto-next",!preferences.getBoolean("auto-next",true)).apply()
             4 -> preferences.edit().putBoolean("auto-skip",!preferences.getBoolean("auto-skip",false)).apply()
+            5 -> {
+                val maximum=bufferPlan.maximumBytes/1048576
+                val choices=(listOf(16,32,64,128).filter{it<=maximum}+maximum).distinct().sorted()
+                val labels=listOf("Авто · рекомендуется ${bufferPlan.recommendedBytes/1048576} МиБ")+choices.map{if(it==maximum)"$it МиБ · оценочный максимум" else "$it МиБ"}
+                val buffered=((player.bufferedPosition-player.currentPosition).coerceAtLeast(0)/1000)
+                showVideoPanel("Буфер: загружено $buffered с · для следующего видео",labels.toTypedArray()){selected->
+                    preferences.edit().putInt("buffer-mib",if(selected==0)0 else choices[selected-1]).apply()
+                    Toast.makeText(this,"Буфер сохранён для следующего запуска видео",Toast.LENGTH_SHORT).show()
+                }
+            }
         }}
     }
     private fun showVideoPanel(title:String,names:Array<String>,choose:(Int)->Unit) {

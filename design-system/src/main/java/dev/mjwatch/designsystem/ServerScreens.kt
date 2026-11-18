@@ -262,8 +262,29 @@ import java.util.UUID
 
  }else if(settings){
   if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));val result=ssh.apply(target,pending);data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён по фактическому состоянию"}}
-  Action("Прочитать по SSH",tv,enabled=!busy){perform{target->val read=ssh.read(target);read.put("activeStreams",ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());onDirty(false);message="Прочитано с сервера"}}
+  Action("Прочитать по SSH",tv,enabled=!busy){perform{target->val read=ssh.read(target);val status=ManagedApi(s.config,model.secrets).authorized("admin/status");read.put("activeStreams",status.getInt("activeStreams"));read.put("maxStreams",status.optInt("maxStreams",1));data=read;draft=JSONObject(read.getJSONObject("settings").toString());onDirty(false);message="Прочитано с сервера"}}
   data?.let {snapshot->Text("Версия: ${snapshot.optString("version")} · Потоков: ${snapshot.optInt("activeStreams")}");val fields=snapshot.optJSONArray("fields")
+   snapshot.optJSONObject("resources")?.let {resources->
+    val total=resources.optLong("totalBytes")/1048576;val available=resources.optLong("availableBytes")/1048576
+    val maximum=resources.optLong("maximumBytes")/1048576;val recommended=resources.optLong("recommendedBytes")/1048576
+    val streams=snapshot.optInt("maxStreams",resources.optInt("plannedStreams",1))
+    val torrents=resources.optInt("plannedTorrents",streams)
+    if(total>0) {
+     Text("Профиль сервера: до $streams одновременных потоков")
+     Text("RAM: $total МиБ · доступно сейчас $available МиБ")
+     Text("Резерв для ОС, MJWatch и роста соседних сервисов: ${resources.optLong("reserveBytes")/1048576} МиБ. Их текущее потребление уже учтено в доступной памяти.")
+     Text("Кэш RAM на раздачу: рекомендуется $recommended МиБ · оценочный максимум $maximum МиБ для $torrents раздач с учётом уже добавленных. Это оценка на момент проверки, без зачёта уже занятого кэша; расход памяти может вырасти.")
+     if(draft?.optBoolean("UseDisk")==true)Text("Включён дисковый кэш: оценка RAM выше относится к режиму без диска. Для диска проверяется свободное место с резервом 2 ГиБ.")
+     if(draft?.optBoolean("UseDisk")!=true&&draft!!.optLong("CacheSize")>resources.optLong("maximumBytes"))Text("Текущий кэш выше оценки свободного бюджета. Уменьшите кэш или число одновременно используемых раздач.")
+     Action("Подставить рекомендованные настройки",tv,secondary=true,enabled=!busy&&snapshot.optBoolean("editable")&&recommended>=16){
+      val next=JSONObject(draft.toString())
+      if(next.optBoolean("UseDisk")!=true)next.put("CacheSize",recommended*1048576)
+      next.put("ConnectionsLimit",if(streams==1)30 else 60).put("PreloadCache",25)
+      draft=next;onDirty(true);message="Рекомендации подставлены. Проверьте и примените настройки."
+     }
+    }else Text("Оценка RAM недоступна. Обновите сервер для рекомендаций.")
+   }
+   Text("Кэш TorrServer помогает скачиванию. Буфер при потере связи с сервером настраивается на устройстве в параметрах видео.")
    if(fields!=null&&draft!=null)for(index in 0 until fields.length()){val field=fields.getJSONObject(index);val name=field.getString("name");val label=field.getString("label");if(!draft!!.has(name))continue
     if(field.optString("unit")=="path"){ServerField(draft!!.optString(name),{draft=JSONObject(draft.toString()).put(name,it);onDirty(true)},label+" · /var/lib/torrserver-mjwatch/cache")}else if(field.optBoolean("boolean")){val negative=field.optBoolean("negative");ServerToggle(label,draft!!.optBoolean(name).let{if(negative)!it else it}){value->draft=JSONObject(draft.toString()).put(name,if(negative)!value else value);onDirty(true)}}else{var value by remember(draft?.opt(name)){mutableStateOf((if(name=="CacheSize")draft!!.optLong(name)/1048576 else draft!!.optLong(name)).toString())};ServerField(value,{value=it;draft=JSONObject(draft.toString()).put(name,it.toLongOrNull()?.let {number->if(name=="CacheSize")runCatching{Math.multiplyExact(number,1048576L)}.getOrNull() else number} ?: it);onDirty(true)},if(name=="CacheSize") "$label · МиБ (${field.optLong("min")/1048576}–${field.optLong("max")/1048576})" else "$label · ${field.optString("unit")} (${field.optLong("min")}–${field.optLong("max")})")}
    }

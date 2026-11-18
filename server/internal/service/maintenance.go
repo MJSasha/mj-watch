@@ -2,12 +2,16 @@ package service
 
 import (
 	"context"
+	"dev.mjwatch/server/internal/resources"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -110,6 +114,31 @@ func (s *Server) Maintain(ctx context.Context) {
 	}
 }
 func (s *Server) maintenanceTick(ctx context.Context, now time.Time) {
+	// Expired ephemeral data is safe to discard; changes/mutations retain replay semantics.
+	for _, query := range []string{
+		"DELETE FROM cache WHERE expires<?", "DELETE FROM snapshots WHERE created<?",
+		"DELETE FROM pairing WHERE expires<?", "DELETE FROM invites WHERE expires<?",
+	} {
+		cutoff := now.Unix()
+		if strings.Contains(query, "snapshots") {
+			cutoff -= 3600
+		}
+		if _, err := s.DB.ExecContext(ctx, query, cutoff); err != nil {
+			break
+		}
+	}
+	memory := resources.Read()
+	var fs syscall.Statfs_t
+	syscall.Statfs(filepath.Dir(s.Config.Database), &fs)
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	s.mu.Lock()
+	active := 0
+	for _, n := range s.active {
+		active += n
+	}
+	s.mu.Unlock()
+	log.Printf("event=resources available_bytes=%d total_bytes=%d heap_bytes=%d disk_free_bytes=%d streams=%d max_streams=%d goroutines=%d", memory.Available, memory.Total, stats.HeapAlloc, uint64(fs.Bavail)*uint64(fs.Bsize), active, s.maxStreams, runtime.NumGoroutine())
 	v := s.retention()
 	if v.HistoryDays > 0 {
 		cutoff := now.Add(-time.Duration(v.HistoryDays) * 24 * time.Hour).Unix()

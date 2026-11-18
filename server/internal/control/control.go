@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"crypto/sha256"
+	"dev.mjwatch/server/internal/resources"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -110,17 +110,24 @@ func (c TorrControl) Read() (map[string]any, error) {
 		}
 	}
 	var stats []any
-	c.request("/torrents", map[string]string{"action": "list"}, &stats)
+	if err := c.request("/torrents", map[string]string{"action": "list"}, &stats); err != nil {
+		return nil, err
+	}
 	active := 0
+	activeTorrents := 0
 	for _, v := range stats {
 		if item, ok := v.(map[string]any); ok {
 			if n, ok := item["active_streams"].(json.Number); ok {
 				v, _ := n.Int64()
 				active += int(v)
+				if v > 0 {
+					activeTorrents++
+				}
 			}
 		}
 	}
-	return map[string]any{"version": version, "editable": version == "MatriX.145.2", "settings": settings, "revision": revision(settings), "fields": Fields, "activeStreams": active}, nil
+	memory := resources.Read()
+	return map[string]any{"version": version, "editable": version == "MatriX.145.2", "settings": settings, "revision": revision(settings), "fields": Fields, "activeStreams": active, "resources": memory.BudgetFor(memory.Streams(), len(stats)+max(0, memory.Streams()-activeTorrents))}, nil
 }
 
 type Apply struct {
@@ -188,7 +195,10 @@ func (c TorrControl) Apply(v Apply) (map[string]any, error) {
 	if e = Validate(v.Changes); e != nil {
 		return nil, e
 	}
-	useDisk := settings["UseDisk"] == true || v.Changes["UseDisk"] == true
+	useDisk := settings["UseDisk"] == true
+	if changed, ok := v.Changes["UseDisk"].(bool); ok {
+		useDisk = changed
+	}
 	if useDisk {
 		path, _ := settings["TorrentsSavePath"].(string)
 		if changed, ok := v.Changes["TorrentsSavePath"].(string); ok {
@@ -244,6 +254,19 @@ func (c TorrControl) Apply(v Apply) (map[string]any, error) {
 		settings["EnableTorznabSearch"] = false
 		settings["TorrentsSavePath"] = "/var/lib/torrserver-mjwatch/cache"
 	}
+	if err := validateCacheMemory(before, settings, v.Defaults, resources.Read(), current["resources"].(resources.CacheBudget).Torrents); err != nil {
+		if v.Defaults {
+			if rollbackErr := c.request("/settings", map[string]any{"action": "set", "sets": before}, nil); rollbackErr != nil {
+				return nil, fmt.Errorf("defaults_rollback_unconfirmed")
+			}
+			restored, readErr := c.Read()
+			if readErr != nil || restored["revision"] != revision(before) {
+				return nil, fmt.Errorf("defaults_rollback_unconfirmed")
+			}
+		}
+		return nil, err
+	}
+
 	desired := revision(settings)
 	if intent != nil && intent["targetRevision"] != desired {
 		return nil, fmt.Errorf("operation_id_reused")
@@ -301,18 +324,6 @@ func Validate(changes map[string]any) error {
 			if !ok || n != float64(int64(n)) || n < float64(f.Min) || n > float64(f.Max) {
 				return fmt.Errorf("field_range_%s", key)
 			}
-			if key == "CacheSize" {
-				raw, e := os.ReadFile("/proc/meminfo")
-				if e == nil {
-					fields := strings.Fields(strings.Split(string(raw), "\n")[0])
-					if len(fields) >= 2 {
-						kb, _ := strconv.ParseInt(fields[1], 10, 64)
-						if int64(n) > kb*1024/2 {
-							return fmt.Errorf("cache_exceeds_half_ram")
-						}
-					}
-				}
-			}
 		}
 	}
 	return nil
@@ -340,4 +351,18 @@ func ReadOperation(dir, id string) (map[string]any, error) {
 func safeCachePath(path string) bool {
 	const base = "/var/lib/torrserver-mjwatch/cache"
 	return len(path) <= 512 && filepath.Clean(path) == path && (path == base || strings.HasPrefix(path, base+"/")) && !strings.ContainsAny(path, "\x00\n\r")
+}
+
+// Existing caches may be retained/reduced under pressure. New RAM allocations
+// must fit a fresh estimate; disk cache has its separate filesystem check.
+func validateCacheMemory(before, after map[string]any, defaults bool, memory resources.Memory, torrents int) error {
+	if after["UseDisk"] == true || memory.Total <= 0 {
+		return nil
+	}
+	size, _ := after["CacheSize"].(float64)
+	previous, _ := before["CacheSize"].(float64)
+	if (size > previous || before["UseDisk"] == true || defaults) && int64(size) > memory.BudgetFor(memory.Streams(), torrents).Maximum {
+		return fmt.Errorf("cache_exceeds_available_memory")
+	}
+	return nil
 }

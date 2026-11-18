@@ -3,7 +3,7 @@ set -eu
 cd "$(dirname "$0")/.."
 : "${MJWATCH_SIGNING_KEY:?Set a reviewed release signing key path; no signing bypass is available}"
 : "${TORRSERVER_ARTIFACT_DIR:?Set the directory containing pinned TorrServer-linux-amd64 and TorrServer-linux-arm64}"
-MJWATCH_SERVER_VERSION=${MJWATCH_SERVER_VERSION:-0.1.6}
+MJWATCH_SERVER_VERSION=${MJWATCH_SERVER_VERSION:-0.1.7}
 export MJWATCH_SERVER_VERSION
 mkdir -p dist/server core/src/main/assets/server
 for arch in amd64 arm64; do

@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.6**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.7**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.6
+export MJWATCH_SERVER_VERSION=0.1.7
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -51,6 +51,27 @@ Service units are `mjwatch.service`, `mjwatch-torrserver.service`, `mjwatch-rene
 `check.sh` runs service/control contracts, race detector, vet and packaging syntax. `cmd/fixture` is test-only and is not included in server supply/APK: private-CA HTTPS API on 18443, loopback fixture control on 18444, SQLite and controlled MP4 upstream. Never deploy it. Android tests require explicit reverse ports to a dedicated emulator. Live installation/update/restore evidence and untested scenarios: [`../docs/testing/SERVER-MANAGEMENT-V1.md`](../docs/testing/SERVER-MANAGEMENT-V1.md).
 
 Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair](../docs/testing/PYTHON314-HEALTH.md). Server 0.1.3 preserves existing CA trust and adds explicit critical signing key usage for new CAs.
+
+## Resource profiles and diagnostics (0.1.7)
+
+Concurrency is chosen at startup using effective RAM (including inherited cgroup v2 limits): at most 1 GiB → one viewing session/preparation; at most 2 GiB → two; otherwise four. Unknown RAM uses one. Password checks/uploads allow one concurrent operation on the smallest profile, two otherwise. Two overlapping Range requests for the same session/torrent/file share one viewing slot, allowing seeking without consuming a second slot. Playback retry delays/budgets and system memory limits are unchanged.
+
+Owner → TorrServer → Read over SSH shows RAM, estimated maximum RAM cache per torrent, recommendation and a draft recommendation button. `MemAvailable` includes neighbours' current consumption. The reserve is `max(128 MiB, 10% of effective RAM) + 96 MiB` for OS/neighbour growth and MJWatch peaks. The projected cache budget is at most half of effective RAM and the available memory after reserve, divided among existing torrents plus room for new viewers. Existing cache is not credited back. This is a conservative snapshot, not a guaranteed physical maximum. Unknown/insufficient memory produces no usable recommendation. Targets are at most 64 MiB on the smallest profile, 128 MiB otherwise. RAM-cache increases and disk-to-RAM switches are checked again before applying; reductions remain possible under pressure. Disk cache retains the free-space check with a 2 GiB reserve. Existing settings are preserved until explicitly applied. New small installations start with 64 MiB cache, 30 peer connections and 25% preload.
+
+Phone/TV → video parameters → Buffer shows buffered seconds, recommended target and estimated device maximum. Auto targets up to 64 MiB (16 MiB on low-RAM devices). The maximum considers app heap, current heap headroom and available RAM, capped at 128 MiB (24 MiB on low-RAM devices), with a 4 MiB minimum target. Loading aims for up to 120 seconds but stops at the byte target; allocator/decoder overhead is additional. A selection applies on the next video launch and is clamped again to current headroom. Device buffer and server cache serve different network links.
+
+Both services use the native `mjwatch` journal namespace: 16 MiB persistent budget, 8 MiB runtime budget, seven-day retention and message-rate limits. Journald's normal allocation/rotation overhead applies. One namespaced journald instance serves both processes; host/default logging settings are unchanged. Diagnostics include slow/failed request category/status/duration, stream outcomes and minute-level available RAM/Go heap/disk/active-view snapshots. Application diagnostics omit request paths, queries, bodies and credentials. TorrServer's upstream logs may contain torrent names/hashes; logs are administrator data.
+
+```sh
+journalctl --namespace=mjwatch -u mjwatch.service -u mjwatch-torrserver.service --since '-30 min'
+# Unit lifecycle/restarts and kernel OOM diagnostics remain in the host journal:
+journalctl -u mjwatch.service -u mjwatch-torrserver.service --since '-30 min'
+journalctl -k --since '-30 min'
+```
+
+The first root health probe after a signed update migrates old units, including old bootstrap-style probes. It adds one restart inside confirmed maintenance. Failed migration restores prior logging files and attempts to restart the previous configuration; a later probe can retry. Completed migration does not restart again.
+
+Presence writes occur at most once a minute per device. Sync reuses its `/me` response, backs failed polling off through 60/120/240/300 seconds with jitter, and wakes on default-network reachability. Successful polling returns to 30 seconds. Local outbox data remains durable. Sync/retention/device queries have indexes; maintenance expires cache/snapshot/pairing/invitation records. Change history and mutation receipts are retained for cursor and replay semantics.
 
 ## Maintenance probes (0.1.4)
 

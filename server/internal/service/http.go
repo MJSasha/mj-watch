@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"dev.mjwatch/server/internal/resources"
 	"encoding/json"
 	"errors"
 	"io"
@@ -28,29 +29,34 @@ type Config struct {
 type identity struct {
 	User, Device, Session, Role string
 	Epoch                       int64
+	LastSeen                    int64
 }
 
-var Version = "0.1.6"
+var Version = "0.1.7"
 
 type Server struct {
+	maxStreams    int
 	passwordSlots chan struct{}
 	playbackSlots chan struct{}
 	uploadSlots   chan struct{}
 	dummyPassword string
 
-	DB       *sql.DB
-	Config   Config
-	Client   *http.Client
-	mu       sync.Mutex
-	rates    map[string][]time.Time
-	active   map[string]int
-	tmdbMu   sync.Mutex
-	remoteMu sync.Mutex
+	DB             *sql.DB
+	Config         Config
+	Client         *http.Client
+	mu             sync.Mutex
+	rates          map[string][]time.Time
+	active         map[string]int
+	streamRequests map[string]int
+	tmdbMu         sync.Mutex
+	remoteMu       sync.Mutex
 }
 
 func New(db *sql.DB, c Config) *Server {
 	dummy, _ := Password("not-a-valid-user-password")
-	return &Server{passwordSlots: make(chan struct{}, 2), playbackSlots: make(chan struct{}, 4), uploadSlots: make(chan struct{}, 2), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, active: map[string]int{}}
+	memory := resources.Read()
+	streams := memory.Streams()
+	return &Server{maxStreams: streams, passwordSlots: make(chan struct{}, min(2, streams)), playbackSlots: make(chan struct{}, streams), uploadSlots: make(chan struct{}, min(2, streams)), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, active: map[string]int{}, streamRequests: map[string]int{}}
 }
 func (s *Server) limit(key string, n int, period time.Duration) bool {
 	s.mu.Lock()
@@ -100,10 +106,10 @@ func decodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) boo
 }
 func (s *Server) identity(token string) (identity, error) {
 	var i identity
-	e := s.DB.QueryRow(`SELECT u.id,d.id,s.id,u.role,u.epoch FROM sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id WHERE s.access=? AND s.access_exp>? AND d.revoked=0 AND u.blocked=0`, Hash(token), time.Now().Unix()).Scan(&i.User, &i.Device, &i.Session, &i.Role, &i.Epoch)
+	e := s.DB.QueryRow(`SELECT u.id,d.id,s.id,u.role,u.epoch,d.last_seen FROM sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id WHERE s.access=? AND s.access_exp>? AND d.revoked=0 AND u.blocked=0`, Hash(token), time.Now().Unix()).Scan(&i.User, &i.Device, &i.Session, &i.Role, &i.Epoch, &i.LastSeen)
 	return i, e
 }
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if !strings.HasPrefix(r.URL.Path, "/api/v1/") {
@@ -137,12 +143,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "login_required")
 		return
 	}
-	s.DB.Exec("UPDATE devices SET last_seen=? WHERE id=?", time.Now().Unix(), i.Device)
+	if i.LastSeen < time.Now().Unix()-60 {
+		s.DB.Exec("UPDATE devices SET last_seen=? WHERE id=? AND last_seen<?", time.Now().Unix(), i.Device, time.Now().Unix()-60)
+	}
 	rateKey, rateLimit := "api:"+i.User, 300
 	if strings.HasPrefix(path, "remote/") {
 		rateKey, rateLimit = "remote:"+i.Device, 240
 	}
 	if !s.limit(rateKey, rateLimit, time.Minute) {
+		w.Header().Set("Retry-After", "30")
 		fail(w, 429, "rate_limited")
 		return
 	}

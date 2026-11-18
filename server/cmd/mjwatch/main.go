@@ -140,6 +140,9 @@ func run() error {
 	}
 	defer db.Close()
 	if command == "health-token" {
+		if err := installedDiagnostics(path); err != nil {
+			return err
+		}
 		if err := cleanupMaintenanceChecks(db, "/var/lib/mjwatch-install"); err != nil {
 			return err
 		}
@@ -166,6 +169,9 @@ func run() error {
 		}
 		// A pre-update maintenance worker may still use the old bootstrap command.
 		if v.Device == "Maintenance check" && healthOperation.MatchString(v.OperationID) {
+			if err := installedDiagnostics(path); err != nil {
+				return err
+			}
 			if err := cleanupMaintenanceChecks(db, "/var/lib/mjwatch-install"); err != nil {
 				return err
 			}
@@ -232,7 +238,7 @@ func run() error {
 	}
 	s := service.New(db, c)
 	go s.Maintain(context.Background())
-	server := http.Server{Addr: c.Listen, Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(io.Discard, "", 0)}
+	server := http.Server{Addr: c.Listen, Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(os.Stderr, "event=http_server ", log.LstdFlags)}
 	server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 		cert, e := loadServerCertificate(c.Certificate, c.PrivateKey)
 		for attempt := 0; e != nil && attempt < 3; attempt++ {
@@ -241,5 +247,6 @@ func run() error {
 		}
 		return cert, e
 	}}
+	log.Printf("event=server_start version=%s", service.Version)
 	return server.ListenAndServeTLS("", "")
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.10
+
+- Add a memory-aware client video buffer with recommended/maximum targets and settings for the next playback. Keep the existing playback retry policy.
+- Bundle server 0.1.7 with bounded diagnostic journals, resource snapshots, automatic 1/2/4-view profiles, cache RAM recommendations accounting for neighbours and cached torrents, and checked cache increases.
+- Reduce device-presence writes and duplicate sync requests; back off failed sync and wake it on network restoration. Index sync queries and expire ephemeral data while preserving replay/history records.
+
 ## 0.9.8
 
 - Keep TV carousel focus on a stable leading line and restore the last focused card when re-entering a row. Preserve the featured title when returning from details.

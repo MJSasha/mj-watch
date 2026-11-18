@@ -19,9 +19,9 @@ class HealthTlsTest(unittest.TestCase):
  def setUpClass(cls):
   cls.tmp=tempfile.TemporaryDirectory();cls.root=pathlib.Path(cls.tmp.name)
   cls.context=staticmethod(definitions('maintenance.py')['health_tls_context'])
-  cls.openssl('req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=Legacy MJWatch CA','-addext','basicConstraints=critical,CA:TRUE','-keyout','ca.key','-out','ca.crt')
+  cls.openssl('req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=Legacy MJWatch CA','-addext','basicConstraints=critical,CA:TRUE','-addext','subjectKeyIdentifier=hash','-keyout','ca.key','-out','ca.crt')
   cls.openssl('req','-new','-newkey','rsa:2048','-nodes','-subj','/CN=MJWatch','-keyout','leaf.key','-out','leaf.csr')
-  (cls.root/'san.cnf').write_text('subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n')
+  (cls.root/'san.cnf').write_text('subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\nauthorityKeyIdentifier=keyid,issuer\nsubjectKeyIdentifier=hash\n')
   cls.sign('leaf.crt','1')
   (cls.root/'index.txt').touch();(cls.root/'serial').write_text('01\n')
   (cls.root/'ca.cnf').write_text('[ca]\ndefault_ca=local\n[local]\ndatabase=index.txt\nserial=serial\nnew_certs_dir=.\ncertificate=ca.crt\nprivate_key=ca.key\ndefault_md=sha256\npolicy=names\n[names]\ncommonName=supplied\n')
@@ -46,6 +46,7 @@ class HealthTlsTest(unittest.TestCase):
    opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=context))
    with opener.open(f'https://{host}:{server.server_port}/',timeout=3) as response:return json.load(response)
   finally:server.shutdown();server.server_close();thread.join(timeout=3)
+ @unittest.skipIf(ssl.OPENSSL_VERSION_INFO<(3,0),"Missing CA key usage is rejected by OpenSSL 3 strict verification")
  def test_legacy_ca_missing_key_usage_reproduces_strict_failure(self):
   ctx=ssl.create_default_context(cafile=str(self.root/'ca.crt'));ctx.verify_flags|=ssl.VERIFY_X509_STRICT
   with self.assertRaises(urllib.error.URLError) as caught:self.request(ctx)
