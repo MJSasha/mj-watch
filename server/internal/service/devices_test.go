@@ -1,6 +1,10 @@
 package service
 
-import "testing"
+import (
+	"fmt"
+	"sync"
+	"testing"
+)
 
 func TestDeviceDeletionAndInstallationDeduplication(t *testing.T) {
 	s, owner := fixture(t)
@@ -60,5 +64,45 @@ func TestDeviceDeletionAndInstallationDeduplication(t *testing.T) {
 	}
 	if code, _ := call(t, s, owner, "GET", "me", nil); code != 200 {
 		t.Fatal("cross-account dedup", code)
+	}
+}
+
+func TestConcurrentDeviceRefreshIsAtomic(t *testing.T) {
+	s, _ := fixture(t)
+	tokens := []string{}
+	for range 4 {
+		login, err := Bootstrap(s.DB, "owner", "concurrent refresh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens = append(tokens, login["refreshToken"].(string))
+	}
+	start := make(chan struct{})
+	failures := make(chan error, len(tokens))
+	var wg sync.WaitGroup
+	for _, token := range tokens {
+		wg.Add(1)
+		go func(token string) {
+			defer wg.Done()
+			<-start
+			for range 4 {
+				code, result := call(t, s, "", "POST", "auth/refresh", map[string]string{"refreshToken": token})
+				if code != 200 {
+					failures <- fmt.Errorf("concurrent refresh: %d %v", code, result)
+					return
+				}
+				if code, _ := call(t, s, "", "POST", "auth/refresh", map[string]string{"refreshToken": token}); code != 401 {
+					failures <- fmt.Errorf("rotated token accepted: %d", code)
+					return
+				}
+				token = result["refreshToken"].(string)
+			}
+		}(token)
+	}
+	close(start)
+	wg.Wait()
+	close(failures)
+	for err := range failures {
+		t.Error(err)
 	}
 }
