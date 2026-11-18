@@ -42,7 +42,7 @@ class JacredFlowTest {
     override fun after() {server.shutdown()}
  }
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
- @Test fun checksAndSearchUseHttpAdaptersButNoVideoWithoutTv() {
+ @Test fun checksAndSearchKeepPhonePlaybackAvailable() {
     compose.onNodeWithText("Jackett / JacRed").performClick()
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Проверить поиск"))
     compose.onNodeWithText("Проверить поиск").performClick()
@@ -67,7 +67,7 @@ class JacredFlowTest {
     compose.onNodeWithText("Раздачи").performClick()
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Sintel HTTP fixture 720p"))
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
-    compose.onNodeWithTag("source-continue").assertDoesNotExist()
+    compose.onNodeWithTag("source-continue").assertIsDisplayed()
     Assert.assertTrue(paths.any {it.startsWith("/parser/api/v2.0/indexers/all/results?")&&it.contains("Query=Sintel")})
     Assert.assertFalse("No stream preparation without a TV",paths.any {it.startsWith("/ts/stream")||it=="/ts/torrents"})
     Assert.assertFalse(paths.any {it.contains("apikey")||it.contains("caps")})

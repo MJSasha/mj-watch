@@ -59,7 +59,7 @@ class PhoneTvTest {
         Assert.assertTrue(cast.width/density>=48&&cast.height/density>=48)
         Assert.assertTrue(bookmark.width/density>=48&&bookmark.left-cast.right>=8*density-.5f)
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
-        compose.runOnIdle {model.prepare();Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)}
+        compose.runOnIdle {model.playRelease(model.state.value.selected!!,null,onTv=true);Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)}
         compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
         compose.waitUntil(10000){model.library.value.any {it.id=="tmdb:movie:1"&&it.bookmarked}}
         proof("01-no-connection")
@@ -76,7 +76,7 @@ class PhoneTvTest {
         waitFor("Connection was acknowledged"){RemotePlaybackService.state.value.canLaunch}
         compose.onNodeWithTag("watch-on-tv").assertExists();proof("02-connected")
         compose.onNodeWithTag("watch-on-tv").performClick()
-        compose.onNodeWithTag("source-continue").performClick()
+        compose.onNodeWithTag("source-continue-tv").performClick()
         compose.waitUntil(25000){model.state.value.page=="files"||(!model.state.value.busy&&model.state.value.message.isNotBlank())}
         Assert.assertEquals("files",model.state.value.page)
         compose.onNodeWithTag("file-17").performClick()

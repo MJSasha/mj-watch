@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2
+
+- Restore starting new videos and resuming saved playback on phones/tablets independently of a paired or unavailable TV. Keep local and TV launch actions separate.
+- Restore local file selection and Media3 launch, preserve remote target fencing, and keep mobile launch actions visible below the scrolling source list.
+- Preserve existing progress storage and server 0.1.5. Add regressions for local playback after TV pairing, unavailable receivers, explicit TV routing and saved-position resume.
+
 ## 0.9.1
 
 - Apply the approved native Android TV player design: soft gradients, a thin lime timeline, compact light icons and a single inset focus outline, without visible action labels or tooltips (#32).

@@ -23,9 +23,9 @@ class SessionTest {
     lateinit var model:WatchModel;val store=ViewModelStore()
     i.runOnMainSync {model=WatchModel(app);store.put("test",model)}
     withTimeout(5000) {while(!model.state.value.config.demo) delay(20)}
-    i.runOnMainSync {model.open(DemoReleases.items.first());model.prepare()}
+    i.runOnMainSync {model.open(DemoReleases.items.first());model.prepare();Assert.assertEquals("preparing",model.state.value.page);model.back()}
     delay(1000)
-    Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)
+    Assert.assertEquals("releases",model.state.value.page);Assert.assertFalse(model.state.value.busy)
     Assert.assertNull(model.state.value.handle)
     i.runOnMainSync {store.clear()}
     Settings(app).save(Config(torrServer="https://new.invalid"))

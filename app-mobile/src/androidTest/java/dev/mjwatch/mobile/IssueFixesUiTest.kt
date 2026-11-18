@@ -93,7 +93,7 @@ class IssueFixesUiTest {
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
         compose.onNodeWithText("Сезон 1").assertExists()
     }
-    @Test fun releaseSeasonAndQualityFiltersCannotBypassTvGate() {
+    @Test fun releaseSeasonAndQualityFiltersAllowPhonePlayback() {
         val model=model()
         compose.runOnIdle {model.search("тест")}
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.size==2}
@@ -108,8 +108,10 @@ class IssueFixesUiTest {
         compose.onNodeWithText(DemoReleases.items.first().title).assertDoesNotExist()
         screenshot("release-season-filter")
         compose.onNodeWithText(DemoReleases.items.last().title).performClick()
-        compose.onNodeWithTag("source-continue").assertDoesNotExist()
-        compose.runOnIdle {model.playRelease(DemoReleases.items.last(),1);Assert.assertEquals("releases",model.state.value.page);Assert.assertNull(model.state.value.handle)}
+        compose.onNodeWithTag("source-continue").assertIsDisplayed()
+        compose.onNodeWithTag("source-continue").performClick()
+        compose.waitUntil(10000) {model.state.value.page=="files"}
+        Assert.assertFalse(model.state.value.remotePlayback)
         screenshot("season-selection-without-tv")
     }
     @Test fun adaptiveIconAndMonochromeUseTransparentForeground() {

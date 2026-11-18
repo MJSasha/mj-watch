@@ -34,7 +34,7 @@ class MetadataFlowTest {
     compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
     compose.onNodeWithTag("release-list").performScrollToNode(hasText(DemoReleases.items.first().title))
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
-    compose.onNodeWithTag("source-continue").assertDoesNotExist()
-    compose.runOnIdle {model.playRelease(DemoReleases.items.first(),null);Assert.assertEquals("releases",model.state.value.page);Assert.assertNull(model.state.value.handle);Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse(model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
+    compose.onNodeWithTag("source-continue").assertIsDisplayed()
+    compose.runOnIdle {Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse(model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
  }
 }

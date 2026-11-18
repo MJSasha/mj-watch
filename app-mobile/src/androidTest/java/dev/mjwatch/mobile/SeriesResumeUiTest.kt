@@ -40,20 +40,51 @@ class SeriesResumeUiTest {
         } finally {db.close()}
     }}
     @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
-    @Test fun savedSeriesCannotResumeWithoutConnectedTv()=checkTargetGate(false)
-    @Test fun syncedSeriesWithoutLocalLinkCannotBypassTvGate()=checkTargetGate(true)
-    @Test fun unavailableLegacyReleaseCannotBypassTvGate()=checkTargetGate(true,true)
-    private fun checkTargetGate(withoutLocalLink:Boolean,legacy:Boolean=false) {
+    @Test fun continueSeriesStartsSavedEpisodeAtSavedPosition()=resumeSeries(false)
+    @Test fun syncedSeriesResumesWithoutDeviceLocalReleaseLink()=resumeSeries(true)
+    @Test fun unavailableLegacyReleaseShowsAnErrorOnTheDetailScreen() {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000) {model.scopedLibrary.value.positions.isNotEmpty()}
+        model.secrets.put("release:${config.scope}:${release.id}","")
+        compose.onNodeWithText(metadata.title).performClick()
+        compose.waitUntil(10000) {model.state.value.page=="detail"}
+        compose.runOnIdle {model.resume(saved.copy(key="legacy-key"))}
+        compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.message.isNotBlank()}
+        compose.waitUntil(5000) {runCatching {compose.onNodeWithText("Сохранённая раздача недоступна. Выберите другую.").assertIsDisplayed();true}.getOrDefault(false)}
+        compose.onNodeWithTag("detail-sources").assertIsDisplayed()
+    }
+    private fun resumeSeries(withoutLocalLink:Boolean) {
+        lateinit var model:WatchModel
+        compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(10000) {model.scopedLibrary.value.positions.isNotEmpty()}
+        // Supply local files/MP4 at the network boundary; exercise the real resume and player code.
+        val gateway=object:StreamGateway {
+            override suspend fun check()="fixture"
+            override suspend fun add(release:Release)=TorrentHandle("fixture-handle",files,hash)
+            override suspend fun status(hash:String)=TorrentHandle("fixture-handle",files,this@SeriesResumeUiTest.hash)
+            override fun stream(handle:TorrentHandle,file:TorrentFile)=StreamRequest("asset:///demo.mp4")
+        }
+        compose.runOnIdle {
+            WatchModel::class.java.getDeclaredField("cachedConfig").apply {isAccessible=true}.set(model,config)
+            WatchModel::class.java.getDeclaredField("cachedRepositories").apply {isAccessible=true}.set(model,DemoReleases to gateway)
+        }
         if(withoutLocalLink)model.secrets.put("release:${config.scope}:${release.id}","")
         compose.onNodeWithText(metadata.title).performClick()
         compose.waitUntil(10000) {model.state.value.page=="detail"}
-        compose.onNodeWithTag("detail-cast").assertExists()
-        compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
-        compose.runOnIdle {model.resume(if(legacy)saved.copy(key="legacy-key") else saved)}
-        compose.runOnIdle {Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy);Assert.assertNull(model.state.value.handle);Assert.assertEquals(listOf(saved),model.progress.value)}
-        Assert.assertFalse("No local player for saved history",PlaybackActivity.hasActivePlayback())
+        compose.onNodeWithTag("detail-resume").performClick()
+        val i=InstrumentationRegistry.getInstrumentation()
+        var player:PlaybackActivity?=null
+        compose.waitUntil(15000) {
+            i.runOnMainSync {player=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().firstOrNull {it.firstFrameSeen}}
+            player!=null
+        }
+        i.runOnMainSync {
+            val a=player!!
+            Assert.assertEquals(saved.path,a.intent.getStringExtra("path"))
+            val exo=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}.get(a) as Player
+            Assert.assertTrue("Saved position: ${exo.currentPosition}",exo.currentPosition>=saved.positionMs)
+            a.finish()
+        }
     }
 }

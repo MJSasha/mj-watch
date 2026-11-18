@@ -11,11 +11,11 @@ import okhttp3.Credentials
 
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
-    val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
+    val remotePlayback:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     val isTv=app.packageName.endsWith(".tv")
     val remote=dev.mjwatch.playback.RemotePlaybackService.state
-    val canStartPlayback get()=isTv||remote.value.canLaunch&&remote.value.profileKey==state.value.config.profileKey
+    val canStartPlayback get()=isTv||!state.value.remotePlayback||remote.value.canLaunch&&remote.value.profileKey==state.value.config.profileKey
     val updates=UpdateManager(app,viewModelScope)
     private val settings=Settings(app)
     val secrets=SecretStore(app)
@@ -82,7 +82,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }}
     init {viewModelScope.launch {
         remote.map {if(it.connected)it.target?.let {t->t.id+":"+t.instance} else null}.distinctUntilChanged().drop(1).collect {
-            if(!isTv&&state.value.page in setOf("preparing","files")) {cancel();update {s->s.copy(page="detail",message="Адресат изменился. Запустите видео на выбранном ТВ.")}}
+            if(!isTv&&state.value.remotePlayback&&state.value.page in setOf("preparing","files")) {cancel();update {s->s.copy(page="detail",message="Адресат изменился. Запустите видео на выбранном ТВ.")}}
         }
     }}
     fun preferencesChanged(){val c=state.value.config;val prefs=getApplication<Application>().getSharedPreferences("playback-preferences",0);managed.storePreferences(c);if(c.historyEnabled)viewModelScope.launch(Dispatchers.IO){managed.record(c,"preferences","profile",org.json.JSONObject().put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null)))}}
@@ -151,7 +151,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun metadata(item:Metadata,focusKey:String=item.id,cache:Boolean=true) {
-        cancel();update {it.copy(selectedMetadata=item,selected=null,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
+        cancel();update {it.copy(selectedMetadata=item,selected=null,remotePlayback=false,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled){if(cache)dao.put(CachedMetadata("${c.scope}:${item.id}",item.json(),System.currentTimeMillis()));managed.record(c,"opening",item.id,LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id).syncJson())}}
     }
@@ -162,7 +162,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
-        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
+        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,remotePlayback=false,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled) {
             secrets.put("release:${c.scope}:${release.id}",release.json())
@@ -181,12 +181,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             else {search(entry.title);update {it.copy(message="Сохранённая ссылка недоступна. Найдите раздачу заново.")}}
         }
     }}
-    fun resume(saved:Progress) {
-        if(!canStartPlayback)return
+    fun resume(saved:Progress,onTv:Boolean=false) {
+        if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
         android.util.Log.d("MJWatch","Resume requested")
         if(state.value.busy) return
         cancel();val token=generation;val route=remote.value.target?.let {it.id+":"+it.instance};val c=state.value.config;val context=state.value.selectedMetadata;val focus=state.value.focusKey
-        update {it.copy(busy=true,message="")}
+        update {it.copy(busy=true,remotePlayback=onTv,message="")}
         work=viewModelScope.launch {
             try {
                 val release=withContext(Dispatchers.IO) {
@@ -196,8 +196,8 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                 }
                 checkNotNull(release) {"Сохранённая раздача недоступна. Выберите другую."}
                 if(token==generation) {
-                    if(canStartPlayback&&(isTv||route==remote.value.target?.let {it.id+":"+it.instance})) {
-                        open(release,focusKey=focus,metadata=context);update {it.copy(resumePath=saved.path)};prepare()
+                    if(canStartPlayback&&(!onTv||isTv||route==remote.value.target?.let {it.id+":"+it.instance})) {
+                        open(release,focusKey=focus,metadata=context);update {it.copy(resumePath=saved.path,remotePlayback=onTv)};prepare()
                     } else update {it.copy(busy=false,message="Адресат изменился. Запустите видео на выбранном ТВ.")}
                 }
             } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
@@ -234,10 +234,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun clearUndo() {update {it.copy(removed=null)}}
-    fun playRelease(release:Release,season:Int?) {
-        if(!canStartPlayback)return
+    fun playRelease(release:Release,season:Int?,onTv:Boolean=false) {
+        if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
         if(state.value.selected?.id!=release.id)open(release)
-        update {it.copy(releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
+        update {it.copy(remotePlayback=onTv,releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
         prepare()
     }
     fun prepare() {
