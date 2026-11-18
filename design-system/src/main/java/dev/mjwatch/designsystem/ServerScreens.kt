@@ -134,44 +134,81 @@ import java.util.UUID
    "server-tmdb"->{
     var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
     LaunchedEffect(managed.data){managed.data?.optJSONObject("settings")?.let {data->enabled=data.optBoolean("enabled");language=data.optString("language","ru-RU");cache=data.optLong("cacheMiB",256).toString();revision=managed.data!!.optString("revision");dirty=false}}
-    Text("TMDB и каталог",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Ключ хранится на сервере. Сохранённый ключ не возвращается приложению.")
-    Text(if(managed.data?.optJSONObject("settings")?.optBoolean("credentialConfigured")==true) "Ключ настроен" else "Ключ не настроен");managed.data?.optString("lastCheckedAt")?.toLongOrNull()?.takeIf{it>0}?.let{Text("Последняя успешная проверка: ${java.time.Instant.ofEpochSecond(it)}")}
-    ServerToggle("Использовать TMDB",enabled){enabled=it;dirty=true};ServerField(language,{language=it;dirty=true},"Язык каталога, например ru-RU");ServerField(cache,{cache=it;dirty=true},"Лимит кэша, МиБ · 1–1024");ServerSecret(credential,{credential=it;dirty=true},"Новый Read Access Token или API key v3")
+    Text("TMDB и каталог",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    SettingsCard("Метаданные и обложки",Icons.Outlined.Movie,tv){
+     ServerToggle("Использовать TMDB",enabled){enabled=it;dirty=true}
+     Text(if(managed.data?.optJSONObject("settings")?.optBoolean("credentialConfigured")==true)"Ключ настроен" else "Ключ не настроен",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
+     managed.data?.optString("lastCheckedAt")?.toLongOrNull()?.takeIf{it>0}?.let{Text("Последняя успешная проверка: ${java.time.Instant.ofEpochSecond(it)}",style=MaterialTheme.typography.bodySmall)}
+     ServerField(language,{language=it;dirty=true},"Язык каталога, например ru-RU")
+     ServerSecret(credential,{credential=it;dirty=true},"Новый Read Access Token или API key v3")
+     SettingsHint("Ключ хранится только на сервере и не возвращается приложению. Оставьте поле пустым, чтобы сохранить действующий ключ.")
+    }
+    SettingsCard("Кэш каталога",Icons.Outlined.Storage,tv){
+     SettingsNumber(cache,{cache=it;dirty=true},"Лимит кэша","МиБ",1,1024,tv,recommended=256,hint="Метаданные и изображения. Предел настройки не является оценкой свободного места сервера.")
+    }
     fun body()=JSONObject().put("enabled",enabled).put("language",language).put("cacheMiB",cache.toLongOrNull() ?: 0).put("credential",credential)
-    Action("Проверить и применить",tv,enabled=!managed.busy&&dirty&&revision.isNotBlank()&&(cache.toLongOrNull() ?: 0) in 1L..1024L){val input=body();credential="";controller.action("admin/tmdb","PATCH",input,revision,"admin/tmdb")}
+    Action("Проверить и применить",tv,Modifier.fillMaxWidth(),enabled=!managed.busy&&dirty&&revision.isNotBlank()&&(cache.toLongOrNull() ?: 0) in 1L..1024L){val input=body();credential="";controller.action("admin/tmdb","PATCH",input,revision,"admin/tmdb")}
     Action("Проверить подключение",tv,secondary=true,enabled=!managed.busy){val input=body();credential="";controller.action("admin/tmdb/check","POST",input,reload="admin/tmdb")}
-    Action("Очистить кэш",tv,secondary=true){confirm="Очистить кэш метаданных и изображений?" to {controller.action("admin/tmdb/cache","DELETE",reload="admin/tmdb")}}
-    Action("Удалить ключ и отключить",tv,secondary=true){confirm="Удалить серверный ключ TMDB и отключить каталог?" to {credential="";controller.action("admin/tmdb/credential","DELETE",reload="admin/tmdb")}}
+    SettingsDisclosure("Управление данными","Очистка кэша и удаление ключа",Icons.Outlined.ManageAccounts,tv){
+     Action("Очистить кэш",tv,secondary=true){confirm="Очистить кэш метаданных и изображений?" to {controller.action("admin/tmdb/cache","DELETE",reload="admin/tmdb")}}
+     TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={confirm="Удалить серверный ключ TMDB и отключить каталог?" to {credential="";controller.action("admin/tmdb/credential","DELETE",reload="admin/tmdb")}}){Text("Удалить ключ и отключить",color=MaterialTheme.colorScheme.error)}
+    }
    }
    "server-retention"->{
     var days by remember{mutableStateOf("0")};var limit by remember{mutableStateOf("1024")};var keep by remember{mutableStateOf("7")};var hour by remember{mutableStateOf("3")};var enabled by remember{mutableStateOf(false)};var phrase by remember{mutableStateOf("")};var revision by remember{mutableStateOf("")}
     LaunchedEffect(managed.data){managed.data?.optJSONObject("settings")?.let {v->days=v.optInt("historyDays").toString();limit=v.optLong("databaseLimitMiB",1024).toString();keep=v.optInt("backupKeep",7).toString();hour=v.optInt("backupHourUTC",3).toString();enabled=v.optBoolean("backupEnabled");revision=managed.data!!.getString("revision");dirty=false}}
     Text("Хранение и расписание копий",fontSize=26.sp,fontWeight=FontWeight.Bold)
-    ServerField(days,{days=it;dirty=true},"Хранить историю, дней · 0 без ограничения");ServerField(limit,{limit=it;dirty=true},"Лимит базы, МиБ · от 32");ServerToggle("Ежедневная резервная копия",enabled){enabled=it;dirty=true};ServerField(hour,{hour=it;dirty=true},"Час запуска, UTC · 0–23");ServerField(keep,{keep=it;dirty=true},"Хранить последних плановых копий · 1–365");ServerSecret(phrase,{phrase=it;dirty=true},"Новая парольная фраза плановых копий")
-    Text("Парольная фраза не включается в архив. Сохраните её отдельно для восстановления.")
-    Action("Сохранить",tv,enabled=dirty&&!managed.busy&&revision.isNotBlank()){val body=JSONObject().put("historyDays",days.toIntOrNull() ?: -1).put("databaseLimitMiB",limit.toLongOrNull() ?: -1).put("backupKeep",keep.toIntOrNull() ?: -1).put("backupHourUTC",hour.toIntOrNull() ?: -1).put("backupEnabled",enabled).put("backupPassphrase",phrase);phrase="";controller.action("admin/settings","PATCH",body,revision,"admin/settings")}
+    SettingsCard("История просмотра",Icons.Outlined.History,tv){
+     SettingsNumber(days,{days=it;dirty=true},"Хранить историю","дней",0,36500,tv,hint="0 — без ограничения срока. Изменение действует на сервере для всех аккаунтов.")
+     SettingsNumber(limit,{limit=it;dirty=true},"Лимит базы","МиБ",32,1048576,tv,recommended=1024,hint="Это предел настройки, а не оценка свободного диска. Учитывайте место для резервных копий и других сервисов.")
+    }
+    SettingsCard("Ежедневные резервные копии",Icons.Outlined.Backup,tv){
+     ServerToggle("Ежедневная резервная копия",enabled){enabled=it;dirty=true}
+     SettingsNumber(hour,{hour=it;dirty=true},"Час запуска, UTC","ч",0,23,tv,recommended=3,hint="Время сервера указано в UTC, без перехода на летнее время.")
+     SettingsNumber(keep,{keep=it;dirty=true},"Хранить последних плановых копий","копий",1,365,tv,recommended=7)
+     ServerSecret(phrase,{phrase=it;dirty=true},"Новая парольная фраза плановых копий")
+     SettingsHint("Парольная фраза не включается в архив. Сохраните её отдельно. Пустое поле сохраняет уже установленную фразу.")
+    }
+    val valid=(days.toIntOrNull() ?: -1) in 0..36500&&(limit.toLongOrNull() ?: -1) in 32L..1048576L&&(keep.toIntOrNull() ?: -1) in 1..365&&(hour.toIntOrNull() ?: -1) in 0..23
+    Action("Сохранить",tv,Modifier.fillMaxWidth(),enabled=dirty&&!managed.busy&&revision.isNotBlank()&&valid){val body=JSONObject().put("historyDays",days.toIntOrNull() ?: -1).put("databaseLimitMiB",limit.toLongOrNull() ?: -1).put("backupKeep",keep.toIntOrNull() ?: -1).put("backupHourUTC",hour.toIntOrNull() ?: -1).put("backupEnabled",enabled).put("backupPassphrase",phrase);phrase="";controller.action("admin/settings","PATCH",body,revision,"admin/settings")}
    }
    "server-history"->{
     Text("История и резервные копии",fontSize=26.sp,fontWeight=FontWeight.Bold)
-    Action("Хранение и расписание копий",tv,secondary=true){model.page("server-retention")}
-    Text("Копия на сервере не защищает от потери диска. Архив шифруется отдельной парольной фразой восстановления.")
+    SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Schedule,"Хранение и расписание копий","Срок истории, размер базы и ежедневные копии",tv){model.page("server-retention")}}
     var downloadId by remember{mutableStateOf("")};var password by remember{mutableStateOf("")};val context=LocalContext.current
     val downloader=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")){uri->if(uri!=null){val out=context.contentResolver.openOutputStream(uri);if(out!=null)controller.downloadBackup(downloadId,password,out)};password=""}
-    ServerSecret(password,{password=it},"Пароль владельца для скачивания · повторная проверка")
-    Text("Если пароль владельца ещё не задан, установите его по SSH в обслуживании.")
-    var passphrase by remember {mutableStateOf("")};ServerSecret(passphrase,{passphrase=it},"Парольная фраза архива · от 16 символов")
-    Action("Создать копию",tv,enabled=passphrase.length>=16&&!managed.busy){val pass=passphrase;passphrase="";controller.action("admin/backups","POST",JSONObject().put("passphrase",pass),reload="admin/backups")}
-    managed.data?.optJSONArray("backups")?.let {rows->for(index in 0 until rows.length()){val backup=rows.getJSONObject(index);Text("${backup.getString("id")} · ${backup.getLong("size")} байт");Action("Скачать зашифрованную копию",tv,secondary=true,enabled=password.isNotBlank()&&!managed.busy){downloadId=backup.getString("id");downloader.launch(downloadId)}}}
-    Action("Очистить мою историю",tv,secondary=true){confirm="Очистить открытия и позиции только текущего аккаунта? Избранное сохранится, старая очередь будет отклонена." to {controller.action("history","DELETE");controller.syncNow()}}
+    var passphrase by remember{mutableStateOf("")}
+    SettingsCard("Создать резервную копию",Icons.Outlined.Backup,tv){
+     ServerSecret(passphrase,{passphrase=it},"Парольная фраза архива · от 16 символов")
+     SettingsHint("Архив шифруется этой фразой. Сохраните её отдельно и скачайте копию: архив на сервере не защищает от потери его диска.")
+     Action("Создать копию",tv,Modifier.fillMaxWidth(),enabled=passphrase.length>=16&&!managed.busy){val pass=passphrase;passphrase="";controller.action("admin/backups","POST",JSONObject().put("passphrase",pass),reload="admin/backups")}
+    }
+    SettingsCard("Скачать копию",Icons.Outlined.FileDownload,tv){
+     ServerSecret(password,{password=it},"Пароль владельца для скачивания · повторная проверка")
+     Text("Если пароль владельца ещё не задан, установите его по SSH в обслуживании.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     managed.data?.optJSONArray("backups")?.let{rows->
+      if(rows.length()==0)Text("Резервных копий пока нет",style=MaterialTheme.typography.bodyMedium)
+      for(index in 0 until rows.length()){val backup=rows.getJSONObject(index)
+       HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+       Text(backup.getString("id"),style=MaterialTheme.typography.labelLarge)
+       Text(sizeLabel(backup.getLong("size")),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+       Action("Скачать зашифрованную копию",tv,secondary=true,enabled=password.isNotBlank()&&!managed.busy){downloadId=backup.getString("id");downloader.launch(downloadId)}
+      }
+     }
+    }
+    SettingsDisclosure("Очистка истории","Только открытия и позиции текущего аккаунта",Icons.Outlined.DeleteOutline,tv){
+     Text("Избранное сохраняется. Другие аккаунты не затрагиваются.",style=MaterialTheme.typography.bodySmall)
+     TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={confirm="Очистить открытия и позиции только текущего аккаунта? Избранное сохранится, старая очередь будет отклонена." to {controller.action("history","DELETE");controller.syncNow()}}){Text("Очистить мою историю",color=MaterialTheme.colorScheme.error)}
+    }
    }
    "server-maintenance"->{
     Text("Обслуживание",fontSize=26.sp,fontWeight=FontWeight.Bold)
-    Text("Версия сервера: ${managed.data?.optString("version") ?: "не проверена"}")
-    Text("Обновление по шагам: проверим доступ, сохраним резервную копию и установим выбранную версию.")
-    Action("Обновить сервер",tv,Modifier.fillMaxWidth(),icon=Icons.Outlined.SystemUpdate){model.page("server-update")}
-    var other by rememberSaveable {mutableStateOf(false)}
-    Action(if(other) "Скрыть другие операции" else "Другие операции",tv,secondary=true){other=!other}
-    if(other){Text("Перезапуск, очистка кэша, смена пароля и восстановление",fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false)}
+    SettingsCard("Обновление сервера",Icons.Outlined.SystemUpdate,tv){
+     Text("Версия сервера: ${managed.data?.optString("version") ?: "не проверена"}",style=MaterialTheme.typography.labelLarge)
+     Text("Проверим доступ, сохраним резервную копию и установим выбранную версию.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     Action("Обновить сервер",tv,Modifier.fillMaxWidth()){model.page("server-update")}
+    }
+    SettingsDisclosure("Другие операции","Перезапуск, очистка кэша, пароль и восстановление",Icons.Outlined.Build,tv){SshPanel(s,model,tv,false)}
    }
    "server-update"->ServerUpdateScreen(s,model,tv)
 
@@ -197,17 +234,11 @@ import java.util.UUID
 }
 @Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
- Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
-  Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  OutlinedTextField(value,onChange,singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
- }
+ OutlinedTextField(value,onChange,label={Text(label)},singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
 }
 @Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String){
  var visible by remember{mutableStateOf(false)}
- Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
-  Text(label,fontSize=14.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  OutlinedTextField(value,onChange,singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
- }
+ OutlinedTextField(value,onChange,label={Text(label)},singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
@@ -282,7 +313,7 @@ import java.util.UUID
   if(data==null||connectionOpen){
    if(connectionOpen)Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){
     perform{target->val read=ssh.read(target);val status=ManagedApi(s.config,model.secrets).authorized("admin/status");read.put("activeStreams",status.getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());connectionOpen=false;onDirty(false);message="Данные сервера обновлены"}
-   }else TorrCard("Кэш и сеть",Icons.Outlined.Memory,tv){
+   }else SettingsCard("Кэш и сеть",Icons.Outlined.Memory,tv){
     Text("Подключите доступ администратора, чтобы загрузить настройки и рекомендации вашего сервера.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
     Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
    }
@@ -299,14 +330,21 @@ import java.util.UUID
 
  }else{
   var archive by remember{mutableStateOf("")};var passphrase by remember{mutableStateOf("")};var ownerPassword by remember{mutableStateOf("")}
+  SettingsCard("Сервисы",Icons.Outlined.Build,tv){
   Action("Перезапустить сервисы по SSH",tv,enabled=!busy){askConfirmation {perform{target->val result=ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("restart")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:restart:","");message=if(result.optBoolean("verified")) "Перезапуск и проверка подтверждены" else "Требуется проверка"}}}
   Action("Очистить кэш TorrServer",tv,secondary=true,enabled=!busy){askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","clear-cache").put("operationId",operation("clear-cache")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:clear-cache:","");message="Кэш очищен, сервисы проверены"}}}
+  }
+  SettingsCard("Пароль владельца",Icons.Outlined.Lock,tv){
   ServerSecret(ownerPassword,{ownerPassword=it},"Новый пароль владельца · от 10 символов")
   Action("Установить пароль владельца по SSH",tv,secondary=true,enabled=ownerPassword.length>=10&&!busy){perform{target->ssh.ownerPassword(target,s.config.userId,ownerPassword);ownerPassword="";message="Пароль владельца установлен"}}
+  }
+  SettingsDisclosure("Восстановление из копии","Заменяет данные сервера содержимым архива",Icons.Outlined.Restore,tv){
+  SettingsHint("Потребуется парольная фраза архива. После восстановления устройствам понадобится повторный вход.")
   ServerSecret(passphrase,{passphrase=it},"Парольная фраза восстанавливаемой копии")
 
   ServerField(archive,{archive=it},"Имя архива на сервере, .mjwb")
   Action("Восстановить по SSH",tv,secondary=true,enabled=!busy&&passphrase.length>=16&&archive.endsWith(".mjwb")){restoreWarning=true;askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","restore").put("operationId",operation("restore",archive)).put("confirmed",true).put("archive",archive).put("passphrase",passphrase));passphrase="";model.secrets.put("installOperation:${target.host}:${target.port}",UUID.randomUUID().toString());connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
+  }
  }
  }
  if(message.isNotBlank()&&(!install||progress==null))Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})

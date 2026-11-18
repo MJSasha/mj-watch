@@ -16,22 +16,13 @@ import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.*
 import org.json.JSONObject
 
-@Composable internal fun TorrCard(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tv:Boolean,content:@Composable ColumnScope.()->Unit){
- SettingsGroup(tv){Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-   Icon(icon,null,tint=MaterialTheme.colorScheme.primary);Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-  }
-  content()
- }}
-}
-
 /** The production editor also accepts snapshots in native UI regression tests. */
 @Composable fun TorrServerEditor(snapshot:JSONObject,draft:JSONObject,tv:Boolean,onChange:(JSONObject)->Unit,onDefaults:()->Unit){
  val fields=snapshot.getJSONArray("fields");val all=(0 until fields.length()).map{fields.getJSONObject(it)}
  fun change(name:String,value:Any)=onChange(JSONObject(draft.toString()).put(name,value))
  @Composable fun field(name:String){all.firstOrNull{it.optString("name")==name&&draft.has(name)}?.let {TorrInput(snapshot,draft,it,tv){value->change(name,value)}}}
  val memory=snapshot.optJSONObject("resources")
- TorrCard("Кэш видео",Icons.Outlined.Memory,tv){
+ SettingsCard("Кэш видео",Icons.Outlined.Memory,tv){
   if(memory!=null&&memory.optLong("totalBytes")>0){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Память сервера",color=MaterialTheme.colorScheme.onSurfaceVariant);Text("${memory.optLong("availableBytes")/1048576} / ${memory.optLong("totalBytes")/1048576} МиБ свободно",style=MaterialTheme.typography.labelLarge)}
    LinearProgressIndicator(progress={ (memory.optDouble("availableBytes")/memory.optDouble("totalBytes")).toFloat().coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
@@ -45,7 +36,10 @@ import org.json.JSONObject
    }
   }
   Text(if(draft.optBoolean("UseDisk"))"Разгружает RAM. Скорость зависит от накопителя." else "Быстрый доступ. Оставьте память для MJWatch и других сервисов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  field("CacheSize");field("PreloadCache")
+  field("CacheSize")
+  Text("Размер кэша — на одну раздачу. Разные раздачи используют отдельные кэши.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  memory?.optInt("plannedTorrents",0)?.takeIf{it>0}?.let{count->Text("Оценка максимума рассчитана на $count раздач с учётом лимита просмотров.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+  field("PreloadCache")
   if(memory!=null)Text("Резерв для системы и соседних сервисов: ${memory.optLong("reserveBytes")/1048576} МиБ. Оценка обновляется при чтении сервера.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
  }
  var network by rememberSaveable{mutableStateOf(false)}

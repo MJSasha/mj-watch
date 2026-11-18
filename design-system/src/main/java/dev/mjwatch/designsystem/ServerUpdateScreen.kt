@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -154,6 +155,7 @@ import java.util.UUID
   }
  } else {
   Text("Шаг ${step+1} из 4",color=MaterialTheme.colorScheme.onSurfaceVariant)
+  SettingsCard(when(step){0->"Пакет обновления";1->"Доступ администратора";2->"Резервная копия";else->"Проверка перед запуском"},Icons.Outlined.SystemUpdate,tv){
   when(step) {
    0 -> {
     Text("Выберите версию",fontSize=24.sp,fontWeight=FontWeight.Bold)
@@ -194,6 +196,7 @@ import java.util.UUID
     Text("Сначала проверим SSH и принадлежность сервера, затем передадим пакет. Сервер создаст копию, установит версию и проверит HTTPS, базу данных и TorrServer. При неудачной проверке он попытается вернуть прежнюю версию.")
     Text("Просмотр может прерваться. Обновление начнётся только после подтверждения.")
    }
+  }
   }
   val canContinue=when(step){0->release!=null;1->host.isNotBlank()&&password.isNotBlank()&&(port.toIntOrNull() ?: 0) in 1..65535;2->passphrase.length in 16..1024&&repeated==passphrase&&secured;else->password.isNotBlank()&&passphrase.length in 16..1024&&repeated==passphrase&&secured}
   if(!canContinue)Text(when(step){0->"Выберите пакет обновления.";1->"Введите адрес, root-пароль и корректный SSH-порт.";else->"Введите одинаковую фразу от 16 до 1024 символов в оба поля и подтвердите, что сохранили её."})

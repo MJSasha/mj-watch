@@ -192,7 +192,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
-                                    "settings-catalog"->if(state.config.managed) Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){Text("Каталог TMDB через сервер MJWatch. Ключ хранится у владельца сервера.");Action("Аккаунт и сервер",tv){model.page("managed-account")};Action("Проверить каталог",tv){model.refreshCatalog(true)};Text(state.catalogMessage)} else SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
+                                    "settings-catalog"->if(state.config.managed) Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){SettingsCard("Каталог и обложки",Icons.Outlined.Movie,tv){SettingsHint("Каталог TMDB работает через сервер MJWatch. Ключ хранится у владельца сервера.");Action("Проверить каталог",tv,Modifier.fillMaxWidth()){model.refreshCatalog(true)};OperationMessage(state.catalogMessage);SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и сервер","Управление подключением",tv){model.page("managed-account")}}} else SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
                                     "settings-updates"->LazyColumn(Modifier.testTag("settings-list"),contentPadding=PaddingValues(vertical=16.dp)) {item {UpdateSection(model.updates,tv)}}
                                     "search"->BoundedPane(!tv,maxWidth=840.dp) {SearchScreen(state,model,tv,searchScroll)}
                                     "library","history"->LibraryScreen(titles,progress,model,tv)
@@ -800,7 +800,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     } catch(_:Exception) {importError="Не удалось импортировать конфигурацию"} }
     fun urlError(raw:String)=raw.isNotBlank()&&runCatching {endpoint(raw)}.isFailure
     fun changed(new:Config) { c=new; model.invalidateChecks() }
-    var advanced by rememberSaveable {mutableStateOf(section!=null)}
     var setupStep by rememberSaveable {mutableIntStateOf(1)}
     val setup=!tv&&!s.configured
     BackHandler(setup&&setupStep==2&&!editorImeVisible) {setupStep=1}
@@ -810,45 +809,65 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Text("Jackett найдёт раздачи.\nTorrServer подготовит поток.\nMJWatch начнёт просмотр.",fontSize=18.sp,lineHeight=28.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Badge("Подключения",true)
     }
-    LazyColumn(Modifier.weight(1f).testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(horizontal=if(!tv&&!s.configured) 20.dp else 0.dp,vertical=24.dp)) {
-        if(setup) item {Column(verticalArrangement=Arrangement.spacedBy(18.dp)) {Text("ШАГ $setupStep ИЗ 2",fontSize=12.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Heading(if(setupStep==1) "Добавьте\nисточник раздач" else "Подключите\nTorrServer");Text(if(setupStep==1) "Используйте адрес Jackett или JacRed. API-ключ нужен только если требует сервер." else "Укажите адрес сервера в вашей сети",color=MaterialTheme.colorScheme.onSurfaceVariant)}}
-        else if(section==null) item {Heading("Подключения")}
-        if((!setup||setupStep==1)&&(section==null||section=="search")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Text("Jackett / JacRed",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett)) "Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+    LazyColumn(Modifier.weight(1f).testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(horizontal=if(!tv&&!s.configured)20.dp else 0.dp,vertical=24.dp)) {
+        if(setup)item {Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+            Text("ШАГ $setupStep ИЗ 2",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
+            Heading(if(setupStep==1)"Добавьте источник раздач" else "Подключите TorrServer")
+        }} else if(section==null)item{Heading("Подключения")}
+        if((!setup||setupStep==1)&&(section==null||section=="search"))item {SettingsCard("Источник раздач",Icons.Outlined.Search,tv){
+            Text("Jackett / JacRed находит раздачи для просмотра.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
-            Action("Проверить поиск",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(true,c,key,user,password)}
-            if(s.checkJackett.isNotBlank()) Text(s.checkJackett,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Action("Проверить поиск",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh){model.check(true,c,key,user,password)}
+            OperationMessage(s.checkJackett)
         }}
-        if((!setup||setupStep==2)&&(section==null||section=="server")) item {Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface,RoundedCornerShape(20.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Text("TorrServer",fontSize=20.sp,fontWeight=FontWeight.Bold)
-            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank()) "Введите http/https URL без логина, query и fragment" else runCatching {"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)} · IP без порта использует 8090"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
-            SettingsCheckbox("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))})
-            Action("Проверить TorrServer",tv,secondary=true,icon=Icons.Outlined.Refresh) {model.check(false,c,key,user,password)}
-            if(s.checkTorr.isNotBlank()) Text(s.checkTorr,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if((!setup||setupStep==2)&&(section==null||section=="server"))item {SettingsCard("Сервер видео",Icons.Outlined.Dns,tv){
+            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank())"Введите http/https URL без логина, query и fragment" else runCatching{"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)}"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            SettingsHint("Для IP без порта используется 8090. В прямом подключении открытия и позиции просмотра не сохраняются.")
+            SettingsToggle("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))},description="Для сервера в вашей локальной сети")
+            Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh){model.check(false,c,key,user,password)}
+            OperationMessage(s.checkTorr)
         }}
-        if(section=="search") item {SettingsCheckbox("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))})}
-        if(section=="server") item {Text("БЕЗ ИСТОРИИ · Позиция и открытия не сохраняются",color=MaterialTheme.colorScheme.primary)}
-        if(section=="catalog") item {Text("Метаданные и обложки из TMDB. Поиск раздач работает и без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        if(section==null) item {SettingsToggle("Демонстрация с локальным видео",c.demo,{changed(c.copy(demo=it))})}
-        if(setup&&setupStep==1&&!c.demo) item {Action("Далее · TorrServer",false,Modifier.fillMaxWidth(),enabled=!urlError(c.jackett),icon=Icons.Outlined.ArrowForward) {setupStep=2}}
-        if(section==null&&(!setup||setupStep==2||c.demo)) item {Action(if(s.busy) "Сохранение…" else "Сохранить и продолжить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy) {applySettings()}}
-        if(s.message.isNotBlank()) item {Text(s.message,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
-        if(section==null) item {TextButton(onClick={advanced=!advanced}) {Text(if(advanced) "Скрыть дополнительные настройки" else "Дополнительные настройки");Icon(if(advanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null)}}
-        if(advanced) {
-            if(section==null||section=="search") item {Text("Протокол поиска",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach {(id,label)->Pill(label,c.releaseApi==id,tv) {changed(c.copy(releaseApi=id))}}}}
-            if(section==null||section=="search") item {OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)}
-            if(section==null||section=="server") item {OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)}
-            if(section==null||section=="server") item {SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")}
-            if(section==null||section=="catalog") item {SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{c=c.copy(metadataProvider=if(it) "tmdb" else "none")})}
-            if((section==null||section=="catalog")&&c.metadataProvider=="tmdb") item {SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")}
-            if(section==null) item {Text("Оформление",fontWeight=FontWeight.Bold);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->Pill(label,c.theme==id,tv) {c=c.copy(theme=id)}}}}
-        }
-        if(section!=null) item {Action(if(s.busy) "Сохранение…" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy) {applySettings()}}
-        if(section==null) item {Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {try {val request=filePickerIntent(context,ActivityResultContracts.OpenDocument().createIntent(context,arrayOf("application/json")));if(request==null) importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную." else importer.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную."}}}
-        if(section==null) item {TextButton(onClick={if(!urlError(c.jackett)&&(c.torrServer.isBlank()||runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isSuccess)) try {val request=filePickerIntent(context,ActivityResultContracts.CreateDocument("application/json").createIntent(context,"mjwatch-config.json"));if(request==null) importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную." else export.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную."} else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}}
-        if(section==null) item {Text("Секреты шифруются Android Keystore. Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        if(section==null) item {Text("MJWatch ${model.updates.versionName} · TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        if(section=="search")item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){
+            Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
+            SettingsHint("Авто подходит для большинства серверов. Выберите протокол вручную, если автоматическая проверка не распознала источник.")
+            OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
+            SettingsToggle("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))},description="Для источника в вашей локальной сети")
+        }}
+        if(section=="server")item {SettingsDisclosure("Авторизация сервера",if(user.isNotBlank()||password.isNotBlank())"Авторизация настроена" else "Логин и пароль Basic Auth",Icons.Outlined.Lock,tv,initiallyOpen=user.isNotBlank()||password.isNotBlank()){
+            OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")
+            SettingsHint("Оставьте поля пустыми, если TorrServer не запрашивает логин и пароль.")
+        }}
+        if(section=="catalog")item {SettingsCard("Каталог и обложки",Icons.Outlined.Movie,tv){
+            SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{changed(c.copy(metadataProvider=if(it)"tmdb" else "none"))},description="Фильмы, сериалы, описания и постеры")
+            if(c.metadataProvider=="tmdb")SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")
+            SettingsHint("Поиск раздач работает и без каталога. Токен хранится в зашифрованном хранилище устройства.")
+        }}
+        if(section==null)item {SettingsCard("Режим просмотра",Icons.Outlined.PlayCircleOutline,tv){
+            SettingsToggle("Демонстрация с локальным видео",c.demo,{changed(c.copy(demo=it))},description="Проверить интерфейс и плеер без подключения источников")
+        }}
+        if(setup&&setupStep==1&&!c.demo)item {Action("Далее · TorrServer",false,Modifier.fillMaxWidth(),enabled=!urlError(c.jackett),icon=Icons.Outlined.ArrowForward){setupStep=2}}
+        if(section==null)item {SettingsDisclosure("Дополнительные настройки","Протокол, авторизация, каталог и тема",Icons.Outlined.Tune,tv){
+            Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
+            OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
+            OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")
+            SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{changed(c.copy(metadataProvider=if(it)"tmdb" else "none"))})
+            if(c.metadataProvider=="tmdb")SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")
+            Text("Оформление",style=MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach{(id,label)->Pill(label,c.theme==id,tv){c=c.copy(theme=id)}}}
+        }}
+        if(section!=null||!setup||setupStep==2||c.demo)item {Action(if(s.busy)"Сохранение…" else if(section==null)"Сохранить и продолжить" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy){applySettings()}}
+        if(s.message.isNotBlank())item {OperationMessage(s.message,error=true)}
+        if(section==null)item {SettingsCard("Перенос настроек",Icons.Outlined.ImportExport,tv){
+            Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {try {val request=filePickerIntent(context,ActivityResultContracts.OpenDocument().createIntent(context,arrayOf("application/json")));if(request==null) importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную." else importer.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную."}}
+            TextButton(onClick={if(!urlError(c.jackett)&&(c.torrServer.isBlank()||runCatching {endpoint(normalizeDirectAddress(c.torrServer))}.isSuccess)) try {val request=filePickerIntent(context,ActivityResultContracts.CreateDocument("application/json").createIntent(context,"mjwatch-config.json"));if(request==null) importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную." else export.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для сохранения файлов. Используйте QR или настройте подключение вручную."} else importError="Исправьте адреса перед экспортом"}) {Text("Экспорт конфигурации")}
+            SettingsHint("Экспорт не содержит ключей и паролей. Подключения можно сохранить без проверки.")
+        }}
+        if(section==null)item {Text("MJWatch ${model.updates.versionName} · TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported.copy(serverId="",userId="");key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
@@ -864,8 +883,8 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var themes by remember {mutableStateOf(false)}
     if(themes) AlertDialog(onDismissRequest={themes=false},title={Text("Тема")},text={Column {listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->PreferenceChoice(label,s.config.theme==id) {scope.launch {Settings(context).save(s.config.copy(theme=id))};themes=false}}}},confirmButton={TextButton(onClick={themes=false}) {Text("Закрыть")}})
-    val appearance:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        Text("Тема",fontSize=20.sp,fontWeight=FontWeight.Bold)
+    val appearance:@Composable ()->Unit={SettingsCard("Тема приложения",Icons.Outlined.Palette,tv) {
+        Text("Выберите оформление для этого устройства.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->PreferenceChoice(label,s.config.theme==id,tv) {scope.launch {Settings(context).save(s.config.copy(theme=id))}}}
     }}
     if(tv) {
@@ -874,8 +893,8 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
                 ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
                 Action("Выйти из приложения",true,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)
             }
-            Box(Modifier.weight(1f)) {when(section) {
-                "Подключения"->ConnectionLinks(s,model,true)
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical=4.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {when(section) {
+                "Подключения"->SettingsCard("Источники и сервер",Icons.Outlined.Hub,true){ConnectionLinks(s,model,true)}
                 "Аккаунт"->AccountLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true,model)
                 "Оформление"->appearance()
@@ -885,22 +904,17 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         return
     }
     LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(vertical=16.dp)) {
-        item {SettingsLabel("Подключения")}
-        item {ConnectionLinks(s,model,false)}
-        if(s.config.managed) {item {SettingsLabel("Аккаунт")};item {AccountLinks(s,model,false)}}
-        item {SettingsLabel("Воспроизведение")}
+        item {SettingsCard("Источники и сервер",Icons.Outlined.Hub,false){ConnectionLinks(s,model,false)}}
+        if(s.config.managed)item {SettingsCard("Аккаунт",Icons.Outlined.PersonOutline,false){AccountLinks(s,model,false)}}
         item {PlaybackPreferences(false,model)}
-        item {SettingsLabel("Оформление")}
-        item {SettingsGroup(false) {
+        item {SettingsCard("Оформление",Icons.Outlined.Contrast,false) {
             SettingsActionRow(Icons.Outlined.Palette,"Тема",when(s.config.theme) {"dark"->"Тёмная";"light"->"Светлая";else->"Как в системе"},false) {themes=true}
         }}
-        item {SettingsLabel("Приложение")}
-        item {UpdateLink(model,false)}
+        item {SettingsCard("Приложение",Icons.Outlined.Info,false){UpdateLink(model,false)}}
         item {Action("Выйти из приложения",false,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)}
         item {Text("MJWatch ${model.updates.versionName}\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=12.sp)}
     }
 }
-@Composable private fun SettingsLabel(text:String) {Text(text.uppercase(),fontSize=12.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)}
 @Composable private fun PlaybackPreferences(tv:Boolean,model:WatchModel) {
     val context=LocalContext.current
     val prefs=remember {context.getSharedPreferences("playback-preferences",0)}
@@ -919,7 +933,8 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
             subtitlesOff=id=="off";subtitles=id.takeIf {it!="auto"&&it!="off"};prefs.edit().putBoolean("subtitles-off",subtitlesOff).putString("subtitle-language",subtitles).apply();model.preferencesChanged();subtitleDialog=false
         }}
     }},confirmButton={TextButton(onClick={subtitleDialog=false}) {Text("Закрыть")}})
-    SettingsGroup(tv) {
+    SettingsCard("Воспроизведение",Icons.Outlined.PlayCircleOutline,tv) {
+        Text("Предпочтения для следующих просмотров. Дорожки можно менять и в самом плеере.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         SettingsActionRow(Icons.Outlined.HighQuality,"Предпочтительное качество",if(quality=="Все") "Любое" else quality,tv) {qualityDialog=true}
         SettingsDivider()
         SettingsActionRow(Icons.Outlined.Translate,"Язык аудио",when(audio) {"ru"->"Русский";"en"->"Английский";"ja"->"Японский";else->"Авто"},tv) {dialog=true}
@@ -928,11 +943,11 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     }
 }
 
-@Composable internal fun SettingsRow(icon:ImageVector,title:String,value:String,modifier:Modifier=Modifier,chevron:Boolean=true) {
+@Composable internal fun SettingsRow(icon:ImageVector,title:String,value:String,modifier:Modifier=Modifier,chevron:Boolean=true,expanded:Boolean?=null) {
     Row(modifier.fillMaxWidth().heightIn(min=48.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
         Icon(icon,null,tint=MaterialTheme.colorScheme.onSurface)
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {Text(title,fontWeight=FontWeight.Medium,lineHeight=20.sp,color=MaterialTheme.colorScheme.onSurface);Text(value.ifBlank {"Не настроен"},fontSize=13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)}
-        if(chevron) Icon(Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(chevron) Icon(if(expanded==true)Icons.Outlined.ExpandLess else if(expanded==false)Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable private fun PreparingScreen(s:WatchState,model:WatchModel,tv:Boolean) {
@@ -976,16 +991,18 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     Column(Modifier.fillMaxWidth().then(background).then(if(tv) Modifier else Modifier.clip(shape)),content=content)
 }
 @Composable internal fun SettingsDivider() {HorizontalDivider(Modifier.padding(horizontal=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.18f))}
-@Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,onClick:()->Unit) {
-    if(tv) NativeCard(true,Modifier.fillMaxWidth(),onClick=onClick) {SettingsRow(icon,title,value,Modifier.padding(16.dp))}
-    else Surface(onClick=onClick,color=androidx.compose.ui.graphics.Color.Transparent,modifier=Modifier.fillMaxWidth()) {SettingsRow(icon,title,value,Modifier.padding(16.dp))}
+@Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,onClick:()->Unit) =
+    SettingsActionRow(icon,title,value,tv,expanded=null,onClick=onClick)
+@Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,expanded:Boolean?,onClick:()->Unit) {
+    if(tv) NativeCard(true,Modifier.fillMaxWidth(),onClick=onClick) {SettingsRow(icon,title,value,Modifier.padding(16.dp),expanded=expanded)}
+    else Surface(onClick=onClick,color=androidx.compose.ui.graphics.Color.Transparent,modifier=Modifier.fillMaxWidth()) {SettingsRow(icon,title,value,Modifier.padding(16.dp),expanded=expanded)}
 }
 @Composable private fun ConnectionLinks(s:WatchState,model:WatchModel,tv:Boolean) {
     val account by model.managed.state.collectAsState()
     val managed=account.takeIf {it.scope==s.config.scope}
     val admin=managed?.me?.optString("role")=="admin"
     SettingsGroup(tv) {
-        SettingsActionRow(Icons.Outlined.Dns,"Jackett / JacRed",if(s.config.demo) "Демонстрационный режим" else s.config.jackett,tv) {model.page("settings-search")}
+        SettingsActionRow(Icons.Outlined.Search,"Jackett / JacRed",if(s.config.demo) "Демонстрационный режим" else s.config.jackett,tv) {model.page("settings-search")}
         if(!s.config.managed) {
             SettingsDivider()
             SettingsActionRow(Icons.Outlined.Dns,"TorrServer",if(s.config.demo) "Локальное тестовое видео" else s.config.torrServer,tv) {model.page("settings-server")}

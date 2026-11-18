@@ -45,9 +45,11 @@ import kotlinx.coroutines.*
             }
         }}
         if(!compact) {
-            SettingsGroup(tv,featured=true) {SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},modifier=Modifier.focusRequester(entryFocus),description="При открытии приложения",icon=Icons.Outlined.Update)}
-            Text("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.",fontSize=13.sp,lineHeight=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            SettingsCard("Проверка обновлений",Icons.Outlined.Update,tv) {
+            SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},modifier=Modifier.focusRequester(entryFocus),description="При открытии приложения")
+            SettingsHint("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.")
             UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading,loading=state.checking) {manager.check()}
+            }
             SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}
         }
         state.available?.let {update->

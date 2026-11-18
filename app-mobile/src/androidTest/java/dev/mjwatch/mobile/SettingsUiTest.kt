@@ -65,6 +65,25 @@ class SettingsUiTest {
     compose.onNodeWithText("Проверить сейчас").assertExists()
     screenshot("updates")
  }
+ @Test fun advancedSearchValuesSurviveCollapseAndSave(){
+    lateinit var model:WatchModel
+    compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java];model.page("settings-search")}
+    val list=compose.onNodeWithTag("settings-list")
+    list.performScrollToNode(hasText("Параметры поиска"));compose.onNodeWithText("Параметры поиска").performClick()
+    list.performScrollToNode(hasText("Индексаторы (необязательно)"))
+    compose.onNodeWithText("Индексаторы (необязательно)").performTextReplacement("fixture-source")
+    list.performScrollToNode(hasText("JacRed JSON"));compose.onNodeWithText("JacRed JSON").performClick()
+    list.performScrollToNode(hasText("Параметры поиска"));compose.onNodeWithText("Параметры поиска").performClick()
+    compose.onNodeWithText("Индексаторы (необязательно)").assertDoesNotExist()
+    compose.onNodeWithText("Параметры поиска").performClick()
+    list.performScrollToNode(hasText("Индексаторы (необязательно)"))
+    compose.onNodeWithText("Индексаторы (необязательно)").assertTextContains("fixture-source")
+    list.performScrollToNode(hasText("Сохранить"));compose.onNodeWithText("Сохранить").performClick()
+    compose.waitUntil(10000){model.state.value.page=="settings"}
+    Assert.assertEquals("fixture-source",model.state.value.config.indexers)
+    Assert.assertEquals("jacred",model.state.value.config.releaseApi)
+    Assert.assertEquals("fixture-password",model.secrets.get("torrPassword:http://127.0.0.1:8090"))
+ }
  @Test fun longRawTitleNeverOverlapsBackOrBottomAction() {
     lateinit var model:WatchModel
     compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}

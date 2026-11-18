@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.13
+
+- Unify phone and TV settings with the TorrServer card style: connections, playback preferences, catalogue, updates, accounts, history/backups and maintenance. Keep existing actions, save/discard guards, credentials and update confirmations.
+- Put advanced options in labelled expandable cards, add inline recommendations and API bounds for numeric settings, and clarify cache size per torrent with the projected torrent count.
+- Use distinct icons for setting groups and their actions, retain matching tile heights, and make TV preference panes scrollable.
+
 ## 0.9.12
 
 - Match Android TV home to the approved prototype: fixed categories, compact shelf gaps, a poster-only focus frame, measured shelf centring and smooth movement of previous rows beyond the viewport. Remove the featured title/actions strip and OK hint.

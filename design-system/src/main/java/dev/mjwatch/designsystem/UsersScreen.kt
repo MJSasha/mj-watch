@@ -94,10 +94,12 @@ private data class UserConfirmation(val title:String,val body:String,val button:
         when(s.page) {
             "server-user-create"->{
                 UserHeading("Новый пользователь")
-                Text("У каждого пользователя будут отдельные история и избранное.")
+                SettingsCard("Аккаунт пользователя",Icons.Outlined.PersonAdd,tv){
+                Text("У каждого пользователя будут отдельные история и избранное.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(current.draftName,controller::editName,label={Text("Имя пользователя")},singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation())
                 OperationMessage(message,current.error)
                 Action(if(current.busy)"Создаём пользователя…" else "Создать и получить приглашение",tv,enabled=validManagedUserName(current.draftName)&&!current.busy){controller.create {if(model.state.value.page=="server-user-create")model.page("server-user-invite")}}
+                }
             }
             "server-user-devices"->{
                 UserHeading("Устройства ${user?.name ?: "пользователя"}")
@@ -123,6 +125,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                 if(user!=null) {
                     val invitation=current.invitations[user.id]
                     if(invitation!=null) {
+                        SettingsCard("Ссылка для входа",Icons.Outlined.Link,tv){
                         Text("Одноразовое. Действует до ${activityTime(invitation.expiresAt/1000)}.")
                         Text("Отправьте ссылку ${user.name}. Она откроет MJWatch сразу на экране регистрации — останется придумать пароль.")
                         var copied by remember(invitation.token){mutableStateOf(false)}
@@ -136,6 +139,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                             val clip=ClipData.newPlainText("Приглашение для ${user.name}",link)
                             clip.description.extras=PersistableBundle().apply {putBoolean("android.content.extra.IS_SENSITIVE",true)}
                             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip);copied=true
+                        }
                         }
                     } else Text("Приглашение недоступно на этом устройстве. Можно создать новое — прежнее перестанет работать.")
                     var trust by rememberSaveable {mutableStateOf(false)}

@@ -24,7 +24,7 @@ import org.json.JSONObject
   snapshot=data;draft=JSONObject(data.getJSONObject("settings").toString());unsupported=false;message=""
  }catch(e:CancellationException){throw e}catch(e:Exception){unsupported=e is HttpFailure&&e.status==404;message=if(unsupported)"Обновите сервер, чтобы настраивать одновременные просмотры." else safeError(e)}finally{busy=false}}}
  LaunchedEffect(s.config.scope){load()}
- if(snapshot==null)TorrCard("Одновременные просмотры",Icons.Outlined.PlayCircleOutline,tv){
+ if(snapshot==null)SettingsCard("Одновременные просмотры",Icons.Outlined.PlayCircleOutline,tv){
   if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
   if(message.isNotBlank())Text(message,style=MaterialTheme.typography.bodyMedium)
   if(unsupported)TextButton(onClick={model.page("server-update")},modifier=Modifier.tvFocusRing(tv)){Text("Обновить сервер")}
@@ -53,7 +53,7 @@ import org.json.JSONObject
   onChange(next)
  }
 
- TorrCard("Одновременные просмотры",Icons.Outlined.PlayCircleOutline,tv){
+ SettingsCard("Одновременные просмотры",Icons.Outlined.PlayCircleOutline,tv){
   Text("Лимиты действуют на весь сервер и на каждый аккаунт.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   LimitChoice("На сервере",draft.optInt("maxStreams"),recommended,maximum,tv,busy){change("maxStreams",it)}
   Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)){

@@ -66,22 +66,22 @@ import org.json.JSONObject
             }
             "managed-pairing"->{
                 DisposableEffect(Unit){onDispose{controller.qr.cancelPhone()}}
-                Text("Откройте QR входа на новом устройстве и отсканируйте его кнопкой вверху. Подходит для телевизора, телефона и планшета.")
+                SettingsCard("Подключение по QR",Icons.Outlined.QrCodeScanner,tv){SettingsHint("Откройте QR входа на новом устройстве и отсканируйте его кнопкой вверху. Подходит для телевизора, телефона и планшета.")}
                 if(qr.stage in setOf("sending","waiting","approving")) {
                     CircularProgressIndicator()
                     Text(when(qr.stage){"sending"->"Передаём настройки на устройство…";"approving"->"Подтверждаем устройство…";else->"На новом устройстве выберите «Подключить»."},modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                 }
                 if(qr.stage=="preview") {
+                    SettingsCard("Подтвердите устройство",Icons.Outlined.Devices,tv){
                     Text("Устройство: ${qr.device}",fontWeight=FontWeight.Medium)
                     Text("Аккаунт: ${qr.account}")
                     val shown=qr
                     Action("Подключить устройство",tv){controller.qr.approvePhone(shown)}
+                    }
                 }
                 OperationMessage(qr.message,error=qr.stage=="error")
                 if(qr.stage.isNotBlank()&&qr.stage!="approved")Action("Отменить подключение",tv,secondary=true){controller.qr.cancelPhone()}
-                var legacy by rememberSaveable {mutableStateOf(false)}
-                Action("Ввести код вручную",tv,secondary=true){legacy=!legacy}
-                if(legacy) {
+                SettingsDisclosure("Ввести код вручную","Перенос файла настроек и шестизначный код",Icons.Outlined.Password,tv) {
                 var code by rememberSaveable {mutableStateOf("")}
                 val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->if(uri!=null)controller.exportTvSetup(uri)}
                 Text("Первое подключение: сохраните настройки и перенесите файл на TV. На телевизоре выберите «Импортировать настройки» и сверьте отпечаток.")
@@ -101,8 +101,8 @@ import org.json.JSONObject
                 }
             }
             else->{
-                SettingsGroup(tv) {
-                    Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                SettingsCard("Аккаунт и синхронизация",Icons.Outlined.ManageAccounts,tv) {
+                    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             Icon(if(managed.syncedAt>0)Icons.Outlined.CloudDone else Icons.Outlined.CloudSync,null,tint=if(managed.syncedAt>0)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                             Column(Modifier.weight(1f)) {
@@ -122,13 +122,14 @@ import org.json.JSONObject
                 managed.pending.filter {it.conflict.isNotBlank()}.forEach {pending->
                     val local=JSONObject(pending.json)
                     val title=history.entries.firstOrNull {it.id==local.optString("releaseId")}?.title ?: local.optString("title",local.optString("path",pending.entityKey))
-                    Text("Конфликт · $title",fontWeight=FontWeight.Bold)
+                    SettingsCard("Конфликт · $title",Icons.Outlined.SyncProblem,tv){
                     if(pending.kind=="progress") {
                         val remote=runCatching{JSONObject(pending.conflict).optJSONObject("entity")?.optJSONObject("value")}.getOrNull()
                         Text("На этом устройстве: ${local.optLong("positionMs")/1000} с. На сервере: ${remote?.optLong("positionMs")?.div(1000) ?: "нет позиции"}")
                     }
                     Action("Использовать серверную",tv,secondary=true){controller.resolve(pending,false)}
                     Action("Использовать эту",tv){confirm="Отправить изменения этого устройства вместо актуальной серверной версии?" to {controller.resolve(pending,true)}}
+                    }
                 }
                 var advanced by rememberSaveable {mutableStateOf(false)}
                 SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.MoreHoriz,"Дополнительные действия","Импорт прежней истории",tv){advanced=!advanced}}
