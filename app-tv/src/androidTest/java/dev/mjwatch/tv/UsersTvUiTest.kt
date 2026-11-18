@@ -44,13 +44,14 @@ class UsersTvUiTest {
         compose.waitUntil(5000){model.state.value.page=="server-user"}
         compose.onNodeWithTag("users-list").assertIsDisplayed()
         compose.onNodeWithTag("user-detail").assertIsDisplayed()
-        compose.onNodeWithText("Заблокировать owner").assertIsNotEnabled()
-        compose.onNodeWithText("Удалить owner").assertIsNotEnabled()
-        compose.onNodeWithText("Устройства owner").performSemanticsAction(SemanticsActions.RequestFocus)
-        compose.onNodeWithText("Устройства owner").performKeyInput {pressKey(Key.DirectionCenter)}
+        compose.onNodeWithContentDescription("Заблокировать owner").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Удалить owner").assertIsNotEnabled()
+        val i=InstrumentationRegistry.getInstrumentation();val dir=File(i.targetContext.getExternalFilesDir(null),"issues-6-7").apply {mkdirs()}
+        compose.waitForIdle();Thread.sleep(350);Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"tv-user-profile.png")))
+        compose.onNodeWithText("Устройства").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithText("Устройства").performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(10000){model.managed.users.state.value.devices[model.state.value.config.userId]!=null&&!model.managed.users.state.value.busy}
         compose.onNodeWithText("Обновить устройства").assertExists()
-        val i=InstrumentationRegistry.getInstrumentation();val dir=File(i.targetContext.getExternalFilesDir(null),"issues-6-7").apply {mkdirs()}
         compose.waitForIdle();Thread.sleep(350);Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"tv-user-devices.png")))
         compose.runOnIdle {model.back()}
         Assert.assertEquals("server-user",model.state.value.page)

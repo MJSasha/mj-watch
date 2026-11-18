@@ -22,7 +22,7 @@ class UserManagementUiTest {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("issueFixture")=="true")
         val c=InstrumentationRegistry.getInstrumentation().targetContext
         val bootstrap=JSONObject(java.net.URL("http://127.0.0.1:18544/bootstrap").readText())
-        val config=Config(connectionMode="managed",managedUrl=bootstrap.getString("url"),serverId=bootstrap.getString("serverId"),userId=bootstrap.getString("userId"),theme="dark")
+        val config=Config(connectionMode="managed",managedUrl=bootstrap.getString("url"),serverId=bootstrap.getString("serverId"),userId=bootstrap.getString("userId"),theme=InstrumentationRegistry.getArguments().getString("theme") ?: "dark")
         c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
         val secrets=SecretStore(c);secrets.put("ca:${endpoint(config.managedUrl).origin()}",bootstrap.getString("ca"));ManagedApi(config,secrets).saveTokens(bootstrap)
         val db=Room.databaseBuilder(c,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
@@ -48,8 +48,8 @@ class UserManagementUiTest {
         compose.waitUntil(15000){controller.state.value.loaded&&!controller.state.value.busy}
         compose.onNodeWithTag("users-list").performScrollToNode(hasText("owner"))
         compose.onNodeWithText("owner").performClick()
-        compose.onNodeWithText("Заблокировать owner").assertIsNotEnabled()
-        compose.onNodeWithText("Удалить owner").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Заблокировать owner").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Удалить owner").assertIsNotEnabled()
         compose.onNodeWithText("Это последний администратор сервера. Его нельзя заблокировать или удалить.").assertExists()
         shot("owner-protection")
         compose.runOnIdle {model.back()}
@@ -72,14 +72,14 @@ class UserManagementUiTest {
         val original=controller.state.value.invitations[id]!!
         Assert.assertTrue(controller.state.value.users.any {it.name=="owner"})
         compose.onNodeWithText("Скопировать ссылку").performClick()
-        compose.onNodeWithText("Ссылка для $name скопирована").assertExists()
+        compose.onNodeWithText("Ссылка скопирована").assertExists()
         compose.runOnIdle {controller.load()}
         compose.waitUntil(10000){!controller.state.value.busy}
         Assert.assertEquals(original,controller.state.value.invitations[id])
         shot("named-invitation")
         compose.runOnIdle {model.back()}
         shot("user-overview")
-        compose.onNodeWithText("Устройства $name").performClick()
+        compose.onNodeWithText("Устройства").performClick()
         compose.waitUntil(10000){controller.state.value.devices[id]!=null&&!controller.state.value.busy}
         compose.onNodeWithText("Устройств пока нет").assertExists()
         compose.onNodeWithText("Имя пользователя").assertDoesNotExist()
@@ -88,7 +88,7 @@ class UserManagementUiTest {
         compose.onNodeWithText("Устройства $name").assertExists()
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java];model.back()}
         Assert.assertEquals("server-user",model.state.value.page)
-        compose.onNodeWithText("Приглашение для $name").performClick()
+        compose.onNodeWithText("Приглашение").performClick()
         compose.onNodeWithText("Создать новое приглашение").performScrollTo().performClick()
         compose.onNodeWithText("Прежнее приглашение перестанет работать.").assertExists()
         compose.onNodeWithText("Создать новое").performClick()
@@ -99,17 +99,37 @@ class UserManagementUiTest {
             Assert.assertTrue(failure is HttpFailure&&(failure as HttpFailure).status==401)
         }
         compose.runOnIdle {model.back()}
-        compose.onNodeWithText("Заблокировать $name").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Заблокировать $name").performScrollTo().performClick()
         compose.onNodeWithText("Заблокировать $name?").assertExists()
-        compose.onNodeWithText("Заблокировать").performClick()
+        compose.onNode(hasText("Заблокировать") and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10000){model.managed.users.state.value.selected?.blocked==true&&!model.managed.users.state.value.busy}
         compose.onNodeWithText("Доступ заблокирован").assertExists()
-        compose.onNodeWithText("Удалить $name").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Удалить $name").performScrollTo().performClick()
         compose.onNodeWithText("Удалить $name?").assertExists()
         compose.onNode(hasText("Удалить $name") and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10000){model.state.value.page=="server-users"&&!model.managed.users.state.value.busy}
         Assert.assertFalse(model.managed.users.state.value.users.any {it.id==id})
         shot("compact-user-list")
+    }
+    @Test fun reviewUsersLayout(){
+        val phase=InstrumentationRegistry.getArguments().getString("usersReview")
+        Assume.assumeTrue(phase!=null)
+        lateinit var model:WatchModel
+        compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(15000){model.managed.state.value.me?.optString("role")=="admin"}
+        val controller=model.managed.users
+        compose.runOnIdle{controller.load();model.page("server-users")}
+        compose.waitUntil(10000){controller.state.value.loaded&&!controller.state.value.busy}
+        shot("$phase-users-list")
+        compose.runOnIdle{controller.editName("Анна ${System.currentTimeMillis()%10000}");controller.create{model.page("server-user")}}
+        compose.waitUntil(10000){model.state.value.page=="server-user"&&!controller.state.value.busy}
+        shot("$phase-user-profile")
+        compose.runOnIdle{model.page("server-user-invite")};shot("$phase-user-invite")
+        compose.runOnIdle{model.page("server-user-devices")}
+        compose.waitUntil(10000){controller.state.value.devices[controller.state.value.selectedId]!=null&&!controller.state.value.busy}
+        shot("$phase-user-devices")
+        compose.runOnIdle{controller.changeAccess(controller.state.value.selected!!,delete=true){model.page("server-users")}}
+        compose.waitUntil(10000){!controller.state.value.busy}
     }
     @Test fun accountSeparatesDevicesTvAndLogoutAndShowsRadioSelection() {
         lateinit var model:WatchModel
@@ -147,7 +167,7 @@ class UserManagementUiTest {
         compose.waitUntil(10000){model.state.value.page=="server-user"&&!controller.state.value.busy}
         val id=controller.state.value.selectedId
         compose.onNodeWithText(name).assertIsDisplayed()
-        compose.onNodeWithText("Устройства $name").performScrollTo().performClick()
+        compose.onNodeWithText("Устройства").performScrollTo().performClick()
         compose.waitUntil(10000){controller.state.value.devices[id]!=null&&!controller.state.value.busy}
         compose.onNodeWithText("Устройств пока нет").performScrollTo().assertIsDisplayed()
         shot("large-text-user-devices")

@@ -935,11 +935,13 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     }},confirmButton={TextButton(onClick={subtitleDialog=false}) {Text("Закрыть")}})
     SettingsCard("Воспроизведение",Icons.Outlined.PlayCircleOutline,tv) {
         Text("Предпочтения для следующих просмотров. Дорожки можно менять и в самом плеере.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingsGroup(tv) {
         SettingsActionRow(Icons.Outlined.HighQuality,"Предпочтительное качество",if(quality=="Все") "Любое" else quality,tv) {qualityDialog=true}
         SettingsDivider()
         SettingsActionRow(Icons.Outlined.Translate,"Язык аудио",when(audio) {"ru"->"Русский";"en"->"Английский";"ja"->"Японский";else->"Авто"},tv) {dialog=true}
         SettingsDivider()
         SettingsActionRow(Icons.Outlined.Subtitles,"Субтитры",subtitleLabel,tv) {subtitleDialog=true}
+        }
     }
 }
 
@@ -995,7 +997,7 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     SettingsActionRow(icon,title,value,tv,expanded=null,onClick=onClick)
 @Composable internal fun SettingsActionRow(icon:ImageVector,title:String,value:String,tv:Boolean,expanded:Boolean?,onClick:()->Unit) {
     if(tv) NativeCard(true,Modifier.fillMaxWidth(),onClick=onClick) {SettingsRow(icon,title,value,Modifier.padding(16.dp),expanded=expanded)}
-    else Surface(onClick=onClick,color=androidx.compose.ui.graphics.Color.Transparent,modifier=Modifier.fillMaxWidth()) {SettingsRow(icon,title,value,Modifier.padding(16.dp),expanded=expanded)}
+    else Surface(onClick=onClick,color=androidx.compose.ui.graphics.Color.Transparent,modifier=Modifier.fillMaxWidth()) {SettingsRow(icon,title,value,Modifier.padding(horizontal=16.dp,vertical=8.dp),expanded=expanded)}
 }
 @Composable private fun ConnectionLinks(s:WatchState,model:WatchModel,tv:Boolean) {
     val account by model.managed.state.collectAsState()

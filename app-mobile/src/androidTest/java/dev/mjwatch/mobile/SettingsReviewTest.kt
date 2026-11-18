@@ -32,6 +32,10 @@ class SettingsReviewTest {
    ui.runOnUiThread{imeVisible=androidx.core.view.ViewCompat.getRootWindowInsets(ui.activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}
    if(imeVisible){UiDevice.getInstance(i).pressBack();ui.waitForIdle();Thread.sleep(350)}
    Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$page.png")))
+   if(page=="settings"){
+    ui.onNodeWithTag("settings-list").performScrollToNode(hasText("Субтитры"));ui.waitForIdle();Thread.sleep(350)
+    Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"settings-playback.png")))
+   }
   }
  }
 }
