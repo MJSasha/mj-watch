@@ -12,21 +12,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.*
 import kotlinx.coroutines.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 
 @Composable internal fun HomeServerButton(s:WatchState,model:WatchModel,tv:Boolean) {
     var online by remember(s.config) {mutableStateOf<Boolean?>(null)}
-    LaunchedEffect(s.config) {
+    val lifecycle=LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(s.config,lifecycle) {
         if(s.config.demo)return@LaunchedEffect
         val api by lazy {ManagedApi(s.config,model.secrets)}
         val gateway by lazy {
             val client=guardedClient(s.config)
             TorrServerGateway(s.config,model.secrets.get("torrAuth:${s.config.torrServer}"),client,TorznabRepository(s.config,model.secrets.get("jackett:${s.config.jackett}"),client))
         }
-        while(isActive) {
-            online=try {withContext(Dispatchers.IO) {
-                if(s.config.managed)api.authorized("me") else gateway.check()
-            };true} catch(e:CancellationException){throw e} catch(e:Exception){false}
-            delay(30000)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while(isActive) {
+                online=try {withContext(Dispatchers.IO) {
+                    if(s.config.managed)api.authorized("me") else gateway.check()
+                };true} catch(e:CancellationException){throw e} catch(e:Exception){false}
+                delay(30000)
+            }
         }
     }
     val status=when(online){true->"Сервер доступен";false->"Нет связи с сервером";null->if(s.config.demo)"Демонстрация" else "Проверяем сервер"}

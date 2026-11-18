@@ -42,6 +42,26 @@ class NovemberIssuesUiTest {
         compose.waitUntil(10000) {m.scopedLibrary.value.entries.size==1&&m.scopedLibrary.value.positions.size==1}
         return m
     }
+    @Test fun continuingFilmAndSeriesCardsHaveEqualHeight() {
+        val m=model()
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        runBlocking {
+            val db=Room.databaseBuilder(context,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
+            try {
+                val entry=LibraryEntry("fixture:film","Тест фильма","fixture",1)
+                db.syncDao().put(SyncEntity(config.scope,"opening",entry.id,entry.syncJson().toString(),1))
+                val progress=Progress("fixture:film-progress",entry.id,1,"Movie.mp4",60000,300000,1,false)
+                db.syncDao().put(SyncEntity(config.scope,"progress",progress.key,progress.syncJson().toString(),1))
+            } finally {db.close()}
+        }
+        compose.waitUntil(10000) {m.scopedLibrary.value.entries.size==2}
+        compose.runOnIdle {m.page("home")}
+        compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-fixture:film"))
+        val film=compose.onNodeWithTag("library-fixture:film").getUnclippedBoundsInRoot()
+        val series=compose.onNodeWithTag("library-fixture:series").getUnclippedBoundsInRoot()
+        Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
+        capture("equal-continue-cards")
+    }
     private fun capture(name:String) {
         compose.waitForIdle()
         val i=InstrumentationRegistry.getInstrumentation()

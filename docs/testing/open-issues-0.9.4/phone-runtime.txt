@@ -7,5 +7,3 @@ dev.mjwatch.mobile.NovemberIssuesUiTest:....
 Time: 28.251
 
 OK (7 tests)
-
-
