@@ -22,6 +22,22 @@ internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus
     else -> PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true)
 }
 
+internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String=""):PlaybackStatus {
+    val audio=mime?.startsWith("audio/")==true
+    val video=mime?.startsWith("video/")==true
+    val track=if(audio) "Аудиодорожка" else if(video) "Видеодорожка" else "Дорожка"
+    val (title,message)=when(code) {
+        3001,3003 -> "Не удалось прочитать контейнер" to "Попробуйте другую раздачу этого видео."
+        4001,4002 -> "Не удалось запустить декодер" to "Доступные декодеры не удалось запустить. Попробуйте другую дорожку или раздачу."
+        4004,4005 -> "$track не поддерживается" to if(audio) "Выберите раздачу с другой аудиодорожкой." else "Выберите раздачу с другим кодеком или меньшим разрешением."
+        in 4000..4999 -> "Ошибка декодирования" to "Попробуйте другую дорожку или раздачу."
+        in 5000..5999 -> "Не удалось вывести звук" to "Проверьте настройки вывода звука или выберите другую аудиодорожку."
+        else -> "Видео недоступно" to "Не удалось восстановить поток. Повторите попытку или проверьте сервер."
+    }
+    val diagnostic=listOfNotNull(code?.let {"Код: $it"},mime,details.takeIf {it.isNotBlank()}).joinToString(" · ")
+    return PlaybackStatus(title,message+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 3000..5999)
+}
+
 @Composable internal fun PlaybackStatusOverlay(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
     if(status.compact) {
         Surface(Modifier.testTag("playback-buffering"),shape=androidx.compose.foundation.shape.CircleShape,color=MaterialTheme.colorScheme.surface.copy(alpha=.72f)) {
