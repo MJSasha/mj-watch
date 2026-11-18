@@ -1,6 +1,10 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class,androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package dev.mjwatch.playback
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -45,9 +49,11 @@ internal val PlayerLime=Color(0xFFC7FF68)
     val windowFocused=LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(visible,ready,windowFocused) {if(visible&&ready&&windowFocused&&!mobile) {delay(100);playFocus.requestFocus()}}
     var interaction by remember {mutableIntStateOf(0)};var scrubbing by remember {mutableStateOf(false)}
+    var seekForward by remember {mutableStateOf(true)}
+    val seekPulse=remember {Animatable(0f)}
     var seekFeedback by remember {mutableStateOf("")}
     var seekInteraction by remember {mutableIntStateOf(0)}
-    LaunchedEffect(seekInteraction) {if(seekFeedback.isNotEmpty()) {delay(900);seekFeedback=""}}
+    LaunchedEffect(seekInteraction) {if(seekFeedback.isNotEmpty()) {seekPulse.snapTo(0f);seekPulse.animateTo(1f,tween(650));delay(250);seekFeedback=""}}
     LaunchedEffect(Unit) {while(true) {player()?.let {p->if(!scrubbing) position=p.currentPosition;duration=p.duration.coerceAtLeast(0);playing=p.isPlaying;ready=p.playbackState==Player.STATE_READY||p.duration>0};delay(250)}}
     LaunchedEffect(visible,playing,interaction,keepVisible) {if(visible&&playing&&!keepVisible) {delay(4000);onVisibility(false)}}
     fun touch(block:()->Unit) {interaction++;block()}
@@ -59,13 +65,13 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     if(p!=null&&p.isCurrentMediaItemSeekable&&p.duration>0&&!externalPanel) touch {
                         val forward=offset.x>=size.width/2
                         p.seekTo((p.currentPosition+if(forward)10_000 else -10_000).coerceIn(0,p.duration))
-                        seekFeedback=if(forward) "+10 секунд" else "−10 секунд";seekInteraction++
+                        seekForward=forward;seekFeedback=if(forward) "+10 секунд" else "−10 секунд";seekInteraction++
                     }
                 })
             })
             if(visible) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.34f).background(Brush.verticalGradient(0f to Color(0xF5101722),.65f to Color(0xD9101722),1f to Color.Transparent)))
-                if(ready)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.5f).background(Brush.verticalGradient(0f to Color.Transparent,.45f to Color(0xCC101722),1f to Color(0xF5101722))))
+                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
+                if(ready)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodeLabel.ifBlank {"MJWatch"},maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
@@ -108,7 +114,13 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 }
             }
-            if(seekFeedback.isNotEmpty()) Text(seekFeedback,Modifier.align(Alignment.Center).background(Color(0xCC000000),CircleShape).padding(20.dp),fontSize=24.sp,fontWeight=FontWeight.Bold)
+            if(seekFeedback.isNotEmpty()) Box(Modifier.align(if(seekForward)Alignment.CenterEnd else Alignment.CenterStart).fillMaxWidth(.45f).fillMaxHeight().testTag(if(seekForward)"seek-forward-feedback" else "seek-back-feedback"),contentAlignment=Alignment.Center) {
+                Box(Modifier.size(170.dp).scale(.75f+seekPulse.value*.5f).alpha((1f-seekPulse.value)*.32f).background(Color.White,CircleShape))
+                Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Row {repeat(3) {index->Icon(if(seekForward)Icons.Outlined.PlayArrow else Icons.Outlined.ArrowLeft,null,Modifier.size(28.dp).alpha(.35f+.65f*(1f-kotlin.math.abs(seekPulse.value*3f-index).coerceIn(0f,1f))),tint=Color.White)}}
+                    Text(seekFeedback,fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
+                }
+            }
             if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusOverlay(status,onRetry,onBack)}
         }
     }

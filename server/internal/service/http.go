@@ -30,7 +30,7 @@ type identity struct {
 	Epoch                       int64
 }
 
-var Version = "0.1.5"
+var Version = "0.1.6"
 
 type Server struct {
 	passwordSlots chan struct{}
@@ -161,7 +161,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "me" && r.Method == "GET":
 		var name string
 		s.DB.QueryRow("SELECT name FROM users WHERE id=?", i.User).Scan(&name)
-		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1})
+		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "deviceInstallationIdentity": true})
 	case (path == "capabilities" || path == "config") && r.Method == "GET":
 		respond(w, 200, map[string]any{"apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "tmdb": s.publicTMDB(), "sync": true})
 	case path == "auth/logout" && r.Method == "POST":
@@ -179,7 +179,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "devices" && r.Method == "GET":
 		s.devices(w, i.User)
 	case strings.HasPrefix(path, "devices/") && r.Method == "DELETE":
-		result, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
+		result, err := s.DB.Exec("DELETE FROM devices WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
 		if err != nil {
 			fail(w, 503, "database_unavailable")
 			return

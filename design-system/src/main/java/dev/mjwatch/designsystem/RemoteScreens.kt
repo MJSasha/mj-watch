@@ -113,7 +113,7 @@ import kotlinx.coroutines.*
                 }
             }
             remote.connected&&target!=null->{
-                Action("Смотреть на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,pill=true,onClick=onStart)
+                Action("Смотреть на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,secondary=true,icon=Icons.Outlined.Tv,onClick=onStart)
             }
         }
         if(remote.message.isNotBlank()&&remote.connected)Text(remote.message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})

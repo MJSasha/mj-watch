@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.0**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.6**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.0
+export MJWATCH_SERVER_VERSION=0.1.6
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -57,3 +57,7 @@ Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair
 Server 0.1.4 replaces the old Maintenance check bootstrap sessions with a root-issued, 90-second credential scoped only to GET `/api/v1/admin/status`. It creates neither devices nor refresh sessions and keeps the authenticated TLS health check. The old helper's `bootstrap` health invocation is recognized during an in-place upgrade, so the worker already running before the binary switch cannot recreate the problem.
 
 On the next health check, matching `health-<timestamp>.bootstrap` receipts are read only if regular, private and owned by the executing root user. A device is deleted only when its ID, admin ownership, exact Maintenance check name and stored refresh-token hash all match the receipt. Its sessions cascade away and the obsolete receipt is removed. Other devices and all user/history data remain unchanged. Old probes without verifiable receipts are preserved rather than guessed. Apply the signed 0.1.4 supply through Settings → My server → Maintenance → Update server to clean an existing installation.
+
+## Device cleanup (0.1.6)
+
+Deleting an individual device removes its database record and cascades sessions, receiver state, profiles and installation mapping. Previously revoked devices remain removable. Repeated sign-ins from one app installation are deduplicated by an opaque persisted UUID within the same account; equal names alone are never merged. Legacy devices without an installation identity can be removed explicitly. The client sends the new profile field only after `me.deviceInstallationIdentity=true`, preserving 0.1.5 compatibility.

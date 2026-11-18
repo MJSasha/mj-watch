@@ -165,7 +165,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                                 val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(state.page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-                                if(state.page=="home") IconButton(onClick={model.page("settings")},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.Dns,"Подключения")}
+                                if(state.page=="home") HomeServerButton(state,model,tv)
                                 else if(state.config.demo&&state.page!="settings"&&state.page!="connections"&&!state.page.startsWith("settings-")) Badge("ДЕМО",accent=true)
                             }
                         }
@@ -312,7 +312,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(continuing.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle(if(tv) "Продолжить просмотр" else "Продолжить",if(tv) "Вся история" else "") {model.page("history")}}}
                 if(tv) item {LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(14.dp)) {items(continuing,key={it.entry.id}) {e->Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true)}}}}
-                else items(continuing.take(3).chunked(columns),key={it.first().entry.id}) {row->
+                else items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                         row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,progress,model,false)}}
                         repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
@@ -641,7 +641,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var menu by remember {mutableStateOf(false)}
     if(menu) {
         val confirmFocus=remember {FocusRequester()}
-        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text("Действие с записью библиотеки")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};Action(if(bookmarkOnly) "Убрать из избранного" else "Удалить из истории",tv,Modifier.focusRequester(confirmFocus)) {model.remove(item.records,bookmarkOnly);menu=false}},dismissButton={Action("Отмена",tv,secondary=true) {menu=false}})
+        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};TextButton(modifier=Modifier.heightIn(min=48.dp).focusRequester(confirmFocus).tvFocusRing(tv),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
     }
     val p=item.progress(progress)
     val cardState by model.state.collectAsState()
@@ -653,10 +653,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(wide) Column {
             Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {p.episodeLabel()?.let {Text(it,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
-        } else Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
-            Artwork(metadata,config,Modifier.width(68.dp).height(88.dp).clip(RoundedCornerShape(10.dp)),demo=e.id.startsWith("demo:"))
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
-                p.episodeLabel()?.let {Text(it,fontSize=13.sp,color=MaterialTheme.colorScheme.primary)}
+        } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.width(68.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp)).testTag("library-poster-${e.id}")) {Artwork(metadata,config,Modifier.matchParentSize(),demo=e.id.startsWith("demo:"))}
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,minLines=2,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
+                Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=13.sp,color=MaterialTheme.colorScheme.primary)
                 Text("${time(p.positionMs)}${p.durationMs?.let {" / ${time(it)}"} ?: ""}",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}
             }}

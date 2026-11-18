@@ -58,10 +58,10 @@ class NovemberIssuesUiTest {
         compose.waitForIdle()
         Assert.assertEquals("history",m.state.value.page)
         Assert.assertEquals(1,m.scopedLibrary.value.entries.size)
-        compose.onNodeWithText("Удалить из истории").assertIsDisplayed()
+        compose.onNodeWithText("Удалить").assertIsDisplayed()
         capture("history-actions")
-        compose.waitUntil(5000) {runCatching {compose.onNodeWithText("Удалить из истории").assertIsFocused();true}.getOrDefault(false)}
-        compose.onNodeWithText("Удалить из истории").assertIsFocused().performKeyInput {pressKey(Key.DirectionCenter)}
+        compose.waitUntil(5000) {runCatching {compose.onNodeWithText("Удалить").assertIsFocused();true}.getOrDefault(false)}
+        compose.onNodeWithText("Удалить").assertIsFocused().performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(10000) {m.scopedLibrary.value.entries.isEmpty()}
         compose.onNodeWithText("Пока пусто").assertExists()
     }

@@ -33,6 +33,7 @@ class MobileGesturesTest {
         video.performTouchInput {doubleClick(Offset(width*.8f,height*.5f))}
         compose.runOnIdle {assertEquals(60_000L,position);assertTrue(shown)}
         compose.onNodeWithText("+10 секунд").assertIsDisplayed()
+        compose.onNodeWithTag("seek-forward-feedback").assertIsDisplayed()
         video.performTouchInput {click(center)}
         compose.mainClock.advanceTimeBy(400)
         compose.runOnIdle {assertFalse(shown)}

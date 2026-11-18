@@ -61,6 +61,9 @@ class MobilePlayerDesignTest {
         ui.onNodeWithTag("player-gestures").performTouchInput {click(center)}
         ui.waitUntil(5000) {runCatching {ui.onNodeWithContentDescription("Воспроизвести").assertIsDisplayed();true}.getOrDefault(false)}
         capture("paused")
+        ui.onNodeWithTag("player-gestures").performTouchInput {doubleClick(androidx.compose.ui.geometry.Offset(width*.2f,height*.45f))}
+        ui.onNodeWithTag("seek-back-feedback").assertIsDisplayed()
+        capture("seek-back")
         ui.onNodeWithContentDescription("Воспроизвести").performClick()
         ui.waitUntil(5000) {ui.onAllNodesWithContentDescription("Пауза").fetchSemanticsNodes().isNotEmpty()}
         ui.onAllNodesWithText("Пауза",useUnmergedTree=true).assertCountEquals(0)

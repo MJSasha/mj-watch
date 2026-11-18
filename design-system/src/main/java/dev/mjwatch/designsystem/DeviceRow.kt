@@ -40,10 +40,10 @@ import org.json.JSONObject
                     Text("${device.typeLabel} · ${device.shortId}"+(if(current)" · Это устройство" else ""),style=MaterialTheme.typography.bodySmall)
                 }
                 Box {
-                    IconButton(onClick={menu=true},enabled=!device.revoked,modifier=Modifier.size(48.dp).focusRequester(focus).focusProperties {canFocus=true}.tvFocusRing(tv).testTag("device-menu-${device.id}")){Icon(Icons.Outlined.MoreVert,"Действия · ${device.name}")}
+                    IconButton(onClick={menu=true},modifier=Modifier.size(48.dp).focusRequester(focus).focusProperties {canFocus=true}.tvFocusRing(tv).testTag("device-menu-${device.id}")){Icon(Icons.Outlined.MoreVert,"Действия · ${device.name}")}
                     DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                        DropdownMenuItem(text={Text("Переименовать")},onClick={menu=false;renaming=true},modifier=Modifier.heightIn(min=48.dp))
-                        if(!current)DropdownMenuItem(text={Text("Отключить ${device.name}")},onClick={menu=false;onRevoke()},enabled=!device.revoked,modifier=Modifier.heightIn(min=48.dp))
+                        DropdownMenuItem(text={Text("Переименовать")},onClick={menu=false;renaming=true},enabled=!device.revoked,modifier=Modifier.heightIn(min=48.dp))
+                        if(!current)DropdownMenuItem(text={Text("Удалить устройство")},onClick={menu=false;onRevoke()},modifier=Modifier.heightIn(min=48.dp))
                     }
                 }
             }

@@ -96,7 +96,7 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i id
 	case strings.HasPrefix(path, "admin/users/"):
 		parts := strings.Split(path, "/")
 		if len(parts) == 5 && parts[3] == "devices" && r.Method == "DELETE" {
-			if _, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE id=? AND user_id=?", parts[4], parts[2]); err != nil {
+			if _, err := s.DB.Exec("DELETE FROM devices WHERE id=? AND user_id=?", parts[4], parts[2]); err != nil {
 				fail(w, 503, "database_unavailable")
 				return
 			}
