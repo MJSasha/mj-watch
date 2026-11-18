@@ -17,7 +17,7 @@
 
 ## Полный CI
 
-В [PR-прогоне 115](https://github.com/MJSasha/mj-watch/actions/runs/44294540120) build и mobile прошли. Один неизменённый TV-тест `changingQualityAudioSpeedAndFitKeepsPausedPosition` получил timeout в финальной проверке выхода по Back (строка 178); проверки параметров и позиции до этого прошли. Остальные четыре сценария настоящего видео также прошли. TV job отдельно перезапущен для проверки нестабильности.
+В [PR-прогоне 115](https://github.com/MJSasha/mj-watch/actions/runs/44294540120) build и mobile прошли. Один неизменённый TV-тест `changingQualityAudioSpeedAndFitKeepsPausedPosition` получил timeout в финальной проверке выхода по Back (строка 178); проверки параметров и позиции до этого прошли. Остальные четыре сценария настоящего видео также прошли. TV job отдельно перезапущен: первый сценарий прошёл, но `approvedDesignSemanticsTargetsAndFocusEvidenceWithRealVideo` получил timeout возврата фокуса после диалога (строка 219). Это тот же нестабильный шаг, который проявлялся перед 0.9.4. Оба сценария прошли на неизменённом коде в релизном main-прогоне 116; повторный PR-прогон целиком зелёным не заявляется.
 
 На точном коммите выпуска `2d1ae806efc72d49d09638483ae93b2ddaf64998` [main-прогон 116](https://github.com/MJSasha/mj-watch/actions/runs/44295282648) с первой попытки прошёл build и обе runtime-матрицы без изменения кода или утверждений теста. Mobile: 50 passed / 34 skipped / 0 failed; Android TV: 35 passed / 14 skipped / 0 failed; playback на Android TV: 20 passed / 0 skipped / 0 failed. Пропуски требуют внешних сервисов или специальных конфигураций и не засчитываются как пройденные. [Итог HTML-отчётов](ci-runtime-summary.json).
 
