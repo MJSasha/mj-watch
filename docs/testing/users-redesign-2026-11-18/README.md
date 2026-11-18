@@ -1,6 +1,6 @@
 # Users and settings layout — local verification, 2026-11-18
 
-Base: published 0.9.13 (`1aa876b5f12f9a938504cdbc7300fabbec998dc1`). Prepared for release 0.9.14. Published artifact verification is recorded separately after CI completes.
+Base: published 0.9.13 (`1aa876b5f12f9a938504cdbc7300fabbec998dc1`). Published as [0.9.14 / build 1140](https://github.com/MJSasha/mj-watch/releases/tag/test-140), marked Latest. [CI](https://github.com/MJSasha/mj-watch/actions/runs/44404571366) passed build, phone runtime, TV runtime and publication. Downloaded APKs, update manifest and server supply were verified after publication: [verification report](release-verification.json). APK signing identity and server signing key are unchanged; both APKs are non-debuggable.
 
 ## Changes
 
