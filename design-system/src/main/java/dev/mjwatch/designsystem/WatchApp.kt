@@ -641,7 +641,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var menu by remember {mutableStateOf(false)}
     if(menu) {
         val confirmFocus=remember {FocusRequester()}
-        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};TextButton(modifier=Modifier.heightIn(min=48.dp).focusRequester(confirmFocus).tvFocusRing(tv),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
+        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};TextButton(modifier=Modifier.heightIn(min=48.dp).focusRequester(confirmFocus).tvFocusRing(tv),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить")}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
     }
     val p=item.progress(progress)
     val cardState by model.state.collectAsState()
@@ -653,8 +653,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(wide) Column {
             Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
-        } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.width(68.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp)).testTag("library-poster-${e.id}")) {Artwork(metadata,config,Modifier.matchParentSize(),demo=e.id.startsWith("demo:"))}
+        } else Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.width(96.dp).aspectRatio(2f/3f).clip(RoundedCornerShape(10.dp)).testTag("library-poster-${e.id}")) {Artwork(metadata,config,Modifier.matchParentSize(),demo=e.id.startsWith("demo:"))}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,minLines=2,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
                 Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=13.sp,color=MaterialTheme.colorScheme.primary)
                 Text("${time(p.positionMs)}${p.durationMs?.let {" / ${time(it)}"} ?: ""}",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
