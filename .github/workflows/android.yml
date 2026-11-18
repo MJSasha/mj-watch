@@ -78,7 +78,7 @@ jobs:
           profile: ${{ matrix.profile }}
           script: |
             set -e
-            ./gradlew :${{ matrix.app }}:connectedDebugAndroidTest
+            ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
             if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
       - id: boot-check
         if: steps.runtime.outcome == 'failure'
@@ -98,7 +98,7 @@ jobs:
           profile: ${{ matrix.profile }}
           script: |
             set -e
-            ./gradlew :${{ matrix.app }}:connectedDebugAndroidTest
+            ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
             if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
       - name: Preserve test failures
         if: steps.runtime.outcome == 'failure' && steps.boot-check.outputs.retry != 'true'

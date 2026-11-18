@@ -23,3 +23,5 @@ Adjacent recommendation/maximum tiles expand to the same row height, including w
 - The player capacity test asserts exactly one `/stream` request after an automatic refusal, then exactly one additional request after manual Retry. MainActivity connection probes are excluded from the stream count.
 
 No settings were applied over SSH to a live server. These checks do not measure throughput, OOM behaviour or real concurrent video decoding. RAM/disk limits remain conservative snapshots and are validated again by root control when allocating cache.
+
+CI release preparation: the first TV run timed out while an existing card-height test waited for a second Room instance's invalidation. Both cards are now seeded before activity launch, preserving the height assertion. A retry failed before tests with missing cached Maven artifacts; runtime jobs now refresh dependency metadata. No test was disabled or assertion relaxed.

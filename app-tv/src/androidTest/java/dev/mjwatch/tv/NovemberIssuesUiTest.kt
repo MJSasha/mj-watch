@@ -20,7 +20,8 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class NovemberIssuesUiTest {
     private val config=Config(connectionMode="managed",managedUrl="https://127.0.0.1:1",serverId="november-issues",userId="fixture",demo=true,theme="dark")
-    @get:Rule(order=0) val seed=object:org.junit.rules.ExternalResource() {override fun before()=runBlocking {
+    @get:Rule(order=0) val testName=org.junit.rules.TestName()
+    @get:Rule(order=1) val seed=object:org.junit.rules.ExternalResource() {override fun before()=runBlocking {
         val c=InstrumentationRegistry.getInstrumentation().targetContext
         c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
         Settings(c).handleLegacyHistory();Settings(c).save(config);Settings(c).destination("history")
@@ -33,28 +34,24 @@ class NovemberIssuesUiTest {
             db.syncDao().put(SyncEntity(config.scope,"opening",entry.id,entry.syncJson().toString(),1))
             val progress=Progress("fixture:progress",entry.id,7,"Show.S02E03.mkv",60000,300000,1,false)
             db.syncDao().put(SyncEntity(config.scope,"progress",progress.key,progress.syncJson().toString(),1))
+            // Seed both cards before launching: cross-instance Room invalidation registration is asynchronous.
+            if(testName.methodName=="continuingFilmAndSeriesCardsHaveEqualHeight") {
+                val film=LibraryEntry("fixture:film","Тест фильма","fixture",1)
+                db.syncDao().put(SyncEntity(config.scope,"opening",film.id,film.syncJson().toString(),1))
+                val position=Progress("fixture:film-progress",film.id,1,"Movie.mp4",60000,300000,1,false)
+                db.syncDao().put(SyncEntity(config.scope,"progress",position.key,position.syncJson().toString(),1))
+            }
         } finally {db.close()}
     }}
-    @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
-    private fun model():WatchModel {
+    @get:Rule(order=2) val compose=createAndroidComposeRule<MainActivity>()
+    private fun model(expected:Int=1):WatchModel {
         lateinit var m:WatchModel
         compose.runOnIdle {m=ViewModelProvider(compose.activity)[WatchModel::class.java]}
-        compose.waitUntil(10000) {m.scopedLibrary.value.entries.size==1&&m.scopedLibrary.value.positions.size==1}
+        compose.waitUntil(10000) {m.scopedLibrary.value.entries.size==expected&&m.scopedLibrary.value.positions.size==expected}
         return m
     }
     @Test fun continuingFilmAndSeriesCardsHaveEqualHeight() {
-        val m=model()
-        val context=InstrumentationRegistry.getInstrumentation().targetContext
-        runBlocking {
-            val db=Room.databaseBuilder(context,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
-            try {
-                val entry=LibraryEntry("fixture:film","Тест фильма","fixture",1)
-                db.syncDao().put(SyncEntity(config.scope,"opening",entry.id,entry.syncJson().toString(),1))
-                val progress=Progress("fixture:film-progress",entry.id,1,"Movie.mp4",60000,300000,1,false)
-                db.syncDao().put(SyncEntity(config.scope,"progress",progress.key,progress.syncJson().toString(),1))
-            } finally {db.close()}
-        }
-        compose.waitUntil(10000) {m.scopedLibrary.value.entries.size==2}
+        val m=model(expected=2)
         compose.runOnIdle {m.page("home")}
         compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-fixture:film"))
         val film=compose.onNodeWithTag("library-fixture:film").getUnclippedBoundsInRoot()
