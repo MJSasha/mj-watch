@@ -48,6 +48,13 @@ class TvPlayerBehaviorTest {
         instrumentation.sendKeyDownUpSync(code);compose.waitForIdle()
     }
     private fun focus(node:SemanticsNodeInteraction) {
+        // Android may still own the dismissed dialog's window after Compose becomes idle.
+        compose.waitUntil(5000) {
+            var focused=false
+            instrumentation.runOnMainSync {activity()?.let {focused=field(it,"panel")==null&&it.window.decorView.hasWindowFocus()}}
+            focused
+        }
+        compose.waitForIdle()
         node.performSemanticsAction(SemanticsActions.RequestFocus)
         compose.waitUntil(5000) {runCatching {node.assertIsFocused();true}.getOrDefault(false)}
         instrumentation.waitForIdleSync()
