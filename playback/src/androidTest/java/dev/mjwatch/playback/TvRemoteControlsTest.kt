@@ -123,6 +123,22 @@ class TvRemoteControlsTest {
         compose.runOnIdle {compose.activity.dispatchKeyEvent(KeyEvent(time,time+1100,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER,0))}
         compose.waitForIdle();assertEquals(1,toggles);assertFalse(playing)
     }
+    @Test fun anAlreadyVisibleOfferDoesNotStealFocusWhenTracksClose() {
+        position=970_000;start(true)
+        compose.onNodeWithTag("player-prompt").assertIsFocused()
+        focus("player-tracks");key(Key.DirectionCenter)
+        pressBack()
+        compose.onNodeWithTag("player-tracks").assertIsFocused()
+    }
+    @Test fun explicitDownRestoresPlaybackWhileAnUnchangedNextEpisodeOfferIsVisible() {
+        position=970_000;start(true)
+        compose.onNodeWithTag("player-prompt").assertIsFocused()
+        focus("player-play");key(Key.DirectionUp);key(Key.DirectionUp)
+        compose.onNodeWithTag("player-play").assertDoesNotExist()
+        compose.onNodeWithTag("player-prompt").assertExists()
+        key(Key.DirectionDown)
+        compose.onNodeWithTag("player-play").assertIsFocused()
+    }
     @Test fun pendingPromptWaitsForModalAndStayCancelsAutomaticAdvance() {
         start(true);focus("player-tracks");key(Key.DirectionCenter)
         compose.runOnIdle {position=970_000}

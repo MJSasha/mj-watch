@@ -120,12 +120,14 @@ import kotlinx.coroutines.delay
         }
     }
     val prompt=remote.prompt.takeIf {!blocked}
-    LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused) {
-        if(!modal&&!blockingStatus&&prompt==null&&windowFocused) {
+    var offeredPrompt by remember {mutableStateOf<String?>(null)}
+    LaunchedEffect(windowFocused) {if(windowFocused)inputMode.requestInputMode(InputMode.Keyboard)}
+    LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused,inputMode.inputMode) {
+        if(!modal&&!blockingStatus&&windowFocused) {
             // Projector firmware may start in touch mode even when controlled by a D-pad.
             inputMode.requestInputMode(InputMode.Keyboard)
-            withFrameNanos {}
-            if(!visible) rootFocus.requestFocus()
+            if(requestedFocus=="prompt") {if(prompt!=null)promptFocus.requestFocus()}
+            else if(!visible) rootFocus.requestFocus()
             else if(requestedFocus=="back"||!ready) backFocus.requestFocus()
             else when(requestedFocus) {
                 "topTracks" -> topTracksFocus.requestFocus()
@@ -141,19 +143,15 @@ import kotlinx.coroutines.delay
         interact()
         val closing=wasModal&&!modal
         wasModal=modal
-        if(closing&&visible&&status==null) requestedFocus=modalReturn
+        if(closing&&visible&&status==null) requestedFocus=if(prompt!=null&&prompt!=offeredPrompt)"prompt" else modalReturn
     }
-    var hadPrompt by remember {mutableStateOf(false)}
-    LaunchedEffect(prompt,windowFocused) {
-        if(!windowFocused)return@LaunchedEffect
-        inputMode.requestInputMode(InputMode.Keyboard)
-        withFrameNanos {}
-        // Request after the prompt leaves composition; an immediate request is lost on removal.
-        val dismissed=hadPrompt&&prompt==null
-        hadPrompt=prompt!=null
-        if(prompt!=null) promptFocus.requestFocus()
-        else if(!modal&&status==null&&remote.preview==null&&dismissed) {
-            if(visible&&ready) playFocus.requestFocus() else if(!visible) rootFocus.requestFocus()
+    LaunchedEffect(prompt,remote.prompt) {
+        if(remote.prompt==null)offeredPrompt=null
+        if(prompt!=null&&prompt!=offeredPrompt) {
+            offeredPrompt=prompt;requestedFocus="prompt";promptFocus.requestFocus()
+        }
+        else if(prompt==null&&requestedFocus=="prompt"&&!modal&&status==null&&remote.preview==null) {
+            requestedFocus=if(!visible)"root" else if(ready)"play" else "back"
         }
     }
     fun seek(direction:Int) {player()?.let {p -> p.seekTo((p.currentPosition+direction*10_000L).coerceIn(0,duration))}}
