@@ -1,0 +1,27 @@
+{
+  "run": 44289311229,
+  "source": "4c0190011c766196ed64a1b8c0cea990ae6d6912",
+  "reports": [
+    {
+      "tests": 84,
+      "failures": 0,
+      "skipped": 34,
+      "passed": 50,
+      "report": "app-mobile/build/reports/androidTests/connected/debug/index.html"
+    },
+    {
+      "tests": 49,
+      "failures": 0,
+      "skipped": 14,
+      "passed": 35,
+      "report": "app-tv/build/reports/androidTests/connected/debug/index.html"
+    },
+    {
+      "tests": 20,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 20,
+      "report": "playback/build/reports/androidTests/connected/debug/index.html"
+    }
+  ]
+}

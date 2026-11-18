@@ -1,0 +1,14 @@
+[
+  {
+    "platform": "mobile",
+    "started": true,
+    "savedDemoHomeVisible": true,
+    "fatalException": false
+  },
+  {
+    "platform": "tv",
+    "started": true,
+    "savedDemoHomeVisible": true,
+    "fatalException": false
+  }
+]
