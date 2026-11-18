@@ -16,3 +16,35 @@ fun torrSettingsChanges(snapshot:JSONObject,draft:JSONObject):JSONObject {
  }
  return changes
 }
+
+data class TorrFieldAdvice(val recommended:Long?,val maximum:Long,val measured:Boolean=false)
+
+fun torrFieldAdvice(snapshot:JSONObject,draft:JSONObject,field:JSONObject):TorrFieldAdvice {
+ val name=field.getString("name");val maximum=field.optLong("max")
+ val memory=snapshot.optJSONObject("resources")
+ val disk=snapshot.optJSONObject("storage")
+ return when(name){
+  "CacheSize"->{val source=if(draft.optBoolean("UseDisk"))disk else memory
+   val known=if(draft.optBoolean("UseDisk"))source?.optBoolean("available")==true else (source?.optLong("totalBytes") ?: 0)>0
+   TorrFieldAdvice(source?.optLong("recommendedBytes")?.takeIf{known&&it>=field.optLong("min")},if(known)minOf(maximum,source!!.optLong("maximumBytes")) else maximum,known)}
+  "PreloadCache"->TorrFieldAdvice(25,maximum)
+  "ReaderReadAHead"->TorrFieldAdvice(95,maximum)
+  "ConnectionsLimit"->TorrFieldAdvice(if((memory?.optLong("totalBytes") ?: 0)<=1073741824L)30 else 60,maximum)
+  "DownloadRateLimit","UploadRateLimit"->TorrFieldAdvice(0,maximum)
+  else->TorrFieldAdvice(null,maximum)
+ }
+}
+
+fun torrSettingsValid(snapshot:JSONObject,draft:JSONObject):Boolean {
+ val fields=snapshot.optJSONArray("fields") ?: return false
+ for(i in 0 until fields.length()){
+  val field=fields.getJSONObject(i);val name=field.getString("name")
+  if(!draft.has(name)||field.optBoolean("boolean")||field.optString("unit")=="path")continue
+  val n=draft.opt(name) as? Number ?: return false
+  if(n.toDouble()!=n.toLong().toDouble()||n.toLong()<field.optLong("min")||n.toLong()>field.optLong("max"))return false
+  val before=snapshot.getJSONObject("settings")
+  val changed=if(name=="CacheSize")n.toLong()>before.optLong(name)||before.optBoolean("UseDisk")!=draft.optBoolean("UseDisk") else n.toLong()!=before.optLong(name)
+  if(changed&&n.toLong()>torrFieldAdvice(snapshot,draft,field).maximum)return false
+ }
+ return true
+}

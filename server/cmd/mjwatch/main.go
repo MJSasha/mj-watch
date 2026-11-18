@@ -89,7 +89,10 @@ func run() error {
 		if e = json.Unmarshal(raw, &input); e != nil {
 			return e
 		}
-		ctl := control.TorrControl{URL: c.TorrURL, User: c.TorrUser, Password: c.TorrPassword, StateDir: "/var/lib/mjwatch-install/torrserver"}
+		ctl, err := configuredTorrControl(c)
+		if err != nil {
+			return err
+		}
 		_, e = ctl.Apply(input)
 		if e != nil {
 			if len(input.ID) >= 16 && !strings.ContainsAny(input.ID, "/\\.") {
@@ -105,7 +108,10 @@ func run() error {
 		if len(args) < 3 {
 			return fmt.Errorf("settings_read_or_apply_required")
 		}
-		ctl := control.TorrControl{URL: c.TorrURL, User: c.TorrUser, Password: c.TorrPassword, StateDir: "/var/lib/mjwatch-install/torrserver"}
+		ctl, err := configuredTorrControl(c)
+		if err != nil {
+			return err
+		}
 		var out map[string]any
 		switch args[2] {
 		case "read":
@@ -249,4 +255,13 @@ func run() error {
 	}}
 	log.Printf("event=server_start version=%s", service.Version)
 	return server.ListenAndServeTLS("", "")
+}
+
+func configuredTorrControl(c service.Config) (control.TorrControl, error) {
+	db, err := service.Open(c.Database)
+	if err != nil {
+		return control.TorrControl{}, err
+	}
+	defer db.Close()
+	return control.TorrControl{URL: c.TorrURL, User: c.TorrUser, Password: c.TorrPassword, StateDir: "/var/lib/mjwatch-install/torrserver", StreamLimit: service.ConfiguredStreams(db)}, nil
 }

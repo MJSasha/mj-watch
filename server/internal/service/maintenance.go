@@ -137,8 +137,9 @@ func (s *Server) maintenanceTick(ctx context.Context, now time.Time) {
 	for _, n := range s.active {
 		active += n
 	}
+	maxStreams := s.maxStreams
 	s.mu.Unlock()
-	log.Printf("event=resources available_bytes=%d total_bytes=%d heap_bytes=%d disk_free_bytes=%d streams=%d max_streams=%d goroutines=%d", memory.Available, memory.Total, stats.HeapAlloc, uint64(fs.Bavail)*uint64(fs.Bsize), active, s.maxStreams, runtime.NumGoroutine())
+	log.Printf("event=resources available_bytes=%d total_bytes=%d heap_bytes=%d disk_free_bytes=%d streams=%d max_streams=%d goroutines=%d", memory.Available, memory.Total, stats.HeapAlloc, uint64(fs.Bavail)*uint64(fs.Bsize), active, maxStreams, runtime.NumGoroutine())
 	v := s.retention()
 	if v.HistoryDays > 0 {
 		cutoff := now.Add(-time.Duration(v.HistoryDays) * 24 * time.Hour).Unix()

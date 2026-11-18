@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.7**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.8**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.7
+export MJWATCH_SERVER_VERSION=0.1.8
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -54,9 +54,11 @@ Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair
 
 ## Resource profiles and diagnostics (0.1.7)
 
-Concurrency is chosen at startup using effective RAM (including inherited cgroup v2 limits): at most 1 GiB → one viewing session/preparation; at most 2 GiB → two; otherwise four. Unknown RAM uses one. Password checks/uploads allow one concurrent operation on the smallest profile, two otherwise. Two overlapping Range requests for the same session/torrent/file share one viewing slot, allowing seeking without consuming a second slot. Playback retry delays/budgets and system memory limits are unchanged.
+The automatic viewing profile is chosen at startup using effective RAM (including inherited cgroup v2 limits): at most 1 GiB → one viewing session/preparation; at most 2 GiB → two; otherwise four. Unknown RAM uses one. Password checks/uploads allow one concurrent operation on the smallest profile, two otherwise. Two overlapping Range requests for the same session/torrent/file share one viewing slot, allowing seeking without consuming a second slot. Preparation, password/upload budgets and system memory limits stay tied to the RAM profile.
 
-Owner → TorrServer → Read over SSH shows RAM, estimated maximum RAM cache per torrent, recommendation and a draft recommendation button. `MemAvailable` includes neighbours' current consumption. The reserve is `max(128 MiB, 10% of effective RAM) + 96 MiB` for OS/neighbour growth and MJWatch peaks. The projected cache budget is at most half of effective RAM and the available memory after reserve, divided among existing torrents plus room for new viewers. Existing cache is not credited back. This is a conservative snapshot, not a guaranteed physical maximum. Unknown/insufficient memory produces no usable recommendation. Targets are at most 64 MiB on the smallest profile, 128 MiB otherwise. RAM-cache increases and disk-to-RAM switches are checked again before applying; reductions remain possible under pressure. Disk cache retains the free-space check with a 2 GiB reserve. Existing settings are preserved until explicitly applied. New small installations start with 64 MiB cache, 30 peer connections and 25% preload.
+Owners can read `GET /api/v1/admin/playback/settings` and replace both limits with `PATCH` plus the returned `revision` in `If-Match`. The body is `{"maxStreams":0,"maxStreamsPerUser":0}`: zero means automatic; manual values are 1–8. Automatic per-account capacity is min(2, effective server capacity). Manual per-account capacity cannot exceed the effective server limit. Settings persist in SQLite and apply immediately; lowering them only prevents new views until capacity is available. Capacity refusals retain HTTP 429 / `stream_limit` and include `X-MJWatch-Error` and `X-MJWatch-Limit-Scope` (account/server). These additions are available starting with 0.1.8.
+
+Owner → TorrServer groups cache, network and advanced settings. Key numeric inputs have tappable recommendations and adjacent maximum tiles; SSH access is collapsed until needed. Reading over SSH supplies RAM and disk estimates. `MemAvailable` includes neighbours' current consumption. The reserve is `max(128 MiB, 10% of effective RAM) + 96 MiB` for OS/neighbour growth and MJWatch peaks. The projected cache budget is at most half of effective RAM and the available memory after reserve, divided among existing torrents plus room for new viewers. Existing cache is not credited back. This is a conservative snapshot, not a guaranteed physical maximum. Unknown/insufficient memory produces no usable recommendation. Targets are at most 64 MiB on the smallest profile, 128 MiB otherwise. RAM-cache increases and disk-to-RAM switches are checked again before applying; reductions remain possible under pressure. Disk cache uses free space minus a 2 GiB reserve, divided by projected torrents and capped at 8 GiB per torrent; the recommendation is at most 256 MiB. Disk allocation increases and mode/path changes are checked again before applying. Reductions remain available under disk pressure. Protocol bounds for peers/rates are labelled separately from measured resource maxima. Existing settings are preserved until explicitly applied. New small installations start with 64 MiB cache, 30 peer connections and 25% preload.
 
 Phone/TV → video parameters → Buffer shows buffered seconds, recommended target and estimated device maximum. Auto targets up to 64 MiB (16 MiB on low-RAM devices). The maximum considers app heap, current heap headroom and available RAM, capped at 128 MiB (24 MiB on low-RAM devices), with a 4 MiB minimum target. Loading aims for up to 120 seconds but stops at the byte target; allocator/decoder overhead is additional. A selection applies on the next video launch and is clamped again to current headroom. Device buffer and server cache serve different network links.
 

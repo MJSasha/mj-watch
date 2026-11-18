@@ -176,7 +176,12 @@ import java.util.UUID
    "server-update"->ServerUpdateScreen(s,model,tv)
 
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
-   "server-torr"->{Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,false,settings=true,onDirty={dirty=it})}
+   "server-torr"->{
+    var limitsDirty by remember{mutableStateOf(false)};var torrDirty by remember{mutableStateOf(false)};var limitsRevision by remember{mutableIntStateOf(0)}
+    Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    PlaybackLimitsPanel(s,model,tv,onDirty={limitsDirty=it;dirty=it||torrDirty},onSaved={limitsRevision++})
+    SshPanel(s,model,tv,false,settings=true,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})
+   }
   }
   if(page!="managed-login"&&managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
  }
@@ -206,12 +211,14 @@ import java.util.UUID
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
-@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,onDirty:(Boolean)->Unit={}) {
+@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,onDirty:(Boolean)->Unit={}) {
  val keyboard=LocalSoftwareKeyboardController.current
  val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
  val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
+ var connectionOpen by rememberSaveable{mutableStateOf(false)}
+ var refreshedLimits by remember{mutableIntStateOf(limitsRevision)}
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
- var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
+ var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
  var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
  val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
@@ -220,6 +227,13 @@ import java.util.UUID
  var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
  fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=if(install)installationError(e) else safeError(e);if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
+ LaunchedEffect(limitsRevision,busy){
+  if(settings&&data!=null&&!busy&&refreshedLimits!=limitsRevision){
+   refreshedLimits=limitsRevision
+   data=data?.let{JSONObject(it.toString()).also{copy->copy.remove("resources");copy.remove("storage")}}
+   perform{target->val fresh=ssh.read(target);data=data?.let{previous->JSONObject(previous.toString()).put("resources",fresh.optJSONObject("resources")).put("storage",fresh.optJSONObject("storage"))}}
+  }
+ }
  fun askConfirmation(action:()->Unit){if(busy)return;busy=true;scope.launch{try{activeCount=if(install)null else withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams")};confirmation=action}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
  fun operation(action:String,target:String=""):String {val key="maintenance:${s.config.scope}:$action:$target";return model.secrets.get(key).ifBlank{UUID.randomUUID().toString().also{model.secrets.put(key,it)}}}
  suspend fun finishInstallation(target:SshTarget){
@@ -249,10 +263,13 @@ import java.util.UUID
  if(!install||progress==null){
  if(install){Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Остальное MJWatch сделает сам")}
  if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
- ServerField(host,{host=it},"IP или домен сервера");ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
+ if(settings)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Для чтения и сохранения кэша",tv){connectionOpen=!connectionOpen}}
+ if(!settings||connectionOpen){
+ ServerField(host,{host=it},"IP или домен сервера");if(!settings)ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
  if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
  TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
  ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
+ }
  if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
  if(install){
   if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
@@ -262,36 +279,24 @@ import java.util.UUID
 
  }else if(settings){
   if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));val result=ssh.apply(target,pending);data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён по фактическому состоянию"}}
-  Action("Прочитать по SSH",tv,enabled=!busy){perform{target->val read=ssh.read(target);val status=ManagedApi(s.config,model.secrets).authorized("admin/status");read.put("activeStreams",status.getInt("activeStreams"));read.put("maxStreams",status.optInt("maxStreams",1));data=read;draft=JSONObject(read.getJSONObject("settings").toString());onDirty(false);message="Прочитано с сервера"}}
-  data?.let {snapshot->Text("Версия: ${snapshot.optString("version")} · Потоков: ${snapshot.optInt("activeStreams")}");val fields=snapshot.optJSONArray("fields")
-   snapshot.optJSONObject("resources")?.let {resources->
-    val total=resources.optLong("totalBytes")/1048576;val available=resources.optLong("availableBytes")/1048576
-    val maximum=resources.optLong("maximumBytes")/1048576;val recommended=resources.optLong("recommendedBytes")/1048576
-    val streams=snapshot.optInt("maxStreams",resources.optInt("plannedStreams",1))
-    val torrents=resources.optInt("plannedTorrents",streams)
-    if(total>0) {
-     Text("Профиль сервера: до $streams одновременных потоков")
-     Text("RAM: $total МиБ · доступно сейчас $available МиБ")
-     Text("Резерв для ОС, MJWatch и роста соседних сервисов: ${resources.optLong("reserveBytes")/1048576} МиБ. Их текущее потребление уже учтено в доступной памяти.")
-     Text("Кэш RAM на раздачу: рекомендуется $recommended МиБ · оценочный максимум $maximum МиБ для $torrents раздач с учётом уже добавленных. Это оценка на момент проверки, без зачёта уже занятого кэша; расход памяти может вырасти.")
-     if(draft?.optBoolean("UseDisk")==true)Text("Включён дисковый кэш: оценка RAM выше относится к режиму без диска. Для диска проверяется свободное место с резервом 2 ГиБ.")
-     if(draft?.optBoolean("UseDisk")!=true&&draft!!.optLong("CacheSize")>resources.optLong("maximumBytes"))Text("Текущий кэш выше оценки свободного бюджета. Уменьшите кэш или число одновременно используемых раздач.")
-     Action("Подставить рекомендованные настройки",tv,secondary=true,enabled=!busy&&snapshot.optBoolean("editable")&&recommended>=16){
-      val next=JSONObject(draft.toString())
-      if(next.optBoolean("UseDisk")!=true)next.put("CacheSize",recommended*1048576)
-      next.put("ConnectionsLimit",if(streams==1)30 else 60).put("PreloadCache",25)
-      draft=next;onDirty(true);message="Рекомендации подставлены. Проверьте и примените настройки."
-     }
-    }else Text("Оценка RAM недоступна. Обновите сервер для рекомендаций.")
+  if(data==null||connectionOpen){
+   if(connectionOpen)Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){
+    perform{target->val read=ssh.read(target);val status=ManagedApi(s.config,model.secrets).authorized("admin/status");read.put("activeStreams",status.getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());connectionOpen=false;onDirty(false);message="Данные сервера обновлены"}
+   }else TorrCard("Кэш и сеть",Icons.Outlined.Memory,tv){
+    Text("Подключите доступ администратора, чтобы загрузить настройки и рекомендации вашего сервера.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
    }
-   Text("Кэш TorrServer помогает скачиванию. Буфер при потере связи с сервером настраивается на устройстве в параметрах видео.")
-   if(fields!=null&&draft!=null)for(index in 0 until fields.length()){val field=fields.getJSONObject(index);val name=field.getString("name");val label=field.getString("label");if(!draft!!.has(name))continue
-    if(field.optString("unit")=="path"){ServerField(draft!!.optString(name),{draft=JSONObject(draft.toString()).put(name,it);onDirty(true)},label+" · /var/lib/torrserver-mjwatch/cache")}else if(field.optBoolean("boolean")){val negative=field.optBoolean("negative");ServerToggle(label,draft!!.optBoolean(name).let{if(negative)!it else it}){value->draft=JSONObject(draft.toString()).put(name,if(negative)!value else value);onDirty(true)}}else{var value by remember(draft?.opt(name)){mutableStateOf((if(name=="CacheSize")draft!!.optLong(name)/1048576 else draft!!.optLong(name)).toString())};ServerField(value,{value=it;draft=JSONObject(draft.toString()).put(name,it.toLongOrNull()?.let {number->if(name=="CacheSize")runCatching{Math.multiplyExact(number,1048576L)}.getOrNull() else number} ?: it);onDirty(true)},if(name=="CacheSize") "$label · МиБ (${field.optLong("min")/1048576}–${field.optLong("max")/1048576})" else "$label · ${field.optString("unit")} (${field.optLong("min")}–${field.optLong("max")})")}
-   }
-   Action("Заводские настройки",tv,secondary=true,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Defaults применены и перечитаны"}}}
-   Action("Сбросить изменения",tv,secondary=true){draft=JSONObject(snapshot.getJSONObject("settings").toString());onDirty(false)}
-   Action("Применить по SSH",tv,enabled=!busy&&snapshot.optBoolean("editable")){askConfirmation {perform{target->val changes=torrSettingsChanges(snapshot,draft!!);val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",changes).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Применено и перечитано"}}}
   }
+  data?.let{snapshot->
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(snapshot.optString("version"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);TextButton(onClick={perform{target->val fresh=ssh.read(target);data=JSONObject(snapshot.toString()).put("resources",fresh.optJSONObject("resources")).put("storage",fresh.optJSONObject("storage"))}},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Обновить оценки")}}
+   draft?.let{current->
+    TorrServerEditor(snapshot,current,tv,onChange={next->draft=next;onDirty(torrSettingsChanges(snapshot,next).length()>0)},onDefaults={askConfirmation{perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Заводские настройки применены"}}})
+    val changed=torrSettingsChanges(snapshot,current).length()>0
+    Action("Сохранить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&snapshot.optBoolean("editable")&&changed&&torrSettingsValid(snapshot,current),icon=Icons.Outlined.Check){askConfirmation{perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",torrSettingsChanges(snapshot,current)).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Настройки сохранены и проверены"}}}
+    if(changed)TextButton(onClick={draft=JSONObject(snapshot.getJSONObject("settings").toString());onDirty(false)},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Отменить изменения")}
+   }
+  }
+
  }else{
   var archive by remember{mutableStateOf("")};var passphrase by remember{mutableStateOf("")};var ownerPassword by remember{mutableStateOf("")}
   Action("Перезапустить сервисы по SSH",tv,enabled=!busy){askConfirmation {perform{target->val result=ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("restart")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:restart:","");message=if(result.optBoolean("verified")) "Перезапуск и проверка подтверждены" else "Требуется проверка"}}}

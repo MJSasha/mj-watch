@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.11
+
+- Bundle server 0.1.8 and let owners configure global and per-account viewing limits with RAM-based automatic defaults, immediate application and preservation of active views.
+- Show a readable stream-capacity error and wait for an explicit retry instead of repeating rejected stream requests.
+- Organize TorrServer settings into cache, network and advanced cards with inline, tappable recommendations and RAM/disk budget estimates beside key inputs.
+
 ## 0.9.10
 
 - Add a memory-aware client video buffer with recommended/maximum targets and settings for the next playback. Keep the existing playback retry policy.

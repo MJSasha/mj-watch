@@ -8,6 +8,24 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class TorrSettingsTest {
+ @Test fun guidanceUsesMeasuredBudgetAndPreservesUnchangedCacheUnderPressure(){
+  val s=snapshot().put("resources",JSONObject().put("totalBytes",512L*1048576).put("maximumBytes",32L*1048576).put("recommendedBytes",32L*1048576))
+  s.getJSONArray("fields").getJSONObject(0).put("min",16L*1048576).put("max",8L*1073741824)
+  s.getJSONArray("fields").getJSONObject(1).put("min",0).put("max",100)
+  s.getJSONArray("fields").getJSONObject(2).put("boolean",true)
+  s.getJSONObject("settings").put("UseDisk",false)
+  val draft=JSONObject(s.getJSONObject("settings").toString())
+  val field=s.getJSONArray("fields").getJSONObject(0)
+  assertEquals(32L*1048576,torrFieldAdvice(s,draft,field).maximum)
+  assertTrue(torrSettingsValid(s,draft))
+  draft.put("CacheSize",128L*1048576);assertFalse(torrSettingsValid(s,draft))
+  draft.put("CacheSize",48L*1048576);assertTrue(torrSettingsValid(s,draft))
+  draft.put("CacheSize",32L*1048576);assertTrue(torrSettingsValid(s,draft))
+  s.put("storage",JSONObject().put("available",true).put("maximumBytes",512L*1048576).put("recommendedBytes",256L*1048576))
+  draft.put("UseDisk",true).put("CacheSize",256L*1048576)
+  assertEquals(512L*1048576,torrFieldAdvice(s,draft,field).maximum);assertTrue(torrSettingsValid(s,draft))
+  draft.put("CacheSize","invalid");assertFalse(torrSettingsValid(s,draft))
+ }
  private fun snapshot()=JSONObject("""{
   "settings":{"CacheSize":67108864,"PreloadCache":50,"ResponsiveMode":false,"BTScrapeTrackers":["fixture"],"FutureObject":{"enabled":true},"EnableDLNA":false},
   "fields":[{"name":"CacheSize"},{"name":"PreloadCache"},{"name":"ResponsiveMode"}]

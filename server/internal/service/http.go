@@ -32,14 +32,16 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.7"
+var Version = "0.1.8"
 
 type Server struct {
-	maxStreams    int
-	passwordSlots chan struct{}
-	playbackSlots chan struct{}
-	uploadSlots   chan struct{}
-	dummyPassword string
+	maxStreams         int
+	maxStreamsPerUser  int
+	recommendedStreams int
+	passwordSlots      chan struct{}
+	playbackSlots      chan struct{}
+	uploadSlots        chan struct{}
+	dummyPassword      string
 
 	DB             *sql.DB
 	Config         Config
@@ -55,8 +57,9 @@ type Server struct {
 func New(db *sql.DB, c Config) *Server {
 	dummy, _ := Password("not-a-valid-user-password")
 	memory := resources.Read()
-	streams := memory.Streams()
-	return &Server{maxStreams: streams, passwordSlots: make(chan struct{}, min(2, streams)), playbackSlots: make(chan struct{}, streams), uploadSlots: make(chan struct{}, min(2, streams)), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, active: map[string]int{}, streamRequests: map[string]int{}}
+	recommended := memory.Streams()
+	streams, perUser := ReadStreamSettings(db).Effective(recommended)
+	return &Server{maxStreams: streams, maxStreamsPerUser: perUser, recommendedStreams: recommended, passwordSlots: make(chan struct{}, min(2, recommended)), playbackSlots: make(chan struct{}, recommended), uploadSlots: make(chan struct{}, min(2, recommended)), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, active: map[string]int{}, streamRequests: map[string]int{}}
 }
 func (s *Server) limit(key string, n int, period time.Duration) bool {
 	s.mu.Lock()

@@ -42,6 +42,7 @@ var Fields = []Field{
 type TorrControl struct {
 	URL, User, Password, StateDir string
 	Client                        *http.Client
+	StreamLimit                   int
 }
 
 func (c TorrControl) request(path string, input any, out any) error {
@@ -127,7 +128,13 @@ func (c TorrControl) Read() (map[string]any, error) {
 		}
 	}
 	memory := resources.Read()
-	return map[string]any{"version": version, "editable": version == "MatriX.145.2", "settings": settings, "revision": revision(settings), "fields": Fields, "activeStreams": active, "resources": memory.BudgetFor(memory.Streams(), len(stats)+max(0, memory.Streams()-activeTorrents))}, nil
+	streams := c.StreamLimit
+	if streams < 1 {
+		streams = memory.Streams()
+	}
+	budget := memory.BudgetFor(streams, len(stats)+max(0, streams-activeTorrents))
+	disk := diskCacheBudget(settings, budget.Torrents)
+	return map[string]any{"version": version, "editable": version == "MatriX.145.2", "settings": settings, "revision": revision(settings), "fields": Fields, "activeStreams": active, "resources": budget, "storage": disk}, nil
 }
 
 type Apply struct {
@@ -219,7 +226,9 @@ func (c TorrControl) Apply(v Apply) (map[string]any, error) {
 		if n, ok := v.Changes["CacheSize"].(float64); ok {
 			size = n
 		}
-		if uint64(fs.Bavail)*uint64(fs.Bsize) < uint64(size)+(2<<30) {
+		previousSize, _ := settings["CacheSize"].(float64)
+		newAllocation := settings["UseDisk"] != true || size > previousSize || path != settings["TorrentsSavePath"]
+		if newAllocation && uint64(fs.Bavail)*uint64(fs.Bsize) < uint64(size)*uint64(current["resources"].(resources.CacheBudget).Torrents)+(2<<30) {
 			return nil, fmt.Errorf("insufficient_cache_disk")
 		}
 	}
@@ -254,7 +263,7 @@ func (c TorrControl) Apply(v Apply) (map[string]any, error) {
 		settings["EnableTorznabSearch"] = false
 		settings["TorrentsSavePath"] = "/var/lib/torrserver-mjwatch/cache"
 	}
-	if err := validateCacheMemory(before, settings, v.Defaults, resources.Read(), current["resources"].(resources.CacheBudget).Torrents); err != nil {
+	if err := validateCacheMemory(before, settings, v.Defaults, resources.Read(), current["resources"].(resources.CacheBudget).Torrents, current["resources"].(resources.CacheBudget).Streams); err != nil {
 		if v.Defaults {
 			if rollbackErr := c.request("/settings", map[string]any{"action": "set", "sets": before}, nil); rollbackErr != nil {
 				return nil, fmt.Errorf("defaults_rollback_unconfirmed")
@@ -355,14 +364,42 @@ func safeCachePath(path string) bool {
 
 // Existing caches may be retained/reduced under pressure. New RAM allocations
 // must fit a fresh estimate; disk cache has its separate filesystem check.
-func validateCacheMemory(before, after map[string]any, defaults bool, memory resources.Memory, torrents int) error {
+func validateCacheMemory(before, after map[string]any, defaults bool, memory resources.Memory, torrents int, plannedStreams ...int) error {
 	if after["UseDisk"] == true || memory.Total <= 0 {
 		return nil
 	}
 	size, _ := after["CacheSize"].(float64)
 	previous, _ := before["CacheSize"].(float64)
-	if (size > previous || before["UseDisk"] == true || defaults) && int64(size) > memory.BudgetFor(memory.Streams(), torrents).Maximum {
+	streams := memory.Streams()
+	if len(plannedStreams) > 0 {
+		streams = plannedStreams[0]
+	}
+	if (size > previous || before["UseDisk"] == true || defaults) && int64(size) > memory.BudgetFor(streams, torrents).Maximum {
 		return fmt.Errorf("cache_exceeds_available_memory")
 	}
 	return nil
+}
+
+func diskCacheBudget(settings map[string]any, torrents int) map[string]any {
+	path, _ := settings["TorrentsSavePath"].(string)
+	if !safeCachePath(path) {
+		path = "/var/lib/torrserver-mjwatch/cache"
+	}
+	var fs syscall.Statfs_t
+	for {
+		err := syscall.Statfs(path, &fs)
+		if err == nil {
+			break
+		}
+		if path == "/var/lib" {
+			return map[string]any{"available": false}
+		}
+		path = filepath.Dir(path)
+		if path == "/" {
+			return map[string]any{"available": false}
+		}
+	}
+	free := int64(fs.Bavail) * int64(fs.Bsize)
+	maximum := min(int64(8<<30), max(0, free-(2<<30))/int64(max(1, torrents))) / resources.MiB * resources.MiB
+	return map[string]any{"available": true, "availableBytes": free, "maximumBytes": maximum, "recommendedBytes": min(maximum, 256*resources.MiB), "reserveBytes": int64(2 << 30)}
 }

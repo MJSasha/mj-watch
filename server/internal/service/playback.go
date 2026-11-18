@@ -226,6 +226,14 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		key := i.Session + ":" + hash + ":" + strconv.Itoa(index)
 		if !s.acquireStream(i.User, key) {
 			w.Header().Set("Retry-After", "5")
+			w.Header().Set("X-MJWatch-Error", "stream_limit")
+			s.mu.Lock()
+			scope := "server"
+			if s.active[i.User] >= s.maxStreamsPerUser {
+				scope = "account"
+			}
+			s.mu.Unlock()
+			w.Header().Set("X-MJWatch-Limit-Scope", scope)
 			fail(w, 429, "stream_limit")
 			return
 		}
@@ -395,7 +403,7 @@ func (s *Server) acquireStream(user, key string) bool {
 	for _, n := range s.active {
 		active += n
 	}
-	if s.active[user] >= min(2, s.maxStreams) || active >= s.maxStreams {
+	if s.active[user] >= s.maxStreamsPerUser || active >= s.maxStreams {
 		return false
 	}
 	s.active[user]++

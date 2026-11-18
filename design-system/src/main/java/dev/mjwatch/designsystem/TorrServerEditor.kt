@@ -1,0 +1,101 @@
+package dev.mjwatch.designsystem
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import dev.mjwatch.core.*
+import org.json.JSONObject
+
+@Composable internal fun TorrCard(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tv:Boolean,content:@Composable ColumnScope.()->Unit){
+ SettingsGroup(tv){Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+   Icon(icon,null,tint=MaterialTheme.colorScheme.primary);Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+  }
+  content()
+ }}
+}
+
+/** The production editor also accepts snapshots in native UI regression tests. */
+@Composable fun TorrServerEditor(snapshot:JSONObject,draft:JSONObject,tv:Boolean,onChange:(JSONObject)->Unit,onDefaults:()->Unit){
+ val fields=snapshot.getJSONArray("fields");val all=(0 until fields.length()).map{fields.getJSONObject(it)}
+ fun change(name:String,value:Any)=onChange(JSONObject(draft.toString()).put(name,value))
+ @Composable fun field(name:String){all.firstOrNull{it.optString("name")==name&&draft.has(name)}?.let {TorrInput(snapshot,draft,it,tv){value->change(name,value)}}}
+ val memory=snapshot.optJSONObject("resources")
+ TorrCard("Кэш видео",Icons.Outlined.Memory,tv){
+  if(memory!=null&&memory.optLong("totalBytes")>0){
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Память сервера",color=MaterialTheme.colorScheme.onSurfaceVariant);Text("${memory.optLong("availableBytes")/1048576} / ${memory.optLong("totalBytes")/1048576} МиБ свободно",style=MaterialTheme.typography.labelLarge)}
+   LinearProgressIndicator(progress={ (memory.optDouble("availableBytes")/memory.optDouble("totalBytes")).toFloat().coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+  }
+  Text("Где хранить загруженные части видео",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+   for((disk,label) in listOf(false to "В памяти",true to "На диске")){
+    OutlinedButton(onClick={change("UseDisk",disk)},modifier=Modifier.weight(1f).tvFocusRing(tv).semantics{selected=draft.optBoolean("UseDisk")==disk},colors=ButtonDefaults.outlinedButtonColors(containerColor=if(draft.optBoolean("UseDisk")==disk)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)){
+     Icon(if(disk)Icons.Outlined.Storage else Icons.Outlined.Memory,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text(label)
+    }
+   }
+  }
+  Text(if(draft.optBoolean("UseDisk"))"Разгружает RAM. Скорость зависит от накопителя." else "Быстрый доступ. Оставьте память для MJWatch и других сервисов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  field("CacheSize");field("PreloadCache")
+  if(memory!=null)Text("Резерв для системы и соседних сервисов: ${memory.optLong("reserveBytes")/1048576} МиБ. Оценка обновляется при чтении сервера.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ }
+ var network by rememberSaveable{mutableStateOf(false)}
+ SettingsGroup(tv){
+  SettingsActionRow(Icons.Outlined.Lan,"Сеть",if(network)"Скрыть параметры" else "Соединения и скорость",tv){network=!network}
+  if(network)Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){field("ConnectionsLimit");field("DownloadRateLimit");field("UploadRateLimit")}
+ }
+ var advanced by rememberSaveable{mutableStateOf(false)}
+ val basic=setOf("UseDisk","CacheSize","PreloadCache","ConnectionsLimit","DownloadRateLimit","UploadRateLimit")
+ SettingsGroup(tv){
+  SettingsActionRow(Icons.Outlined.Tune,"Дополнительные параметры",if(advanced)"Скрыть параметры" else "Чтение вперёд, протоколы и хранение",tv){advanced=!advanced}
+  if(advanced)Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+   all.filter{it.optString("name") !in basic&&draft.has(it.optString("name"))}.forEach{TorrInput(snapshot,draft,it,tv){value->change(it.getString("name"),value)}}
+   TextButton(onClick=onDefaults,modifier=Modifier.tvFocusRing(tv)){Icon(Icons.Outlined.RestartAlt,null);Spacer(Modifier.width(8.dp));Text("Заводские настройки")}
+  }
+ }
+}
+
+@Composable private fun TorrInput(snapshot:JSONObject,draft:JSONObject,field:JSONObject,tv:Boolean,onChange:(Any)->Unit){
+ val name=field.getString("name");val label=field.getString("label")
+ if(field.optBoolean("boolean")){
+  val negative=field.optBoolean("negative")
+  SettingsToggle(label,if(negative)!draft.optBoolean(name) else draft.optBoolean(name),{onChange(if(negative)!it else it)})
+  return
+ }
+ if(field.optString("unit")=="path"){ServerField(draft.optString(name),{onChange(it)},label);return}
+ val advice=torrFieldAdvice(snapshot,draft,field);val scale=if(name=="CacheSize")1048576L else 1L
+ val unit=if(name=="CacheSize")"МиБ" else if(field.optString("unit")=="KiB/s")"КиБ/с" else field.optString("unit")
+ var text by remember(draft.opt(name)){mutableStateOf((draft.opt(name) as? Number)?.let{(it.toLong()/scale).toString()} ?: draft.optString(name))}
+ val value=text.toLongOrNull()?.let{runCatching{Math.multiplyExact(it,scale)}.getOrNull()}
+ val old=snapshot.getJSONObject("settings").optLong(name)
+ val exceeds=value!=null&&value>advice.maximum&&(if(name=="CacheSize")value>old||snapshot.getJSONObject("settings").optBoolean("UseDisk")!=draft.optBoolean("UseDisk") else value!=old)
+ val invalid=value==null||value<field.optLong("min")||value>field.optLong("max")||exceeds
+ Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+  OutlinedTextField(text,{text=it;onChange(it.toLongOrNull()?.let{n->runCatching{Math.multiplyExact(n,scale)}.getOrNull()} ?: it)},label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,
+   supportingText={if(invalid)Text(if(exceeds)"Выше доступного бюджета сервера" else "Введите число от ${field.optLong("min")/scale} до ${advice.maximum/scale}")})
+  Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+   advice.recommended?.let{n->AdviceTile("Рекомендуем",if(n==0L&&name.endsWith("RateLimit"))"Без лимита" else "${n/scale} $unit".trim(),tv,Modifier.weight(1f).fillMaxHeight()){onChange(n)}}
+   Surface(color=MaterialTheme.colorScheme.surfaceContainerHigh,shape=MaterialTheme.shapes.small,modifier=Modifier.weight(1f).fillMaxHeight()){
+    Column(Modifier.padding(12.dp)){Text(if(advice.measured)"Максимум по серверу" else "Предел TorrServer",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("${advice.maximum/scale} $unit".trim(),style=MaterialTheme.typography.labelLarge)}
+   }
+  }
+  if(name=="PreloadCache")Text("${draft.optLong("PreloadCache")}% текущего кэша: ${draft.optLong("CacheSize")/1048576*draft.optLong("PreloadCache")/100} МиБ до старта",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ }
+}
+
+@Composable internal fun AdviceTile(title:String,value:String,tv:Boolean,modifier:Modifier=Modifier,onClick:()->Unit){
+ val focus=androidx.compose.ui.platform.LocalFocusManager.current
+ val keyboard=androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+ Surface(onClick={focus.clearFocus();keyboard?.hide();onClick()},color=MaterialTheme.colorScheme.primaryContainer,shape=MaterialTheme.shapes.small,modifier=modifier.tvFocusRing(tv)){
+  Column(Modifier.heightIn(min=56.dp).padding(12.dp)){Text(title,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onPrimaryContainer);Text(value,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onPrimaryContainer)}
+ }
+}

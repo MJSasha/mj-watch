@@ -138,7 +138,7 @@ class PlaybackActivity : ComponentActivity() {
             val loadControl=androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000,120000,1500,3000)
                 .setTargetBufferBytes(bufferTargetBytes).setPrioritizeTimeOverSizeThresholds(false).build()
-            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
+            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(StreamLoadErrorPolicy()))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -173,6 +173,7 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
                     save()
+                    if(streamLimitScope(error)!=null){showPlaybackFailure(error);return}
                     if(!released&&decoderFallback.recover(this@PlaybackActivity,player,error)) {
                         terminalError=false;startedAt=System.currentTimeMillis()
                         status=PlaybackStatus("Восстанавливаем декодер","Пробуем совместимый режим или другой декодер.",loading=true,compact=firstFrame)
@@ -221,8 +222,9 @@ class PlaybackActivity : ComponentActivity() {
         }
     }
     private fun retryPlayback() {recoverPlayback(automatic=false)}
-    private fun showPlaybackFailure(error:PlaybackException?=null) {
+    private fun showPlaybackFailure(error:PlaybackException?=null,limitScope:String?=null) {
         terminalError=true
+        (limitScope ?: streamLimitScope(error))?.let {status=streamLimitStatus(it);return}
         val format=(error as? ExoPlaybackException)?.rendererFormat
         val details=format?.let {f->listOfNotNull(f.codecs,if(f.width>0&&f.height>0) "${f.width}×${f.height}" else null,if(f.channelCount>0) "Каналов: ${f.channelCount}" else null,error?.failedMediaCodec()?.name?.let {"Декодер: $it"}).joinToString(" · ")}.orEmpty()
         status=playbackFailureStatus(error?.errorCode,format?.sampleMimeType,details)
@@ -272,6 +274,7 @@ class PlaybackActivity : ComponentActivity() {
                 } catch(e:TimeoutCancellationException) {
                     if(!automatic||retries>=3) {showPlaybackFailure();return@launch}
                 } catch(e:CancellationException) {throw e} catch(e:Exception) {
+                    streamLimitScope(e)?.let {showPlaybackFailure(limitScope=it);return@launch}
                     if(!automatic||retries>=3||e is HttpFailure&&e.status in listOf(400,401,403)||e is IllegalStateException) {showPlaybackFailure();return@launch}
                 }
             }

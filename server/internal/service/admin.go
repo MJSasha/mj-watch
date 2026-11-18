@@ -9,6 +9,8 @@ import (
 
 func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i identity) {
 	switch {
+	case path == "admin/playback/settings":
+		s.playbackSettings(w, r)
 	case path == "admin/probe" && r.Method == "POST":
 		key := "probe:" + Token()
 		_, e := s.DB.Exec("INSERT INTO settings VALUES(?,?)", key, key)
@@ -33,6 +35,8 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i id
 		for _, n := range s.active {
 			active += n
 		}
+		limits := s.streamSettingsSnapshot()
+		maxStreams := s.maxStreams
 		s.mu.Unlock()
 		var users int
 		s.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&users)
@@ -47,7 +51,7 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i id
 		if resp != nil {
 			resp.Body.Close()
 		}
-		respond(w, 200, map[string]any{"version": Version, "apiVersion": 1, "databaseHealthy": e == nil && ok == "ok", "torrserverHealthy": torr, "activeStreams": active, "users": users, "tmdb": s.tmdbPublic(), "maxStreams": s.maxStreams, "resources": resources.Read().Budget(s.maxStreams)})
+		respond(w, 200, map[string]any{"version": Version, "apiVersion": 1, "databaseHealthy": e == nil && ok == "ok", "torrserverHealthy": torr, "activeStreams": active, "users": users, "tmdb": s.tmdbPublic(), "maxStreams": maxStreams, "playback": limits, "resources": resources.Read().Budget(maxStreams)})
 	case path == "admin/audit" && r.Method == "GET":
 		rows, e := s.DB.Query("SELECT actor,action,created FROM audit ORDER BY id DESC LIMIT 200")
 		if e != nil {
