@@ -36,3 +36,22 @@
 
 - `hevc-main-1080-fixture`: 358677 bytes, SHA-256 `9adc4a8c0aea4987c2da3991314f146a06e09232d190f56a9d65b56a2a6bae4a`.
 - `hevc-main10-4k-fixture`: 932400 bytes, SHA-256 `317c933215cebb1babfe144fffda58765cbf5b9089ee16a6910dcaf93db2d6ed`.
+
+## CI релизного коммита
+
+[Android #124](https://github.com/MJSasha/mj-watch/actions/runs/44333789292), source `275e9c73962c475d456566ada93994ad68de54bc`: server check, Android unit/lint/debug+release build и обе runtime jobs прошли. Первый запуск был отменён до выполнения проверок; повторный attempt выполнил все gates. Тесты после падений не перезапускались.
+
+Проверены HTML-отчёты artifacts runtime-app-mobile и runtime-app-tv — [сводка](ci-runtime.json):
+
+- Phone API35 x86_64: 84 total, 50 passed, 34 штатных opt-in skips, 0 failures.
+- Native Android TV API36 x86_64: 52 total, 38 passed, 14 штатных opt-in skips, 0 failures.
+- Playback на native TV: 23 passed, 0 skipped/failures.
+- DecoderRuntimeRecoveryTest и TV MatroskaPlaybackTest: по 3 passed, 0 skipped/failures.
+
+## Опубликованный релиз
+
+[0.9.7 / test-124](https://github.com/MJSasha/mj-watch/releases/tag/test-124), versionCode **1124**. Все четыре CI jobs, включая publish-release, завершились success. Проверены скачанные публичные APK, не промежуточные build outputs — [результат](release-verification.json).
+
+Package name/versionName/versionCode, SHA-256/размеры/URLs совпадают с update.json, SHA256SUMS и GitHub asset digests. apksigner подтвердил прежний сертификат обоих приложений; APK не debuggable. Подписанный server 0.1.6 совпадает в обоих APK и supply ZIP, ключ соответствует прежнему опубликованному ключу; подписи манифеста и все файлы проверены. Все три debug media fixtures отсутствуют в release APK.
+
+Обновление поверх production APK на физическом Xiaomi здесь не проверялось. Проверка раздачи пользователя остаётся необходимой; #38 открыт.

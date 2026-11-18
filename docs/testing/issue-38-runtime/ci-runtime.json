@@ -1,0 +1,41 @@
+{
+  "workflow": "https://github.com/MJSasha/mj-watch/actions/runs/44333789292",
+  "source": "275e9c73962c475d456566ada93994ad68de54bc",
+  "suites": [
+    {
+      "report": "app-mobile/build/reports/androidTests/connected/debug/index.html",
+      "tests": 84,
+      "failures": 0,
+      "skipped": 34,
+      "passed": 50
+    },
+    {
+      "report": "app-tv/build/reports/androidTests/connected/debug/dev.mjwatch.tv.MatroskaPlaybackTest.html",
+      "tests": 3,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 3
+    },
+    {
+      "report": "app-tv/build/reports/androidTests/connected/debug/index.html",
+      "tests": 52,
+      "failures": 0,
+      "skipped": 14,
+      "passed": 38
+    },
+    {
+      "report": "playback/build/reports/androidTests/connected/debug/dev.mjwatch.playback.DecoderRuntimeRecoveryTest.html",
+      "tests": 3,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 3
+    },
+    {
+      "report": "playback/build/reports/androidTests/connected/debug/index.html",
+      "tests": 23,
+      "failures": 0,
+      "skipped": 0,
+      "passed": 23
+    }
+  ]
+}
