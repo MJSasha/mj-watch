@@ -33,14 +33,30 @@ class TvPlayerBehaviorTest {
     private fun key(code:Int) {
         // Compose focus returns before Android finishes transferring input from a closing dialog.
         compose.waitUntil(5000) {
+            val composeDialog=compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()
             var focused=false
             instrumentation.runOnMainSync {activity()?.let {a ->
                 val dialog=field(a,"panel") as? android.app.AlertDialog
-                focused=(dialog?.window ?: a.window).decorView.hasWindowFocus()
+                focused=when {
+                    dialog!=null -> dialog.window?.decorView?.hasWindowFocus()==true
+                    composeDialog -> android.os.Build.VERSION.SDK_INT<29||android.view.inspector.WindowInspector.getGlobalWindowViews().any {it!==a.window.decorView&&it.hasWindowFocus()}
+                    else -> a.window.decorView.hasWindowFocus()
+                }
             }}
-            focused||compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()
+            focused
         }
         instrumentation.sendKeyDownUpSync(code);compose.waitForIdle()
+    }
+    private fun focus(node:SemanticsNodeInteraction) {
+        node.performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.waitUntil(5000) {runCatching {node.assertIsFocused();true}.getOrDefault(false)}
+        instrumentation.waitForIdleSync()
+    }
+    private fun hideControlsFromPlay() {
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        compose.waitUntil(5000) {runCatching {compose.onNodeWithTag("player-timeline").assertIsFocused();true}.getOrDefault(false)}
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
     }
     private fun awaitReady(a:PlaybackActivity) {
         compose.waitUntil(10000) {
@@ -118,7 +134,7 @@ class TvPlayerBehaviorTest {
     }
     @Test fun remotePreviewModalFocusHiddenControlsAndSingleBackExitWithRealVideo() {
         val a=launch();val player=field(a,"player") as Player
-        compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus(compose.onNodeWithTag("player-play"))
         key(KeyEvent.KEYCODE_DPAD_UP);compose.onNodeWithTag("player-timeline").assertIsFocused()
         key(KeyEvent.KEYCODE_DPAD_RIGHT)
         instrumentation.runOnMainSync {Assert.assertEquals(2000L,player.currentPosition)}
@@ -128,7 +144,7 @@ class TvPlayerBehaviorTest {
         instrumentation.runOnMainSync {Assert.assertEquals(0L,player.currentPosition)}
         awaitReady(a)
         key(KeyEvent.KEYCODE_DPAD_DOWN)
-        compose.onNodeWithTag("player-tracks").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus(compose.onNodeWithTag("player-tracks"))
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         instrumentation.runOnMainSync {Assert.assertNotNull(field(a,"panel"))}
         key(KeyEvent.KEYCODE_BACK)
@@ -160,21 +176,21 @@ class TvPlayerBehaviorTest {
     @Test fun changingQualityAudioSpeedAndFitKeepsPausedPosition() {
         val a=launch();val player=field(a,"player") as Player
         fun videoMenu() {
-            compose.onNodeWithTag("player-video").performSemanticsAction(SemanticsActions.RequestFocus)
+            focus(compose.onNodeWithTag("player-video"))
             key(KeyEvent.KEYCODE_DPAD_CENTER)
         }
         videoMenu();selectDialog(0);selectDialog(1)
         instrumentation.runOnMainSync {Assert.assertEquals(2000L,player.currentPosition);Assert.assertFalse(player.playWhenReady)}
         videoMenu();selectDialog(1);selectDialog(4)
         videoMenu();selectDialog(2);selectDialog(1)
-        compose.onNodeWithTag("player-tracks").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus(compose.onNodeWithTag("player-tracks"))
         key(KeyEvent.KEYCODE_DPAD_CENTER);selectDialog(0)
         instrumentation.runOnMainSync {
             Assert.assertEquals(2000L,player.currentPosition);Assert.assertFalse(player.playWhenReady)
             Assert.assertEquals(1.5f,player.playbackParameters.speed,0f)
         }
-        compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)
-        key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_BACK)
+        focus(compose.onNodeWithTag("player-play"))
+        hideControlsFromPlay();key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {var gone=false;instrumentation.runOnMainSync {gone=activity()==null};gone}
     }
 
@@ -200,26 +216,26 @@ class TvPlayerBehaviorTest {
         }
         compose.onNodeWithTag("player-previous-episode").assertIsNotEnabled()
         for(tag in listOf("player-next-episode","player-play","player-back","player-episodes","player-tracks","player-video","player-timeline")) {
-            compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus)
+            focus(compose.onNodeWithTag(tag))
             compose.onNodeWithTag(tag).assertIsFocused()
             capture(tag)
         }
-        compose.onNodeWithContentDescription("Дорожки").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus(compose.onNodeWithContentDescription("Дорожки"))
         capture("top-tracks")
         key(KeyEvent.KEYCODE_DPAD_CENTER);capture("top-tracks-dialog");key(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
-        compose.onNodeWithTag("player-timeline").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus(compose.onNodeWithTag("player-timeline"))
         key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("timeline-preview")
         key(KeyEvent.KEYCODE_BACK)
         key(KeyEvent.KEYCODE_DPAD_DOWN)
         for(tag in listOf("player-episodes","player-tracks","player-video")) {
-            compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.RequestFocus)
+            focus(compose.onNodeWithTag(tag))
             key(KeyEvent.KEYCODE_DPAD_CENTER);capture("$tag-dialog")
             key(KeyEvent.KEYCODE_BACK)
             compose.waitUntil(5000) {runCatching {compose.onNodeWithTag(tag).assertIsFocused();true}.getOrDefault(false)}
         }
-        compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)
-        key(KeyEvent.KEYCODE_DPAD_UP);key(KeyEvent.KEYCODE_DPAD_UP)
+        focus(compose.onNodeWithTag("player-play"))
+        hideControlsFromPlay()
         capture("hidden-video")
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         instrumentation.runOnMainSync {Assert.assertTrue((field(activity()!!,"player") as Player).playWhenReady)}

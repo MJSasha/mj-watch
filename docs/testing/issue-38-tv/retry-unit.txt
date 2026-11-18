@@ -1,0 +1,44 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:preBuild UP-TO-DATE
+> Task :core:preDebugBuild UP-TO-DATE
+> Task :core:generateDebugResValues UP-TO-DATE
+> Task :core:generateDebugResources UP-TO-DATE
+> Task :core:packageDebugResources UP-TO-DATE
+> Task :core:processDebugNavigationResources UP-TO-DATE
+> Task :core:parseDebugLocalResources UP-TO-DATE
+> Task :core:generateDebugRFile UP-TO-DATE
+> Task :core:kspDebugKotlin UP-TO-DATE
+> Task :core:compileDebugKotlin UP-TO-DATE
+> Task :core:javaPreCompileDebug UP-TO-DATE
+> Task :core:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:processDebugJavaRes UP-TO-DATE
+> Task :core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:preBuild UP-TO-DATE
+> Task :playback:preDebugBuild UP-TO-DATE
+> Task :playback:generateDebugResValues UP-TO-DATE
+> Task :playback:generateDebugResources UP-TO-DATE
+> Task :playback:packageDebugResources UP-TO-DATE
+> Task :playback:processDebugNavigationResources UP-TO-DATE
+> Task :playback:parseDebugLocalResources UP-TO-DATE
+> Task :playback:generateDebugRFile UP-TO-DATE
+> Task :playback:javaPreCompileDebug UP-TO-DATE
+> Task :playback:preDebugUnitTestBuild UP-TO-DATE
+> Task :playback:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :playback:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :playback:compileDebugKotlin
+> Task :playback:compileDebugJavaWithJavac NO-SOURCE
+> Task :playback:bundleLibRuntimeToJarDebug
+> Task :playback:bundleLibCompileToJarDebug
+> Task :playback:processDebugJavaRes UP-TO-DATE
+> Task :playback:compileDebugUnitTestKotlin
+> Task :playback:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :playback:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :playback:testDebugUnitTest
+
+BUILD SUCCESSFUL in 5s
+28 actionable tasks: 5 executed, 23 up-to-date
