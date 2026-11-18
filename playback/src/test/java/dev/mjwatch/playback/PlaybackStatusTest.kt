@@ -15,4 +15,17 @@ class PlaybackStatusTest {
         assertFalse(bufferingStatus(firstFrame=false,elapsedMs=30_000).compact)
         assertFalse(PlaybackStatus("Ошибка",retry=true).compact)
     }
+    @Test fun codecInitializationAudioOutputAndContainerErrorsAreNotAllUnsupportedFormats() {
+        assertEquals("Не удалось запустить декодер",playbackFailureStatus(4001,"video/hevc").title)
+        val audio=playbackFailureStatus(4005,"audio/vnd.dts","Каналов: 6")
+        assertEquals("Аудиодорожка не поддерживается",audio.title)
+        assertTrue(audio.message.contains("4005 · audio/vnd.dts · Каналов: 6"))
+        assertFalse(audio.retry)
+        assertEquals("Видеодорожка не поддерживается",playbackFailureStatus(4004,"video/hevc","3840×2160").title)
+        assertEquals("Не удалось вывести звук",playbackFailureStatus(5001,"audio/ac3").title)
+        assertEquals("Ошибка декодирования",playbackFailureStatus(4003).title)
+        assertEquals("Не удалось прочитать контейнер",playbackFailureStatus(3003).title)
+        assertTrue(playbackFailureStatus(2002).retry)
+        assertTrue(playbackFailureStatus(null).retry)
+    }
 }

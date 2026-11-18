@@ -19,6 +19,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
@@ -124,7 +126,7 @@ class PlaybackActivity : ComponentActivity() {
             val headers=mutableMapOf<String,String>()
             val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
             val http=OkHttpDataSource.Factory((if(config.managed) managedClient(config,SecretStore(applicationContext)) else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
-            player=ExoPlayer.Builder(this@PlaybackActivity).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
+            player=ExoPlayer.Builder(this@PlaybackActivity,DefaultRenderersFactory(this@PlaybackActivity).setEnableDecoderFallback(true)).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(3)))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -161,7 +163,7 @@ class PlaybackActivity : ComponentActivity() {
                     save()
                     val http=generateSequence<Throwable>(error) {it.cause}.filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
                     if(recoverablePlaybackError(error.errorCode,http,config.managed)&&retries<3) recoverPlayback(automatic=true)
-                    else showPlaybackFailure(error.errorCode in 4000..5999)
+                    else showPlaybackFailure(error)
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
@@ -202,10 +204,11 @@ class PlaybackActivity : ComponentActivity() {
         }
     }
     private fun retryPlayback() {recoverPlayback(automatic=false)}
-    private fun showPlaybackFailure(format:Boolean=false) {
+    private fun showPlaybackFailure(error:PlaybackException?=null) {
         terminalError=true
-        status=if(format)PlaybackStatus("Формат не поддерживается","Выберите другую дорожку или раздачу.")
-        else PlaybackStatus("Видео недоступно","Не удалось восстановить поток. Повторите попытку или проверьте сервер.",retry=true)
+        val format=(error as? ExoPlaybackException)?.rendererFormat
+        val details=format?.let {f->listOfNotNull(f.codecs,if(f.width>0&&f.height>0) "${f.width}×${f.height}" else null,if(f.channelCount>0) "Каналов: ${f.channelCount}" else null).joinToString(" · ")}.orEmpty()
+        status=playbackFailureStatus(error?.errorCode,format?.sampleMimeType,details)
     }
     private fun recoverPlayback(automatic:Boolean) {
         if(!::player.isInitialized||released||recoveryJob?.isActive==true)return
