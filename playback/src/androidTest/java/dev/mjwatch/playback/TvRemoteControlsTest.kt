@@ -123,6 +123,17 @@ class TvRemoteControlsTest {
         compose.runOnIdle {compose.activity.dispatchKeyEvent(KeyEvent(time,time+1100,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_CENTER,0))}
         compose.waitForIdle();assertEquals(1,toggles);assertFalse(playing)
     }
+    @Test fun lateWindowFocusCallbackCannotUndoANewRemoteMove() {
+        start(true)
+        compose.onNodeWithContentDescription("Дорожки").performSemanticsAction(SemanticsActions.RequestFocus)
+        key(Key.DirectionCenter)
+        // Android has already returned input, but Compose may observe its window callback later.
+        compose.runOnIdle {compose.activity.window.decorView.dispatchWindowFocusChanged(false);panel=false}
+        key(Key.DirectionDown)
+        compose.onNodeWithTag("player-play").assertIsFocused()
+        compose.runOnIdle {compose.activity.window.decorView.dispatchWindowFocusChanged(true)}
+        compose.onNodeWithTag("player-play").assertIsFocused()
+    }
     @Test fun anAlreadyVisibleOfferDoesNotStealFocusWhenTracksClose() {
         position=970_000;start(true)
         compose.onNodeWithTag("player-prompt").assertIsFocused()
