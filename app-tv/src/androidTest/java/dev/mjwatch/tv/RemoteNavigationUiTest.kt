@@ -57,6 +57,11 @@ class RemoteNavigationUiTest {
         file.performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(20000){compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isNotEmpty()}
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1000)?.click()
+        // The controls may exist while the short fixture is still buffering on a cold TV.
+        compose.waitUntil(10000) {
+            compose.onAllNodesWithContentDescription("Пауза").fetchSemanticsNodes().isNotEmpty()&&
+                compose.onAllNodesWithTag("playback-status").fetchSemanticsNodes().isEmpty()
+        }
         // A real D-pad event exits the touch mode entered by Android's fullscreen hint.
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadDown()
         compose.waitForIdle()

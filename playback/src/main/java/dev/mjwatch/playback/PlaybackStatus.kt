@@ -9,6 +9,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -31,7 +32,10 @@ internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus
 
 @Composable internal fun PlaybackStatusCard(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
     val actionFocus=remember {FocusRequester()}
-    LaunchedEffect(status.title,focusAction) {if(focusAction)actionFocus.requestFocus()}
+    val windowFocused=LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(status.title,focusAction,windowFocused) {
+        if(focusAction&&windowFocused) {withFrameNanos {};actionFocus.requestFocus()}
+    }
     Surface(Modifier.widthIn(max=420.dp).fillMaxWidth().padding(24.dp).testTag("playback-status")
         .semantics(mergeDescendants=true){liveRegion=LiveRegionMode.Polite},shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surface.copy(alpha=.95f)) {
         Column(Modifier.padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {

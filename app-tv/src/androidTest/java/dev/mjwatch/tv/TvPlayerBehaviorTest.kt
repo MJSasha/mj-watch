@@ -75,6 +75,47 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_DPAD_CENTER)
     }
     @After fun cleanup() {instrumentation.runOnMainSync {activity()?.finish()}}
+    @Test fun remoteOnlyWalkthroughKeepsFocusAcrossTracksAndNestedVideoPanels() {
+        launch(series=true,title="Тихая орбита",label="Сезон 1 · Серия 4")
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-prompt").fetchSemanticsNodes().isNotEmpty()}
+        val folder=java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"remote-audit/"+
+            InstrumentationRegistry.getArguments().getString("evidenceDir","before")).apply {mkdirs()}
+        fun capture(name:String) {compose.waitForIdle();java.io.File(folder,"$name.png").outputStream().use {
+            Assert.assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it))
+        }}
+        fun focused(tag:String) {try {compose.waitUntil(5000) {runCatching {compose.onNodeWithTag(tag).assertIsFocused();true}.getOrDefault(false)}}
+            catch(error:Throwable) {capture("failure-$tag");java.io.File(folder,"failure.txt").writeText(compose.onRoot().printToString());throw error}}
+        capture("00-prompt")
+        key(KeyEvent.KEYCODE_BACK)
+        focused("player-play");capture("01-play")
+        repeat(4) {key(KeyEvent.KEYCODE_DPAD_RIGHT)}
+        focused("player-tracks");capture("02-tracks-button")
+        repeat(5) {index->
+            key(KeyEvent.KEYCODE_DPAD_CENTER)
+            if(index==0)capture("03-tracks-open")
+            key(KeyEvent.KEYCODE_DPAD_DOWN)
+            if(index==0)capture("04-audio-row")
+            key(if(index%2==0)KeyEvent.KEYCODE_DPAD_CENTER else KeyEvent.KEYCODE_BACK)
+            focused("player-tracks")
+        }
+        capture("05-tracks-return")
+        key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-video")
+        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("06-video-panel")
+        key(KeyEvent.KEYCODE_DPAD_DOWN);key(KeyEvent.KEYCODE_DPAD_CENTER)
+        capture("07-speed-panel")
+        key(KeyEvent.KEYCODE_BACK);focused("player-video");capture("08-video-return")
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline");capture("09a-timeline-focused")
+        key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("09-seek-preview")
+        key(KeyEvent.KEYCODE_BACK);focused("player-timeline")
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-back")
+        key(KeyEvent.KEYCODE_DPAD_RIGHT)
+        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("10-top-tracks")
+        key(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
+        capture("11-top-tracks-return")
+        key(KeyEvent.KEYCODE_DPAD_DOWN);focused("player-play")
+    }
     @Test fun remotePreviewModalFocusHiddenControlsAndSingleBackExitWithRealVideo() {
         val a=launch();val player=field(a,"player") as Player
         compose.onNodeWithTag("player-play").performSemanticsAction(SemanticsActions.RequestFocus)

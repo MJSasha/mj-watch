@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -17,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.Alignment
@@ -25,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
@@ -58,13 +64,15 @@ internal val PlayerLime=Color(0xFFC7FF68)
                 })
             })
             if(visible) {
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000),Color.Transparent))).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    IconButton(modifier=Modifier.focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                    Column(Modifier.weight(1f)) {Text(title,fontSize=20.sp,fontWeight=FontWeight.Bold,maxLines=1);Text(episodeLabel.ifBlank {"MJWatch"},maxLines=1,fontSize=12.sp,color=Color(0xFFABB5C5))}
-                    IconButton(modifier=Modifier.testTag("player-tracks").focusRequester(tracksFocus).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
+                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.34f).background(Brush.verticalGradient(0f to Color(0xF5101722),.65f to Color(0xD9101722),1f to Color.Transparent)))
+                if(ready)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.5f).background(Brush.verticalGradient(0f to Color.Transparent,.45f to Color(0xCC101722),1f to Color(0xF5101722))))
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
+                    Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodeLabel.ifBlank {"MJWatch"},maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
+                    IconButton(modifier=Modifier.size(48.dp).testTag("player-tracks").focusRequester(tracksFocus).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
-                if(ready)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent,Color(0xF0000000)))).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.testTag("player-timeline").focusRequester(timelineFocus).focusProperties {if(!mobile){up=tracksFocus;down=playFocus}}.onPreviewKeyEvent {event->
+                if(ready)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.height(48.dp).testTag("player-timeline").focusRequester(timelineFocus).focusProperties {if(!mobile){up=tracksFocus;down=playFocus}}.onPreviewKeyEvent {event->
                         if(mobile||event.key !in listOf(Key.DirectionUp,Key.DirectionDown,Key.DirectionLeft,Key.DirectionRight))false else {
                             if(event.type==KeyEventType.KeyDown)touch {
                                 when(event.key) {
@@ -76,20 +84,26 @@ internal val PlayerLime=Color(0xFFC7FF68)
                             }
                             true
                         }
-                    }.playerFocus(),thumb={Box(Modifier.size(12.dp).background(PlayerLime,CircleShape))},track={Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFF53616E),CircleShape)) {Box(Modifier.fillMaxWidth((position.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)).fillMaxHeight().background(PlayerLime,CircleShape))}})
+                    }.playerFocus(),thumb={},track={Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
+                        val y=size.height/2
+                        val x=size.width*(position.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
+                        drawLine(Color(0xFF78818A),androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
+                        drawLine(PlayerLime,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(x,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
+                        drawCircle(PlayerLime,3.5.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
+                    })})
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Text(playerTime(position),fontSize=12.sp);Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5))}
                     FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                         FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                        if(episodeCount>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.testTag("player-previous-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex-1)}}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
-                        IconButton(modifier=Modifier.focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekBack()}}) {Icon(Icons.Outlined.Replay10,"Назад на 10 секунд")}
-                        FilledIconButton(onClick={touch {player()?.let {if(it.isPlaying) it.pause() else it.play()}}},modifier=Modifier.size(56.dp).testTag("player-play").focusRequester(playFocus).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),shape=CircleShape) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(32.dp))}
-                        IconButton(modifier=Modifier.focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekForward()}}) {Icon(Icons.Outlined.Forward10,"Вперёд на 10 секунд")}
-                        if(episodeCount>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodeCount-1,modifier=Modifier.testTag("player-next-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex+1)}}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
+                        if(episodeCount>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.size(48.dp).testTag("player-previous-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex-1)}}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
+                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekBack()}}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                        IconButton(onClick={touch {player()?.let {if(it.isPlaying) it.pause() else it.play()}}},modifier=Modifier.size(56.dp).testTag("player-play").focusRequester(playFocus).focusProperties {if(!mobile)up=timelineFocus}.playerFocus()) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
+                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekForward()}}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                        if(episodeCount>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodeCount-1,modifier=Modifier.size(48.dp).testTag("player-next-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex+1)}}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
                         }
                         FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                        IconButton(modifier=Modifier.focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
-                        IconButton(modifier=Modifier.focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onFit)}) {Icon(Icons.Outlined.AspectRatio,"Масштаб")}
-                        if(mobile) IconButton(modifier=Modifier.focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onPip)}) {Icon(Icons.Outlined.PictureInPictureAlt,"PiP")}
+                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
+                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onFit)}) {Icon(Icons.Outlined.Fullscreen,"Масштаб")}
+                        if(mobile) IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onPip)}) {Icon(Icons.Outlined.PictureInPictureAlt,"PiP")}
                         }
                     }
                 }
@@ -107,8 +121,12 @@ internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
     var focused by remember {mutableStateOf(false)}
     return this.onFocusChanged {focused=it.isFocused}.drawBehind {
         if(focused) {
-            val outset=5.dp.toPx()
-            drawRoundRect(PlayerLime,topLeft=androidx.compose.ui.geometry.Offset(-outset,-outset),size=androidx.compose.ui.geometry.Size(size.width+2*outset,size.height+2*outset),cornerRadius=androidx.compose.ui.geometry.CornerRadius(size.minDimension/2+outset),style=Stroke(2.dp.toPx()))
+            val inset=2.dp.toPx()
+            val origin=androidx.compose.ui.geometry.Offset(inset,inset)
+            val bounds=androidx.compose.ui.geometry.Size(size.width-2*inset,size.height-2*inset)
+            val radius=androidx.compose.ui.geometry.CornerRadius(11.dp.toPx())
+            drawRoundRect(Color(0x662A303A),origin,bounds,radius)
+            drawRoundRect(Color(0xFFF0F2EC),origin,bounds,radius,style=Stroke(1.5.dp.toPx()))
         }
     }
 }

@@ -1,0 +1,97 @@
+Printing with useUnmergedTree = 'false'
+Node #14 at (l=0.0, t=0.0, r=1920.0, b=1080.0)px
+ |-Node #15 at (l=0.0, t=0.0, r=1920.0, b=1080.0)px
+   Focused = 'false'
+   Actions = [RequestFocus]
+    |-Node #16 at (l=0.0, t=0.0, r=1920.0, b=420.0)px
+    | Shape = 'RectangleShape'
+    |-Node #18 at (l=74.0, t=42.0, r=200.0, b=168.0)px, Tag: 'player-back'
+    | ContentDescription = '[Назад]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #21 at (l=200.0, t=42.0, r=510.0, b=105.0)px
+    | Text = '[Тихая орбита]'
+    | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+    |-Node #22 at (l=200.0, t=105.0, r=472.0, b=168.0)px
+    | Text = '[Сезон 1 · Серия 4]'
+    | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+    |-Node #23 at (l=1720.0, t=42.0, r=1846.0, b=168.0)px
+    | ContentDescription = '[Дорожки]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #35 at (l=0.0, t=492.0, r=1920.0, b=1080.0)px
+    | Shape = 'RectangleShape'
+    |-Node #37 at (l=90.0, t=702.0, r=1830.0, b=744.0)px, Tag: 'player-timeline'
+    | Focused = 'false'
+    | ProgressBarRangeInfo = 'ProgressBarRangeInfo(current=2000.0, range=0.0..10006.0, steps=0)'
+    | StateDescription = '2000.0'
+    | Actions = [RequestFocus, SetProgress]
+    | MergeDescendants = 'true'
+    |-Node #42 at (l=116.0, t=765.0, r=180.0, b=828.0)px
+    | Text = '[0:02]'
+    | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+    |-Node #43 at (l=1740.0, t=765.0, r=1804.0, b=828.0)px
+    | Text = '[0:10]'
+    | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+    |-Node #45 at (l=116.0, t=865.0, r=242.0, b=991.0)px, Tag: 'player-previous-episode'
+    | ContentDescription = '[Предыдущая серия]'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | [Disabled]
+    | Actions = [OnClick]
+    | MergeDescendants = 'true'
+    |-Node #47 at (l=284.0, t=865.0, r=410.0, b=991.0)px
+    | ContentDescription = '[Назад на 10 секунд]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #49 at (l=452.0, t=865.0, r=589.0, b=991.0)px, Tag: 'player-play'
+    | ContentDescription = '[Воспроизвести]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #51 at (l=631.0, t=865.0, r=757.0, b=991.0)px
+    | ContentDescription = '[Вперёд на 10 секунд]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #53 at (l=799.0, t=865.0, r=925.0, b=991.0)px, Tag: 'player-next-episode'
+    | ContentDescription = '[Следующая серия]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #56 at (l=1342.0, t=865.0, r=1468.0, b=991.0)px, Tag: 'player-episodes'
+    | ContentDescription = '[Выбор серии]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #58 at (l=1510.0, t=865.0, r=1636.0, b=991.0)px, Tag: 'player-tracks'
+    | ContentDescription = '[Аудио и субтитры]'
+    | Focused = 'false'
+    | Role = 'Button'
+    | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+    | Actions = [OnClick, RequestFocus]
+    | MergeDescendants = 'true'
+    |-Node #60 at (l=1678.0, t=865.0, r=1804.0, b=991.0)px, Tag: 'player-video'
+      ContentDescription = '[Параметры видео]'
+      Focused = 'false'
+      Role = 'Button'
+      Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+      Actions = [OnClick, RequestFocus]
+      MergeDescendants = 'true'
