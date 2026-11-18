@@ -193,14 +193,14 @@ import kotlinx.coroutines.delay
             } else false
         }.then(controlFocus(rootFocus)).focusable()) {
             if(visible) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(160.dp).background(Brush.verticalGradient(0f to Color(0xF5101722),.65f to Color(0xD9101722),1f to Color.Transparent)))
+                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-back").then(controlFocus(backFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodes.getOrNull(episodeIndex)?.path ?: "MJWatch",maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
                     IconButton(modifier=Modifier.size(48.dp).then(controlFocus(topTracksFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal),onClick={interact();openPanel(topTracksFocus,onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
                 if(ready) {
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(224.dp).background(Brush.verticalGradient(0f to Color.Transparent,.45f to Color(0xCC101722),1f to Color(0xF5101722))))
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
