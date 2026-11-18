@@ -112,7 +112,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val context=LocalContext.current.applicationContext
     val images=remember(state.config) {ImageLoader.Builder(context).okHttpClient(if(state.config.managed) managedClient(state.config,model.secrets) else guardedClient(state.config)).build()}
     DisposableEffect(images) {onDispose {images.shutdown()}}
-    CompositionLocalProvider(LocalTvNavigation provides tv,LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) TVBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
+    val focusClearance=with(LocalDensity.current) {8.dp.toPx()}
+    val tvScrollSpec=remember(focusClearance) {TVBringIntoView(focusClearance)}
+    CompositionLocalProvider(LocalTvNavigation provides tv,LocalImages provides images,androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides if(tv) tvScrollSpec else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current) {WatchTheme(state.config.theme) {
         val colors=MaterialTheme.colorScheme
         val activity=androidx.activity.compose.LocalActivity.current
         var exitRequested by remember {mutableStateOf(false)}
@@ -255,9 +257,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 @Composable private fun HomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
-    val category=s.catalogSection.label;var featured by remember(s.catalogSection) {mutableStateOf<Metadata?>(null)}
+    val category=s.catalogSection.label;var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     val catalogue=s.catalog
-    val hero=catalogue.firstOrNull {it.id==featured?.id} ?: catalogue.firstOrNull()
+    val hero=catalogue.firstOrNull {it.id==featured} ?: catalogue.firstOrNull()
     val cinematic=hero!=null||s.config.demo
     val inset=if(tv) tvUnit(40f) else 20.dp
     val heroFocus=remember {FocusRequester()}
@@ -265,7 +267,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     WatchTheme(if(tv&&cinematic) "dark" else s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val columns=if(!tv&&maxWidth>=680.dp) 2 else 1
         if(tv&&cinematic) Box(Modifier.fillMaxWidth().height(tvUnit(475f))) {Artwork(hero,s.config,Modifier.fillMaxSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.fillMaxSize(),true);ArtScrim(Modifier.fillMaxSize())}
-        LazyColumn(Modifier.testTag("home-list"),verticalArrangement=Arrangement.spacedBy(if(tv) 12.dp else 16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+        LazyColumn(Modifier.testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(if(tv) 12.dp else 16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
                 if(tv) {
                     Box(Modifier.fillMaxWidth().heightIn(min=tvUnit(if(cinematic)390f else 100f)).padding(horizontal=inset)) {
@@ -311,7 +313,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
             if(continuing.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle(if(tv) "Продолжить просмотр" else "Продолжить",if(tv) "Вся история" else "") {model.page("history")}}}
-                if(tv) item {LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(14.dp)) {items(continuing,key={it.entry.id}) {e->Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true)}}}}
+                if(tv) item {TvCarousel(inset,14.dp) {items(continuing,key={it.entry.id}) {e->Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true)}}}}
                 else items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                         row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,progress,model,false)}}
@@ -321,7 +323,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             }
             if(catalogue.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Ваши подборки")}}
-                item {LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {items(catalogue,key={it.id}) {m->Box(Modifier.width(if(tv) tvUnit(180f) else 156.dp)) {MetadataCard(m,s.config,tv,s.focusKey==m.id,onFocus={featured=m}) {model.metadata(m)}}}}}
+                item {
+                    val cards:androidx.compose.foundation.lazy.LazyListScope.()->Unit={items(catalogue,key={it.id}) {m->Box(Modifier.width(if(tv) tvUnit(180f) else 156.dp)) {MetadataCard(m,s.config,tv,s.focusKey==m.id,onFocus={featured=m.id}) {model.metadata(m)}}}}
+                    if(tv) key(s.catalogSection) {TvCarousel(inset,content=cards)}
+                    else LazyRow(contentPadding=PaddingValues(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp),content=cards)
+                }
             }
             if(s.config.demo) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Тестовые раздачи")}}
@@ -448,7 +454,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 if(tab=="Похожие") {
                     val related=s.catalog.filter {it.id!=m?.id&&it.kind==m?.kind&&it.animation==m?.animation}
                     if(related.isEmpty()) Empty("Похожих пока нет","Попробуйте поиск по названию",tv,onClick={model.page("search")})
-                    else {Text("Из того же раздела",color=MaterialTheme.colorScheme.onSurfaceVariant);LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp)) {items(related,key={it.id}) {item->Box(Modifier.width(156.dp)) {MetadataCard(item,s.config,tv) {model.metadata(item)}}}}}
+                    else {
+                        Text("Из того же раздела",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        val cards:androidx.compose.foundation.lazy.LazyListScope.()->Unit={items(related,key={it.id}) {item->Box(Modifier.width(156.dp)) {MetadataCard(item,s.config,tv) {model.metadata(item)}}}}
+                        if(tv) TvCarousel(content=cards) else LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp),content=cards)
+                    }
                 } else {
                 if(tv||compact)Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и управление плеером. История и позиции доступны после подключения сервера MJWatch." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(m?.kind=="tv"&&s.config.managed) ManagedEpisodes(m,s.config,model,tv)
@@ -916,6 +926,6 @@ private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun RailButton(tv:Boolean,icon:ImageVector,label:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme;val shape=RoundedCornerShape(12.dp)
-    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=modifier.semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
+    if(tv) androidx.tv.material3.IconButton(onClick=onClick,modifier=Modifier.padding(TvFocusClearance).then(modifier).semantics {this.selected=selected;role=Role.Tab},shape=androidx.tv.material3.IconButtonDefaults.shape(shape=shape),scale=androidx.tv.material3.IconButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.IconButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface,focusedContainerColor=colors.primaryContainer,focusedContentColor=colors.primary),border=androidx.tv.material3.IconButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp))) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {Icon(icon,label,Modifier.size(24.dp),tint=androidx.tv.material3.LocalContentColor.current);Text(label,fontSize=11.sp,color=androidx.tv.material3.LocalContentColor.current,maxLines=1)}}
     else Surface(onClick=onClick,modifier=modifier.tvFocusRing(true,shape).semantics {this.selected=selected;role=Role.Tab},shape=shape,color=if(selected) colors.primaryContainer else colors.background,contentColor=if(selected) colors.primary else colors.onSurface) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Icon(icon,label,Modifier.size(24.dp))}}
 }

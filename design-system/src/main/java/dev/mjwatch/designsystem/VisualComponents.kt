@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 }
 @Composable internal fun Pill(text:String,selected:Boolean,tv:Boolean=false,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
-    if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.onPrimaryContainer else colors.onSurfaceVariant,focusedContainerColor=if(selected) colors.primaryContainer else colors.surface,focusedContentColor=if(selected) colors.onPrimaryContainer else colors.onSurface),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp)),modifier=Modifier.heightIn(min=48.dp).semantics {this.selected=selected}) {Text(text,fontSize=18.sp,lineHeight=24.sp,color=androidx.tv.material3.LocalContentColor.current)}
+    if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.onPrimaryContainer else colors.onSurfaceVariant,focusedContainerColor=if(selected) colors.primaryContainer else colors.surface,focusedContentColor=if(selected) colors.onPrimaryContainer else colors.onSurface),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp)),modifier=Modifier.padding(TvFocusClearance).heightIn(min=48.dp).semantics {this.selected=selected}) {Text(text,fontSize=18.sp,lineHeight=24.sp,color=androidx.tv.material3.LocalContentColor.current)}
     else FilterChip(selected=selected,onClick=onClick,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(true,RoundedCornerShape(12.dp)),label={Text(text,fontSize=14.sp,lineHeight=20.sp)},shape=RoundedCornerShape(12.dp),border=null,colors=FilterChipDefaults.filterChipColors(containerColor=colors.surface,labelColor=colors.onSurfaceVariant,selectedContainerColor=colors.primaryContainer,selectedLabelColor=colors.onPrimaryContainer))
 }
 @Composable internal fun SettingsToggle(label:String,checked:Boolean,onCheckedChange:(Boolean)->Unit,modifier:Modifier=Modifier,description:String?=null,icon:ImageVector?=null) {
@@ -103,7 +103,7 @@ import kotlinx.coroutines.launch
             false
         } else false
     } else Modifier
-    if(tv) androidx.tv.material3.Card(onClick={if(!pendingLongClick)onClick()},onLongClick=onLongClick?.let {action->{if(remoteHeld)pendingLongClick=true else action()}},modifier=modifier.then(remoteModifier),scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=colors.primaryContainer),border=androidx.tv.material3.CardDefaults.border(focusedBorder=tvFocusBorder(16.dp))) {content()}
+    if(tv) androidx.tv.material3.Card(onClick={if(!pendingLongClick)onClick()},onLongClick=onLongClick?.let {action->{if(remoteHeld)pendingLongClick=true else action()}},modifier=Modifier.padding(TvFocusClearance).then(modifier).then(remoteModifier),scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=colors.primaryContainer),border=androidx.tv.material3.CardDefaults.border(focusedBorder=tvFocusBorder(16.dp))) {content()}
     else Card(modifier=modifier.combinedClickable(onClick=onClick,onLongClick=onLongClick),shape=shape,colors=CardDefaults.cardColors(containerColor=if(selected) colors.primaryContainer else colors.surface),border=if(selected) BorderStroke(1.dp,colors.primary) else null) {content()}
 }
 @Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false) {
@@ -143,22 +143,41 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
     val color=MaterialTheme.colorScheme.primary
+    val inside=LocalTvNavigation.current
     return this.onFocusChanged {focused=it.isFocused}.drawWithContent {
         drawContent()
         if(focused) {
-            val offset=4.dp.toPx()
-            val outline=shape.createOutline(Size(size.width+offset*2,size.height+offset*2),layoutDirection,this)
+            // TV rows can fill a clipped viewport; keep their stroke inside it.
+            val offset=(if(inside) (-1).dp else 4.dp).toPx()
+            val outline=shape.createOutline(Size((size.width+offset*2).coerceAtLeast(0f),(size.height+offset*2).coerceAtLeast(0f)),layoutDirection,this)
             translate(-offset,-offset) {drawOutline(outline,color,style=Stroke(2.dp.toPx()))}
         }
     }
 }
 
+/** A row remembers its focused card and scrolls new cards to a stable leading edge. */
+@Composable internal fun TvCarousel(inset:Dp=0.dp,spacing:Dp=16.dp,content:androidx.compose.foundation.lazy.LazyListScope.()->Unit) {
+    val leading=with(LocalDensity.current) {(inset+TvFocusClearance).toPx()}
+    val scrollSpec=remember(leading) {
+        object:androidx.compose.foundation.gestures.BringIntoViewSpec {
+            override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float =
+                offset-minOf(leading,(containerSize-size).coerceAtLeast(0f))
+        }
+    }
+    CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides scrollSpec) {
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier=Modifier.focusRestorer().focusGroup(),
+            contentPadding=PaddingValues(horizontal=inset),
+            horizontalArrangement=Arrangement.spacedBy(spacing),content=content)
+    }
+}
+
 /** Keep an already visible TV control in place; the platform pivot otherwise scrolls the hero offscreen. */
-internal object TVBringIntoView:androidx.compose.foundation.gestures.BringIntoViewSpec {
+internal class TVBringIntoView(private val clearance:Float):androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset:Float,size:Float,containerSize:Float):Float=when {
         size>containerSize->offset
-        offset<8f->offset-8f
-        offset+size>containerSize-8f->offset+size-containerSize+8f
+        offset<clearance->offset-clearance
+        offset+size>containerSize-clearance->offset+size-containerSize+clearance
         else->0f
     }
 }

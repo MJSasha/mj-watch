@@ -28,6 +28,9 @@ import androidx.tv.material3.*
     return Border(BorderStroke(2.dp,MaterialTheme.colorScheme.primary),inset=5.dp,shape=RoundedCornerShape(radius+5.dp))
 }
 
+// Reserve the entire external focus stroke inside scrollable layout bounds.
+internal val TvFocusClearance=6.dp
+
 /** TV action states from the MJ Family reference; focus and press never resize the button. */
 @Composable fun TvActionButton(text:String,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,interactionSource:MutableInteractionSource?=null,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
@@ -43,7 +46,7 @@ import androidx.tv.material3.*
     // TV Material 1.0.1 adds an unavoidable disabled-content alpha. Own the disabled
     // semantics and activation guard so loading stays legible and retains D-pad focus.
     Button(onClick={if(!blocked)onClick()},interactionSource=source,
-        modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
+        modifier=Modifier.padding(TvFocusClearance).then(modifier).heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
             if(blocked) disabled()
             if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
         },

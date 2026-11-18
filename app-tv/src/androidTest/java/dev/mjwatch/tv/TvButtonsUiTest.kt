@@ -16,6 +16,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -77,6 +79,38 @@ class TvButtonsUiTest {
         compose.runOnIdle {Assert.assertEquals(2,clicks);enabled=false}
         button.assertIsNotEnabled().performKeyInput {pressKey(Key.DirectionCenter)}
         compose.runOnIdle {Assert.assertEquals(2,clicks)}
+    }
+
+    @Test fun focusStrokeFitsAtBothEndsOfAClippedList() {
+        val first=FocusRequester()
+        val last=FocusRequester()
+        compose.runOnUiThread {compose.activity.setContent {
+            WatchTheme("dark") {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(40.dp)) {
+                    LazyColumn(Modifier.width(320.dp).height(180.dp).testTag("edge-list")) {
+                        item {TvActionButton("Первая",Modifier.fillMaxWidth().focusRequester(first).testTag("edge-first")) {}}
+                        item {Spacer(Modifier.height(300.dp))}
+                        item {TvActionButton("Последняя",Modifier.fillMaxWidth().focusRequester(last).testTag("edge-last")) {}}
+                    }
+                }
+            }
+        }}
+        val density=compose.activity.resources.displayMetrics.density
+        for((tag,requester) in listOf("edge-first" to first,"edge-last" to last)) {
+            if(tag=="edge-last") compose.onNodeWithTag("edge-list").performScrollToNode(hasTestTag(tag))
+            compose.runOnIdle {requester.requestFocus()}
+            compose.onNodeWithTag(tag).assertIsFocused().assertIsDisplayed()
+            compose.waitForIdle()
+            val bounds=compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            val pixels=compose.onRoot().captureToImage().toPixelMap()
+            val x=bounds.center.x.roundToInt()
+            for(y in listOf(bounds.top-5*density,bounds.bottom+5*density)) {
+                val ring=pixels[x,y.roundToInt()].luminance()
+                val gapY=if(y<bounds.top)bounds.top-2*density else bounds.bottom+2*density
+                val fill=pixels[x,gapY.roundToInt()].luminance()
+                Assert.assertTrue("The external stroke must survive viewport clipping",kotlin.math.abs(ring-fill)>.05f)
+            }
+        }
     }
 
     @Test fun captureReferenceStatesInBothThemes() {
