@@ -1,0 +1,77 @@
+INSTRUMENTATION_STATUS: class=dev.mjwatch.playback.TvRemoteControlsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+dev.mjwatch.playback.TvRemoteControlsTest:
+INSTRUMENTATION_STATUS: test=lateWindowFocusCallbackCannotUndoANewRemoteMove
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.mjwatch.playback.TvRemoteControlsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Failed to assert the following: (Focused = 'true')
+Semantics of the node:
+Node #27 at (l=344.0, t=916.0, r=448.0, b=1012.0)px, Tag: 'player-play'
+ContentDescription = '[Пауза]'
+Focused = 'false'
+Role = 'Button'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+Actions = [OnClick, RequestFocus]
+MergeDescendants = 'true'
+Has 16 siblings
+Selector used: (TestTag = 'player-play')
+
+	at androidx.compose.ui.test.AssertionsKt.assert(Assertions.kt:264)
+	at androidx.compose.ui.test.AssertionsKt.assert$default(Assertions.kt:254)
+	at androidx.compose.ui.test.AssertionsKt.assertIsFocused(Assertions.kt:117)
+	at dev.mjwatch.playback.TvRemoteControlsTest.lateWindowFocusCallbackCannotUndoANewRemoteMove(TvRemoteControlsTest.kt:135)
+
+INSTRUMENTATION_STATUS: stream=
+Error in lateWindowFocusCallbackCannotUndoANewRemoteMove(dev.mjwatch.playback.TvRemoteControlsTest):
+java.lang.AssertionError: Failed to assert the following: (Focused = 'true')
+Semantics of the node:
+Node #27 at (l=344.0, t=916.0, r=448.0, b=1012.0)px, Tag: 'player-play'
+ContentDescription = '[Пауза]'
+Focused = 'false'
+Role = 'Button'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+Actions = [OnClick, RequestFocus]
+MergeDescendants = 'true'
+Has 16 siblings
+Selector used: (TestTag = 'player-play')
+
+	at androidx.compose.ui.test.AssertionsKt.assert(Assertions.kt:264)
+	at androidx.compose.ui.test.AssertionsKt.assert$default(Assertions.kt:254)
+	at androidx.compose.ui.test.AssertionsKt.assertIsFocused(Assertions.kt:117)
+	at dev.mjwatch.playback.TvRemoteControlsTest.lateWindowFocusCallbackCannotUndoANewRemoteMove(TvRemoteControlsTest.kt:135)
+
+INSTRUMENTATION_STATUS: test=lateWindowFocusCallbackCannotUndoANewRemoteMove
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.75
+There was 1 failure:
+1) lateWindowFocusCallbackCannotUndoANewRemoteMove(dev.mjwatch.playback.TvRemoteControlsTest)
+java.lang.AssertionError: Failed to assert the following: (Focused = 'true')
+Semantics of the node:
+Node #27 at (l=344.0, t=916.0, r=448.0, b=1012.0)px, Tag: 'player-play'
+ContentDescription = '[Пауза]'
+Focused = 'false'
+Role = 'Button'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+Actions = [OnClick, RequestFocus]
+MergeDescendants = 'true'
+Has 16 siblings
+Selector used: (TestTag = 'player-play')
+
+	at androidx.compose.ui.test.AssertionsKt.assert(Assertions.kt:264)
+	at androidx.compose.ui.test.AssertionsKt.assert$default(Assertions.kt:254)
+	at androidx.compose.ui.test.AssertionsKt.assertIsFocused(Assertions.kt:117)
+	at dev.mjwatch.playback.TvRemoteControlsTest.lateWindowFocusCallbackCannotUndoANewRemoteMove(TvRemoteControlsTest.kt:135)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

@@ -142,6 +142,20 @@ func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 }
 func TestRangeOwnershipAndStreamRevocation(t *testing.T) {
 	s, owner := fixture(t)
+	// Prepare actors before playback starts its background database writer.
+	other, err := Bootstrap(s.DB, "owner", "other")
+	if err != nil {
+		t.Fatal("second owner device", err)
+	}
+	otherID := other["accessToken"].(string)
+	code, newUser := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "other-user"})
+	if code != 200 {
+		t.Fatal(code, newUser)
+	}
+	code, login := call(t, s, "", "POST", "auth/accept-invite", map[string]string{"invite": newUser["invite"].(string), "password": "other-password-long", "device": "other"})
+	if code != 200 {
+		t.Fatal(code, login)
+	}
 	media := bytes.Repeat([]byte("video"), 10000)
 	torr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/torrents" {
@@ -175,14 +189,11 @@ func TestRangeOwnershipAndStreamRevocation(t *testing.T) {
 	if w.Code != 206 || w.Body.Len() != 100 || w.Header().Get("Content-Range") != "bytes 100-199/50000" {
 		t.Fatal(w.Code, w.Header(), w.Body.Len())
 	}
-	other, _ := Bootstrap(s.DB, "owner", "other")
-	otherID := other["accessToken"].(string) // same user, own handles remain available across devices
+	// Same user, own handles remain available across devices.
 	code, _ = call(t, s, otherID, "GET", "playback/"+id, nil)
 	if code != 200 {
 		t.Fatal(code)
 	}
-	_, newUser := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "other-user"})
-	_, login := call(t, s, "", "POST", "auth/accept-invite", map[string]string{"invite": newUser["invite"].(string), "password": "other-password-long", "device": "other"})
 	code, _ = call(t, s, login["accessToken"].(string), "GET", "playback/"+id, nil)
 	if code != 404 {
 		t.Fatal("playback IDOR", code)
