@@ -1,0 +1,317 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:preBuild UP-TO-DATE
+> Task :core:preDebugBuild UP-TO-DATE
+> Task :core:generateDebugResValues UP-TO-DATE
+> Task :core:generateDebugResources UP-TO-DATE
+> Task :core:packageDebugResources UP-TO-DATE
+> Task :core:processDebugNavigationResources UP-TO-DATE
+> Task :core:parseDebugLocalResources UP-TO-DATE
+> Task :core:generateDebugRFile UP-TO-DATE
+> Task :core:kspDebugKotlin UP-TO-DATE
+> Task :core:compileDebugKotlin UP-TO-DATE
+> Task :core:javaPreCompileDebug UP-TO-DATE
+> Task :core:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :core:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:javaPreCompileDebugUnitTest
+> Task :core:processDebugJavaRes UP-TO-DATE
+> Task :app-mobile:preBuild UP-TO-DATE
+> Task :app-mobile:preReleaseBuild UP-TO-DATE
+> Task :app-mobile:mergeReleaseJniLibFolders
+> Task :core:preReleaseBuild UP-TO-DATE
+> Task :core:generateDebugUnitTestStubRFile
+> Task :core:mergeReleaseJniLibFolders
+> Task :core:mergeReleaseNativeLibs NO-SOURCE
+> Task :core:copyReleaseJniLibsProjectOnly
+> Task :design-system:preBuild UP-TO-DATE
+> Task :design-system:preReleaseBuild UP-TO-DATE
+> Task :design-system:mergeReleaseJniLibFolders
+> Task :design-system:mergeReleaseNativeLibs NO-SOURCE
+> Task :design-system:copyReleaseJniLibsProjectOnly
+> Task :playback:preBuild UP-TO-DATE
+> Task :playback:preReleaseBuild UP-TO-DATE
+> Task :playback:mergeReleaseJniLibFolders
+> Task :playback:mergeReleaseNativeLibs NO-SOURCE
+> Task :playback:copyReleaseJniLibsProjectOnly
+> Task :app-mobile:mergeReleaseNativeLibs
+
+> Task :app-mobile:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so. Run with --info option to learn more.
+
+> Task :app-mobile:extractReleaseNativeSymbolTables
+> Task :app-mobile:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :core:generateReleaseResValues
+> Task :core:generateReleaseResources
+> Task :core:packageReleaseResources
+> Task :core:processReleaseNavigationResources
+> Task :core:parseReleaseLocalResources
+> Task :core:generateReleaseRFile
+> Task :core:kspDebugUnitTestKotlin
+> Task :core:compileDebugUnitTestKotlin
+> Task :core:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:processDebugUnitTestJavaRes
+> Task :core:kspReleaseKotlin
+> Task :core:testDebugUnitTest
+> Task :core:javaPreCompileRelease
+> Task :design-system:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :design-system:generateReleaseResValues
+> Task :design-system:generateReleaseResources
+> Task :design-system:packageReleaseResources
+> Task :design-system:processReleaseNavigationResources
+> Task :design-system:parseReleaseLocalResources
+> Task :design-system:generateReleaseRFile
+> Task :playback:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :playback:generateReleaseResValues
+> Task :playback:generateReleaseResources
+> Task :playback:packageReleaseResources
+> Task :playback:processReleaseNavigationResources
+> Task :playback:parseReleaseLocalResources
+> Task :playback:generateReleaseRFile
+> Task :playback:javaPreCompileRelease
+> Task :design-system:javaPreCompileRelease
+> Task :app-mobile:checkReleaseDuplicateClasses
+> Task :app-mobile:buildKotlinToolingMetadata
+> Task :app-mobile:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:writeReleaseAarMetadata
+> Task :design-system:writeReleaseAarMetadata
+> Task :playback:writeReleaseAarMetadata
+> Task :app-mobile:checkReleaseAarMetadata
+> Task :app-mobile:processReleaseNavigationResources
+> Task :app-mobile:compileReleaseNavigationResources
+> Task :app-mobile:generateReleaseResValues
+> Task :app-mobile:mapReleaseSourceSetPaths
+> Task :app-mobile:generateReleaseResources
+> Task :app-mobile:mergeReleaseResources
+> Task :app-mobile:packageReleaseResources
+
+> Task :core:compileReleaseKotlin
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/core/src/main/java/dev/mjwatch/core/Network.kt:39:49 The corresponding parameter in the supertype 'Dns' is named 'hostname'. This may cause problems when calling this function with named arguments.
+
+> Task :app-mobile:parseReleaseLocalResources
+> Task :app-mobile:createReleaseCompatibleScreenManifests
+> Task :app-mobile:extractDeepLinksRelease
+> Task :core:extractDeepLinksRelease
+> Task :core:compileReleaseJavaWithJavac NO-SOURCE
+> Task :core:processReleaseManifest
+> Task :core:bundleLibCompileToJarRelease
+> Task :core:bundleLibRuntimeToDirRelease
+
+> Task :playback:compileReleaseKotlin
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/playback/src/main/java/dev/mjwatch/playback/PlaybackActivity.kt:332:48 The corresponding parameter in the supertype 'ComponentActivity' is named 'isInPictureInPictureMode'. This may cause problems when calling this function with named arguments.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/playback/src/main/java/dev/mjwatch/playback/PlayerControls.kt:70:161 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/playback/src/main/java/dev/mjwatch/playback/RemotePlaybackService.kt:213:90 'constructor(p0: Int, p1: CharSequence!, p2: PendingIntent?): Notification.Action.Builder' is deprecated. Deprecated in Java.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/playback/src/main/java/dev/mjwatch/playback/TvPlayerControls.kt:186:264 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/playback/src/main/java/dev/mjwatch/playback/TvPlayerControls.kt:225:244 'val Icons.Outlined.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.List.
+
+> Task :playback:compileReleaseJavaWithJavac NO-SOURCE
+> Task :playback:bundleLibCompileToJarRelease
+> Task :playback:bundleLibRuntimeToDirRelease
+> Task :design-system:extractDeepLinksRelease
+> Task :design-system:processReleaseManifest
+> Task :playback:extractDeepLinksRelease
+> Task :playback:processReleaseManifest
+> Task :app-mobile:processReleaseMainManifest
+> Task :app-mobile:processReleaseManifest
+> Task :app-mobile:processReleaseManifestForPackage
+> Task :core:compileReleaseLibraryResources
+> Task :design-system:compileReleaseLibraryResources
+> Task :playback:compileReleaseLibraryResources
+> Task :app-mobile:processReleaseResources
+> Task :app-mobile:javaPreCompileRelease
+> Task :app-mobile:desugarReleaseFileDependencies
+> Task :app-mobile:mergeReleaseStartupProfile
+
+> Task :design-system:compileReleaseKotlin
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/ServerScreens.kt:136:232 Unnecessary non-null assertion (!!) on a non-null receiver of type 'JSONObject'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/ServerScreens.kt:148:319 Unnecessary non-null assertion (!!) on a non-null receiver of type 'JSONObject'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/ServerScreens.kt:251:355 'fun createConfirmDeviceCredentialIntent(p0: CharSequence!, p1: CharSequence!): Intent!' is deprecated. Deprecated in Java.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/ServerScreens.kt:253:195 'fun createConfirmDeviceCredentialIntent(p0: CharSequence!, p1: CharSequence!): Intent!' is deprecated. Deprecated in Java.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/UpdateSection.kt:51:65 'val Icons.Outlined.OpenInNew: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.OpenInNew.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/VisualComponents.kt:85:88 'val Icons.Outlined.ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowForward.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/VisualComponents.kt:190:134 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:165:209 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:419:252 'val Icons.Outlined.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:449:98 Unnecessary safe call on a non-null receiver of type 'Metadata'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:570:212 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:570:329 Unnecessary safe call on a non-null receiver of type 'Release'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:580:233 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:157 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:204 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:405 Unnecessary non-null assertion (!!) on a non-null receiver of type 'TorrentHandle'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:511 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Release'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:581:661 Unnecessary safe call on a non-null receiver of type 'Release'.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:744:155 'val Icons.Outlined.ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowForward.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:785:110 'val Icons.Outlined.ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ExitToApp.
+w: file:///Users/kompic/Documents/Codex/2026-11-17/https-github-com-mjsasha-mj-watch/work/mj-watch-mobile-player/design-system/src/main/java/dev/mjwatch/designsystem/WatchApp.kt:809:109 'val Icons.Outlined.ExitToApp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ExitToApp.
+
+> Task :design-system:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app-mobile:mergeExtDexRelease
+> Task :design-system:bundleLibCompileToJarRelease
+> Task :design-system:bundleLibRuntimeToDirRelease
+> Task :app-mobile:compileReleaseKotlin
+> Task :app-mobile:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app-mobile:dexBuilderRelease
+> Task :core:prepareReleaseArtProfile
+> Task :design-system:prepareReleaseArtProfile
+> Task :playback:prepareReleaseArtProfile
+> Task :app-mobile:mergeReleaseArtProfile
+> Task :design-system:bundleLibRuntimeToJarRelease
+> Task :playback:bundleLibRuntimeToJarRelease
+> Task :app-mobile:mergeDexRelease
+> Task :core:bundleLibRuntimeToJarRelease
+> Task :app-mobile:mergeReleaseShaders
+> Task :app-mobile:compileReleaseShaders NO-SOURCE
+> Task :app-mobile:generateReleaseAssets UP-TO-DATE
+> Task :core:mergeReleaseShaders
+> Task :app-mobile:mergeReleaseGlobalSynthetics
+> Task :core:compileReleaseShaders NO-SOURCE
+> Task :core:generateReleaseAssets UP-TO-DATE
+> Task :core:mergeReleaseAssets
+> Task :design-system:mergeReleaseShaders
+> Task :design-system:compileReleaseShaders NO-SOURCE
+> Task :design-system:generateReleaseAssets UP-TO-DATE
+> Task :design-system:mergeReleaseAssets
+> Task :playback:mergeReleaseShaders
+> Task :playback:compileReleaseShaders NO-SOURCE
+> Task :playback:generateReleaseAssets UP-TO-DATE
+> Task :playback:mergeReleaseAssets
+> Task :app-mobile:mergeReleaseAssets
+> Task :app-mobile:compressReleaseAssets
+> Task :app-mobile:extractReleaseVersionControlInfo
+> Task :app-mobile:extractProguardFiles UP-TO-DATE
+> Task :core:processReleaseJavaRes
+> Task :core:createFullJarRelease
+> Task :core:extractProguardFiles UP-TO-DATE
+> Task :core:generateReleaseLintModel
+> Task :core:prepareLintJarForPublish UP-TO-DATE
+> Task :design-system:processReleaseJavaRes
+> Task :design-system:createFullJarRelease
+> Task :design-system:extractProguardFiles UP-TO-DATE
+> Task :playback:processReleaseJavaRes
+> Task :playback:createFullJarRelease
+> Task :playback:extractProguardFiles UP-TO-DATE
+> Task :playback:generateReleaseLintModel
+> Task :playback:prepareLintJarForPublish UP-TO-DATE
+> Task :design-system:generateReleaseLintModel
+> Task :design-system:prepareLintJarForPublish UP-TO-DATE
+> Task :app-mobile:generateReleaseLintVitalReportModel
+> Task :app-mobile:compileReleaseArtProfile
+> Task :design-system:stripReleaseDebugSymbols NO-SOURCE
+> Task :design-system:copyReleaseJniLibsProjectAndLocalJars
+> Task :design-system:extractDeepLinksForAarRelease
+> Task :design-system:checkReleaseAarMetadata
+> Task :design-system:extractReleaseAnnotations
+> Task :design-system:mergeReleaseGeneratedProguardFiles
+> Task :design-system:mergeReleaseConsumerProguardFiles
+> Task :playback:checkReleaseAarMetadata
+> Task :playback:stripReleaseDebugSymbols NO-SOURCE
+> Task :playback:copyReleaseJniLibsProjectAndLocalJars
+> Task :playback:extractDeepLinksForAarRelease
+> Task :design-system:mergeReleaseJavaResource
+> Task :playback:extractReleaseAnnotations
+> Task :design-system:syncReleaseLibJars
+> Task :design-system:bundleReleaseLocalLintAar
+> Task :playback:mergeReleaseGeneratedProguardFiles
+> Task :playback:mergeReleaseConsumerProguardFiles
+> Task :playback:mergeReleaseJavaResource
+> Task :playback:syncReleaseLibJars
+> Task :playback:bundleReleaseLocalLintAar
+> Task :core:checkReleaseAarMetadata
+> Task :core:stripReleaseDebugSymbols NO-SOURCE
+> Task :core:copyReleaseJniLibsProjectAndLocalJars
+> Task :core:extractDeepLinksForAarRelease
+> Task :core:extractReleaseAnnotations
+> Task :core:mergeReleaseGeneratedProguardFiles
+> Task :core:mergeReleaseConsumerProguardFiles
+> Task :core:mergeReleaseJavaResource
+> Task :core:syncReleaseLibJars
+> Task :core:bundleReleaseLocalLintAar
+> Task :core:writeReleaseLintModelMetadata
+> Task :playback:writeReleaseLintModelMetadata
+> Task :core:lintVitalAnalyzeRelease
+> Task :design-system:writeReleaseLintModelMetadata
+> Task :design-system:lintVitalAnalyzeRelease
+> Task :core:generateReleaseLintVitalModel
+> Task :design-system:generateReleaseLintVitalModel
+> Task :playback:generateReleaseLintVitalModel
+> Task :app-mobile:processReleaseJavaRes
+> Task :playback:lintVitalAnalyzeRelease
+> Task :app-mobile:mergeReleaseJavaResource
+> Task :app-mobile:optimizeReleaseResources
+> Task :app-mobile:lintVitalAnalyzeRelease
+> Task :app-mobile:collectReleaseDependencies
+> Task :app-mobile:lintVitalReportRelease
+> Task :app-mobile:sdkReleaseDependencyData
+> Task :app-mobile:lintVitalRelease
+> Task :app-mobile:writeReleaseAppMetadata
+> Task :app-mobile:writeReleaseSigningConfigVersions
+> Task :app-tv:preBuild UP-TO-DATE
+> Task :app-tv:preReleaseBuild UP-TO-DATE
+> Task :app-tv:mergeReleaseJniLibFolders
+> Task :app-tv:mergeReleaseNativeLibs
+
+> Task :app-tv:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so. Run with --info option to learn more.
+
+> Task :app-tv:extractReleaseNativeSymbolTables
+> Task :app-tv:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app-tv:checkReleaseDuplicateClasses
+> Task :app-tv:buildKotlinToolingMetadata
+> Task :app-tv:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app-tv:checkReleaseAarMetadata
+> Task :app-tv:processReleaseNavigationResources
+> Task :app-tv:compileReleaseNavigationResources
+> Task :app-tv:generateReleaseResValues
+> Task :app-tv:mapReleaseSourceSetPaths
+> Task :app-tv:generateReleaseResources
+> Task :app-tv:mergeReleaseResources
+> Task :app-mobile:packageRelease
+> Task :app-mobile:createReleaseApkListingFileRedirect
+> Task :app-mobile:assembleRelease
+> Task :app-tv:packageReleaseResources
+> Task :app-tv:createReleaseCompatibleScreenManifests
+> Task :app-tv:extractDeepLinksRelease
+> Task :app-tv:parseReleaseLocalResources
+> Task :app-tv:processReleaseMainManifest
+> Task :app-tv:processReleaseManifest
+> Task :app-tv:processReleaseManifestForPackage
+> Task :app-tv:javaPreCompileRelease
+> Task :app-tv:desugarReleaseFileDependencies
+> Task :app-tv:mergeReleaseStartupProfile
+> Task :app-tv:processReleaseResources
+> Task :app-tv:mergeExtDexRelease
+> Task :app-tv:mergeReleaseArtProfile
+> Task :app-tv:mergeReleaseShaders
+> Task :app-tv:compileReleaseShaders NO-SOURCE
+> Task :app-tv:generateReleaseAssets UP-TO-DATE
+> Task :app-tv:mergeReleaseAssets
+> Task :app-tv:compressReleaseAssets
+> Task :app-tv:extractReleaseVersionControlInfo
+> Task :app-tv:extractProguardFiles UP-TO-DATE
+> Task :app-tv:optimizeReleaseResources
+> Task :app-tv:collectReleaseDependencies
+> Task :app-tv:sdkReleaseDependencyData
+> Task :app-tv:writeReleaseAppMetadata
+> Task :app-tv:writeReleaseSigningConfigVersions
+> Task :app-tv:compileReleaseKotlin
+> Task :app-tv:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app-tv:dexBuilderRelease
+> Task :app-tv:mergeReleaseGlobalSynthetics
+> Task :app-tv:generateReleaseLintVitalReportModel
+> Task :app-tv:mergeDexRelease
+> Task :app-tv:lintVitalAnalyzeRelease
+> Task :app-tv:lintVitalReportRelease
+> Task :app-tv:lintVitalRelease
+> Task :app-tv:processReleaseJavaRes
+> Task :app-tv:compileReleaseArtProfile
+> Task :app-tv:mergeReleaseJavaResource
+> Task :app-tv:packageRelease
+> Task :app-tv:createReleaseApkListingFileRedirect
+> Task :app-tv:assembleRelease
+
+BUILD SUCCESSFUL in 57s
+228 actionable tasks: 208 executed, 20 up-to-date
