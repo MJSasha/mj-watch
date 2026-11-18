@@ -1,0 +1,24 @@
+[
+  {
+    "package": "dev.mjwatch.mobile",
+    "fromVersion": "0.9.4",
+    "toVersion": "0.9.5",
+    "fromCode": 1113,
+    "toCode": 1116,
+    "uid": "10213",
+    "markerPreserved": true,
+    "settingsPreserved": true,
+    "settingsFiles": 1
+  },
+  {
+    "package": "dev.mjwatch.tv",
+    "fromVersion": "0.9.4",
+    "toVersion": "0.9.5",
+    "fromCode": 1113,
+    "toCode": 1116,
+    "uid": "10214",
+    "markerPreserved": true,
+    "settingsPreserved": true,
+    "settingsFiles": 1
+  }
+]
