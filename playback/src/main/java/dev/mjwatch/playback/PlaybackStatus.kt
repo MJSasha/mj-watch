@@ -14,7 +14,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false)
+internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false,val backLabel:String="К раздаче")
 
 internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus = when {
     elapsedMs>=30_000 -> PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени. Можно подождать или выбрать другую раздачу.",loading=true)
@@ -22,7 +22,7 @@ internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus
     else -> PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true)
 }
 
-internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String=""):PlaybackStatus {
+internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String="",offline:Boolean=false):PlaybackStatus {
     val audio=mime?.startsWith("audio/")==true
     val video=mime?.startsWith("video/")==true
     val track=if(audio) "Аудиодорожка" else if(video) "Видеодорожка" else "Дорожка"
@@ -35,7 +35,8 @@ internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String=""
         else -> "Видео недоступно" to "Не удалось восстановить поток. Повторите попытку или проверьте сервер."
     }
     val diagnostic=listOfNotNull(code?.let {"Код: $it"},mime,details.takeIf {it.isNotBlank()}).joinToString(" · ")
-    return PlaybackStatus(title,message+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 4000..5999)
+    val guidance=if(offline) "Проверьте дорожки или выберите другую загрузку." else message
+    return PlaybackStatus(title,guidance+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 4000..5999)
 }
 
 @Composable internal fun PlaybackStatusOverlay(status:PlaybackStatus,onRetry:()->Unit,onBack:()->Unit,focusAction:Boolean=false) {
@@ -60,7 +61,7 @@ internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String=""
             if(status.message.isNotBlank())Text(status.message,style=MaterialTheme.typography.bodyMedium,textAlign=TextAlign.Center,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 if(status.retry)Button(modifier=Modifier.focusRequester(actionFocus),onClick=onRetry){Text("Повторить")}
-                TextButton(modifier=if(!status.retry)Modifier.focusRequester(actionFocus) else Modifier,onClick=onBack){Text(if(status.loading)"Отменить" else "К раздаче")}
+                TextButton(modifier=if(!status.retry)Modifier.focusRequester(actionFocus) else Modifier,onClick=onBack){Text(if(status.loading)"Отменить" else status.backLabel)}
             }
         }
     }

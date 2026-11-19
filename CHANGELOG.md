@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0
+
+- Download a film or individual episodes to a phone or tablet, then open the saved files from Downloads without connecting to the server. Track progress, retry interrupted downloads and remove local copies from the same screen.
+
 ## 0.9.13
 
 - Unify phone and TV settings with the TorrServer card style: connections, playback preferences, catalogue, updates, accounts, history/backups and maintenance. Keep existing actions, save/discard guards, credentials and update confirmations.

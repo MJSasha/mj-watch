@@ -80,6 +80,7 @@ jobs:
             set -e
             ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
             if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
+            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
       - id: boot-check
         if: steps.runtime.outcome == 'failure'
         run: |
@@ -100,6 +101,7 @@ jobs:
             set -e
             ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
             if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
+            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
       - name: Preserve test failures
         if: steps.runtime.outcome == 'failure' && steps.boot-check.outputs.retry != 'true'
         run: exit 1

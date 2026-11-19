@@ -1,6 +1,10 @@
 package dev.mjwatch.playback
 
 import android.app.PictureInPictureParams
+import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -16,7 +20,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -31,15 +37,39 @@ import kotlinx.coroutines.flow.first
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlaybackActivity : ComponentActivity() {
     companion object {
+        private const val EXTRA_OFFLINE="offlinePlayback"
+
+        fun offlineIntent(
+            context:Context,
+            episode:PlaybackEpisode,
+            title:String,
+            releaseId:String,
+            mobile:Boolean,
+            episodes:List<PlaybackEpisode> = emptyList()
+        ):Intent = Intent(context,PlaybackActivity::class.java)
+            .putExtra(EXTRA_OFFLINE,true)
+            .putExtra("uri",episode.uri)
+            .putExtra("path",episode.path)
+            .putExtra("fileId",episode.fileId)
+            .putExtra("contentKey",episode.contentKey)
+            .putExtra("title",title)
+            .putExtra("releaseId",releaseId)
+            .putExtra("mobile",mobile)
+            .putExtra("episodes",PlaybackEpisode.encode(episodes))
+
+        private fun isLocalFile(uri:String):Boolean = Uri.parse(uri).let {
+            it.scheme==ContentResolver.SCHEME_FILE && it.authority.isNullOrEmpty() && it.path?.startsWith('/')==true
+        }
+
         private var active:java.lang.ref.WeakReference<PlaybackActivity>?=null
         fun hasActivePlayback()=active?.get()?.let {!it.released&&!it.isFinishing}==true
         fun remoteVideo():RemoteVideo?=active?.get()?.takeIf {!it.released&&it::player.isInitialized}?.let {a->
-            if(a.intent.getBooleanExtra("mobile",true))return@let null
+            if(a.offline||a.intent.getBooleanExtra("mobile",true))return@let null
             val p=a.player;val audio=a.getSystemService(android.media.AudioManager::class.java)
             RemoteVideo(a.playbackSession,a.remoteContentId,a.intent.getStringExtra("title").orEmpty(),when {a.terminalError||p.playerError!=null->"error";p.playbackState==Player.STATE_ENDED->"ended";!a.firstFrame||p.playbackState==Player.STATE_BUFFERING->"loading";p.isPlaying->"playing";else->"paused"},p.currentPosition.coerceAtLeast(0),p.duration.coerceAtLeast(0),p.isCurrentMediaItemSeekable,audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC),if(audio.isVolumeFixed)0 else audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC),a.releaseId,a.intent.getStringExtra("metadataId").orEmpty()).let {if(it.volumeMax==0)it.copy(volume=0) else it}
         }
         fun remoteCommand(command:org.json.JSONObject) {
-            val a=active?.get()?.takeIf {!it.released&&it::player.isInitialized&&!it.intent.getBooleanExtra("mobile",true)} ?: return
+            val a=active?.get()?.takeIf {!it.released&&it::player.isInitialized&&!it.offline&&!it.intent.getBooleanExtra("mobile",true)} ?: return
             if(command.optString("session")!=a.playbackSession)return
             when(command.optString("action")) {
                 "play"->a.player.play()
@@ -51,6 +81,7 @@ class PlaybackActivity : ComponentActivity() {
         }
         fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
     }
+    private val offline get()=intent.getBooleanExtra(EXTRA_OFFLINE,false)
     private var episodes=emptyList<PlaybackEpisode>()
     private var episodeIndex by androidx.compose.runtime.mutableIntStateOf(-1)
     private var episodeLoad:Job?=null
@@ -84,7 +115,6 @@ class PlaybackActivity : ComponentActivity() {
     private var playbackSequence=0L
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
-    private lateinit var dao: WatchDao
     private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true))
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,8 +127,9 @@ class PlaybackActivity : ComponentActivity() {
         contentIdentity=intent.getStringExtra("contentKey") ?: ""
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
         episodes=PlaybackEpisode.decode(intent.getStringExtra("episodes"))
+        if(offline)episodes=episodes.filter {isLocalFile(it.uri)}
         episodeIndex=episodes.indexOfFirst {it.path==path&&it.fileId==fileId}
-        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build(); dao=db.dao()
+        db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
         window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
         val root=FrameLayout(this).apply {setBackgroundColor(android.graphics.Color.BLACK)}
         val backdrop=VideoBackdrop(this)
@@ -107,7 +138,7 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status,onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction)
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -117,17 +148,30 @@ class PlaybackActivity : ComponentActivity() {
         scope.launch {
             val config=Settings(applicationContext).config.first();playbackConfig=config
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
-            if(!uri.startsWith("asset:")&&runCatching {uri.toHttpUrl().origin()==endpoint(if(config.managed) config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true) {
-                status=PlaybackStatus("Подключение изменено","Вернитесь к карточке и выберите раздачу заново.");return@launch
+            val dataSource:DataSource.Factory
+            if(offline) {
+                if(!isLocalFile(uri)) {
+                    showPlaybackFailure()
+                    return@launch
+                }
+                dataSource=DataSource.Factory {FileDataSource()}
+            } else {
+                if(!validStreamUri(uri,config)) {
+                    status=PlaybackStatus("Подключение изменено","Вернитесь к карточке и выберите раздачу заново.");return@launch
+                }
+                if(config.managed&&!uri.startsWith("asset:")) {
+                    val checked=runCatching {withContext(Dispatchers.IO){ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}
+                    if(checked.isFailure){status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.");return@launch}
+                    scope.launch(Dispatchers.IO) {while(isActive){delay(60_000);runCatching {ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}}
+                }
+                val headers=mutableMapOf<String,String>()
+                val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}")
+                if(!uri.startsWith("asset:")&&auth.isNotBlank())headers["Authorization"]=auth
+                val client=if(config.managed)managedClient(config,SecretStore(applicationContext))
+                    else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))
+                val http=OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
+                dataSource=DefaultDataSource.Factory(this@PlaybackActivity,http)
             }
-            if(config.managed&&!uri.startsWith("asset:")) {
-                val checked=runCatching {withContext(Dispatchers.IO){ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}
-                if(checked.isFailure){status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.");return@launch}
-                scope.launch(Dispatchers.IO) {while(isActive){delay(60_000);runCatching {ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}}
-            }
-            val headers=mutableMapOf<String,String>()
-            val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}"); if(!uri.startsWith("asset:")&&auth.isNotBlank()) headers["Authorization"]=auth
-            val http=OkHttpDataSource.Factory((if(config.managed) managedClient(config,SecretStore(applicationContext)) else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))).newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
             val memory=android.app.ActivityManager.MemoryInfo()
             val manager=getSystemService(android.app.ActivityManager::class.java)
             manager.getMemoryInfo(memory)
@@ -138,7 +182,7 @@ class PlaybackActivity : ComponentActivity() {
             val loadControl=androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000,120000,1500,3000)
                 .setTargetBufferBytes(bufferTargetBytes).setPrioritizeTimeOverSizeThresholds(false).build()
-            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this@PlaybackActivity,http)).setLoadErrorHandlingPolicy(StreamLoadErrorPolicy()))
+            player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(StreamLoadErrorPolicy()))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
@@ -173,14 +217,14 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
                     save()
-                    if(streamLimitScope(error)!=null){showPlaybackFailure(error);return}
+                    if(!offline&&streamLimitScope(error)!=null){showPlaybackFailure(error);return}
                     if(!released&&decoderFallback.recover(this@PlaybackActivity,player,error)) {
                         terminalError=false;startedAt=System.currentTimeMillis()
                         status=PlaybackStatus("Восстанавливаем декодер","Пробуем совместимый режим или другой декодер.",loading=true,compact=firstFrame)
                         return
                     }
                     val http=generateSequence<Throwable>(error) {it.cause}.filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
-                    if(recoverablePlaybackError(error.errorCode,http,config.managed)&&retries<3) recoverPlayback(automatic=true)
+                    if(!offline&&recoverablePlaybackError(error.errorCode,http,config.managed)&&retries<3) recoverPlayback(automatic=true)
                     else showPlaybackFailure(error)
                 }
             })
@@ -191,12 +235,15 @@ class PlaybackActivity : ComponentActivity() {
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();player.stop();status=PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
-                    else if(elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
+                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();player.stop();status=if(offline) localFailureStatus(retry=true) else PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
+                    else if(!offline&&elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
                 }
             }
         }
     }
+    private fun validStreamUri(uri:String,config:Config):Boolean = uri.startsWith("asset:") ||
+        runCatching {uri.toHttpUrl().origin()==endpoint(if(config.managed) config.managedUrl else config.torrServer).origin()}.getOrDefault(false)
+
     private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri)
         .apply {if(path.substringAfterLast('.').equals("mkv",ignoreCase=true))setMimeType(MimeTypes.VIDEO_MATROSKA)}.setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
         .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
@@ -204,7 +251,7 @@ class PlaybackActivity : ComponentActivity() {
         val episode=episodes.getOrNull(index) ?: return
         val config=playbackConfig ?: return
         if(!::player.isInitialized||released||index==episodeIndex||episodeLoad?.isActive==true)return
-        if(!episode.uri.startsWith("asset:")&&runCatching {episode.uri.toHttpUrl().origin()==endpoint(if(config.managed)config.managedUrl else config.torrServer).origin()}.getOrDefault(false)!=true)return
+        if(!offline&&!validStreamUri(episode.uri,config))return
         save()
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         firstFrame=false;firstFrameSeen=false;terminalError=false;retries=0
@@ -221,13 +268,30 @@ class PlaybackActivity : ComponentActivity() {
             startedAt=System.currentTimeMillis();player.prepare();player.play()
         }
     }
-    private fun retryPlayback() {recoverPlayback(automatic=false)}
+    private fun retryPlayback() {
+        if(!offline) {
+            recoverPlayback(automatic=false)
+        } else if(::player.isInitialized&&!released) {
+            terminalError=false
+            startedAt=System.currentTimeMillis()
+            player.prepare()
+        }
+    }
+
+    private fun localFailureStatus(error:PlaybackException?=null,retry:Boolean=false):PlaybackStatus {
+        val code=error?.errorCode?.let {"\nКод: $it"}.orEmpty()
+        return PlaybackStatus("Не удалось открыть загрузку","Проверьте файл в загрузках и скачайте его заново при необходимости.$code",retry=retry)
+    }
     private fun showPlaybackFailure(error:PlaybackException?=null,limitScope:String?=null) {
         terminalError=true
+        if(offline&&error?.errorCode !in 4000..5999) {
+            status=localFailureStatus(error,retry=error!=null)
+            return
+        }
         (limitScope ?: streamLimitScope(error))?.let {status=streamLimitStatus(it);return}
         val format=(error as? ExoPlaybackException)?.rendererFormat
         val details=format?.let {f->listOfNotNull(f.codecs,if(f.width>0&&f.height>0) "${f.width}×${f.height}" else null,if(f.channelCount>0) "Каналов: ${f.channelCount}" else null,error?.failedMediaCodec()?.name?.let {"Декодер: $it"}).joinToString(" · ")}.orEmpty()
-        status=playbackFailureStatus(error?.errorCode,format?.sampleMimeType,details)
+        status=playbackFailureStatus(error?.errorCode,format?.sampleMimeType,details,offline)
     }
     private fun recoverPlayback(automatic:Boolean) {
         if(!::player.isInitialized||released||recoveryJob?.isActive==true)return
@@ -284,7 +348,7 @@ class PlaybackActivity : ComponentActivity() {
         if(!::player.isInitialized||released||!firstFrame||playbackConfig?.historyEnabled!=true) return null
         val duration=player.duration.takeIf { it>0 }; val position=player.currentPosition.coerceAtLeast(0)
         val p=Progress(contentIdentity.ifBlank {"$releaseId|$path"},releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
-        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {val config=playbackConfig!!;if(Settings(applicationContext).config.first().profileKey!=config.profileKey)return@withContext;val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao());engine.enqueue("progress",p.key,p.syncJson(),playSession=playbackSession,sequence=++playbackSequence);runCatching {engine.sync()}} } finally {saveMutex.unlock()} }
+        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {val config=playbackConfig!!;if(Settings(applicationContext).config.first().profileKey!=config.profileKey)return@withContext;val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao());engine.enqueue("progress",p.key,p.syncJson(),playSession=playbackSession,sequence=++playbackSequence);if(!offline)runCatching {engine.sync()};Unit} } finally {saveMutex.unlock()} }
     }
     private fun tracks() {
         if(!::player.isInitialized) return
@@ -308,7 +372,7 @@ class PlaybackActivity : ComponentActivity() {
             if(c?.historyEnabled==true)scope.launch(Dispatchers.IO){
                 if(Settings(applicationContext).config.first().profileKey!=c.profileKey)return@launch
                 val value=org.json.JSONObject().put("quality",preferences.getString("quality","Все")).put("audioLanguage",preferences.getString("audio-language",null)).put("subtitleLanguage",if(preferences.getBoolean("subtitles-off",false))"off" else preferences.getString("subtitle-language",null))
-                runCatching {val engine=SyncEngine(ManagedApi(c,SecretStore(applicationContext)),db.syncDao());engine.enqueue("preferences","profile",value);engine.sync()}
+                runCatching {val engine=SyncEngine(ManagedApi(c,SecretStore(applicationContext)),db.syncDao());engine.enqueue("preferences","profile",value);if(!offline)engine.sync()}
             }
         }.setOnDismissListener { panel=null; panelOpen=false; if(intent.getBooleanExtra("mobile",true))overlay.requestFocus() }.show().also {styleTvPanel(it)}
     }

@@ -49,11 +49,13 @@ class VerticalFlowTest {
     compose.onNodeWithTag("detail-sources").performSemanticsAction(SemanticsActions.RequestFocus)
     compose.onNodeWithTag("detail-sources").performKeyInput {pressKey(Key.DirectionCenter)}
     compose.onNodeWithTag("release-list").performScrollToNode(hasText("Тихая орбита • тестовое видео 720p"))
+    compose.onNodeWithTag("source-download").assertDoesNotExist()
     remoteClick("Тихая орбита • тестовое видео 720p")
 
     compose.waitUntil(10000) {compose.onAllNodesWithText("Выберите файл").fetchSemanticsNodes().isNotEmpty()}
     capture("files")
     remoteClick("Сезон 1/Серия 01.mp4")
+    compose.onNodeWithTag("file-download").assertDoesNotExist()
     remoteClick("Смотреть")
     val instrumentation=InstrumentationRegistry.getInstrumentation()
     var seen=false; val deadline=System.currentTimeMillis()+20000
