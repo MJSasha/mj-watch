@@ -12,8 +12,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -42,18 +47,26 @@ internal val TvPosterClearance=8.dp
     val baseForeground=if(secondary) colors.onSurface else colors.onPrimary
     val container=if(!enabled&&!loading)baseContainer.copy(alpha=.45f).compositeOver(colors.background) else baseContainer
     val foreground=if(!enabled&&!loading)baseForeground.copy(alpha=.45f).compositeOver(colors.background) else baseForeground
-    val focusBorder=tvFocusBorder(16.dp,colors.surface)
+    val focusBorder=tvFocusBorder(16.dp)
     // TV Material 1.0.1 adds an unavoidable disabled-content alpha. Own the disabled
     // semantics and activation guard so loading stays legible and retains D-pad focus.
     Button(onClick={if(!blocked)onClick()},interactionSource=source,
-        modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).semantics {
+        modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).drawWithContent {
+            drawContent()
+            // Keep the lime stroke distinct from a lime action without growing the button.
+            if(focused) {
+                val inset=4.dp.toPx()
+                drawRoundRect(colors.background,Offset(inset,inset),Size(size.width-2*inset,size.height-2*inset),
+                    CornerRadius(12.dp.toPx()),style=Stroke(4.dp.toPx()))
+            }
+        }.semantics {
             if(blocked) disabled()
             if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
         },
         shape=ButtonDefaults.shape(shape=shape),
         scale=ButtonDefaults.scale(focusedScale=1f,pressedScale=1f,disabledScale=1f,focusedDisabledScale=1f),
         colors=ButtonDefaults.colors(containerColor=container,contentColor=foreground,
-            focusedContainerColor=colors.onSurface,focusedContentColor=colors.surface,
+            focusedContainerColor=container,focusedContentColor=foreground,
             pressedContainerColor=if(blocked)container else container.copy(red=container.red*.85f,green=container.green*.85f,blue=container.blue*.85f),
             pressedContentColor=if(blocked)foreground else foreground.copy(red=foreground.red*.85f,green=foreground.green*.85f,blue=foreground.blue*.85f)),
         border=ButtonDefaults.border(focusedBorder=focusBorder,pressedBorder=if(focused)focusBorder else Border.None,focusedDisabledBorder=if(loading)focusBorder else Border.None),

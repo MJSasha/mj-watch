@@ -129,10 +129,15 @@ class TvButtonsUiTest {
 
     @Test fun captureReferenceStatesInBothThemes() {
         var theme by mutableStateOf("dark")
+        var focusedSecondary by mutableStateOf(false)
+        var expectedFill=Color.Unspecified
+        var expectedRing=Color.Unspecified
         val focus=FocusRequester()
         val pressed=MutableInteractionSource()
         compose.runOnUiThread {compose.activity.setContent {
             WatchTheme(theme) {
+                expectedFill=if(focusedSecondary)MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primary
+                expectedRing=MaterialTheme.colorScheme.primary
                 Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(40.dp),verticalArrangement=Arrangement.spacedBy(40.dp)) {
                     val labels=listOf("Обычная","Фокус","Нажатие","Недоступно","Загрузка","Вторичное")
                     labels.chunked(3).forEachIndexed {row,group->
@@ -144,7 +149,7 @@ class TvButtonsUiTest {
                                     Box(Modifier.padding(8.dp)) {
                                         TvActionButton(when(index){4->"Скачиваем…";5->"С начала";else->"Продолжить"},
                                             modifier=if(index==1)Modifier.focusRequester(focus).testTag("focused") else Modifier,
-                                            enabled=index!=3,secondary=index==5,loading=index==4,interactionSource=if(index==2)pressed else null) {}
+                                            enabled=index!=3,secondary=if(index==1)focusedSecondary else index==5,loading=index==4,interactionSource=if(index==2)pressed else null) {}
                                     }
                                 }
                             }
@@ -157,16 +162,23 @@ class TvButtonsUiTest {
         val i=InstrumentationRegistry.getInstrumentation()
         compose.onNodeWithTag("focused").assertIsFocused()
         val dir=File(i.targetContext.getExternalFilesDir(null),"tv-buttons").apply {mkdirs()}
-        for(value in listOf("dark","light")) {
-            compose.runOnIdle {theme=value}
+        for(value in listOf("dark","light")) for(secondary in listOf(false,true)) {
+            compose.runOnIdle {theme=value;focusedSecondary=secondary}
             compose.mainClock.advanceTimeBy(900);compose.waitForIdle();Thread.sleep(500)
-            val file=File(dir,"$value.png")
+            val file=File(dir,"$value-${if(secondary)"secondary" else "primary"}.png")
             Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(file))
             val bitmap=BitmapFactory.decodeFile(file.absolutePath)
             val bounds=compose.onNodeWithTag("focused").fetchSemanticsNode().boundsInRoot
             val density=compose.activity.resources.displayMetrics.density
             val x=bounds.center.x.roundToInt()
-            val ring=Color(bitmap.getPixel(x,(bounds.top+1*density).roundToInt())).luminance()
+            val ringColor=Color(bitmap.getPixel(x,(bounds.top+1*density).roundToInt()))
+            val fillColor=Color(bitmap.getPixel(x,(bounds.top+8*density).roundToInt()))
+            for((label,actual,expected) in listOf(Triple("Focus stroke",ringColor,expectedRing),Triple("Focused fill",fillColor,expectedFill))) {
+                Assert.assertEquals("$label red",expected.red,actual.red,.02f)
+                Assert.assertEquals("$label green",expected.green,actual.green,.02f)
+                Assert.assertEquals("$label blue",expected.blue,actual.blue,.02f)
+            }
+            val ring=ringColor.luminance()
             val gap=Color(bitmap.getPixel(x,(bounds.top+4*density).roundToInt())).luminance()
             Assert.assertTrue("Focus must contrast inside the fill",(maxOf(ring,gap)+.05f)/(minOf(ring,gap)+.05f)>=3f)
             bitmap.recycle()
