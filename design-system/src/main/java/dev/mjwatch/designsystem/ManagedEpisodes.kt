@@ -22,10 +22,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -126,6 +129,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val contentWidth = maxWidth.coerceAtMost(1200.dp)
         val gap = 12.dp
         val columns = if (wide) 3 else 2
+        val tileWidth = (contentWidth - inset * 2 - gap * (columns - 1)) / columns
         val groups = remember(episodes, columns) { episodes.orEmpty().chunked(columns) }
         val listState = rememberLazyListState()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
@@ -173,7 +177,7 @@ private fun episodeStill(path: String, config: Config): String? {
                         horizontalArrangement = Arrangement.spacedBy(gap)) {
                         group.forEach { episode ->
                             val position = positions[EpisodeNumber(season, episode.number)]
-                            EpisodeTile(item, episode, position, catalog.demo, tv, Modifier.weight(1f),
+                            EpisodeTile(item, episode, position, catalog.demo, tv, tileWidth, Modifier.weight(1f),
                                 onMenu = { menu = episode }, onPlay = {
                                     if (position != null && !position.completed && position.positionMs > 0) model.resume(position)
                                     else releases(episode)
@@ -224,7 +228,7 @@ private fun episodeStill(path: String, config: Config): String? {
 }
 
 @Composable private fun EpisodeTile(item: Metadata, episode: Episode, position: Progress?, demo: Boolean, tv: Boolean,
-    modifier: Modifier, onMenu: () -> Unit, onPlay: () -> Unit) {
+    tileWidth: Dp, modifier: Modifier, onMenu: () -> Unit, onPlay: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val number = episode.number
     val elapsed = position?.positionMs?.coerceAtLeast(0) ?: 0
@@ -241,10 +245,16 @@ private fun episodeStill(path: String, config: Config): String? {
         episode.minutes > 0 -> "${episode.minutes} мин"
         else -> null
     }
+    val fullCaption = if (continuing) "Продолжить · $caption" else caption
+    val captionStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
+    val measurer = rememberTextMeasurer()
+    val captionWidth = with(LocalDensity.current) { (tileWidth - 24.dp).roundToPx() }
+    val visibleCaption = if (continuing && measurer.measure(fullCaption.orEmpty(), captionStyle, softWrap = false).size.width > captionWidth) caption else fullCaption
     var focused by remember { mutableStateOf(false) }
+    val dark = colors.background.luminance() < .5f
     val panel = when {
         tv && focused -> colors.primaryContainer
-        colors.background.luminance() < .5f -> Color(0xFF202732)
+        dark -> Color(0xFF1F2732)
         else -> colors.surface
     }
     Box(modifier.fillMaxHeight()) {
@@ -259,30 +269,31 @@ private fun episodeStill(path: String, config: Config): String? {
                         if (image != null) AsyncImage(model = image, imageLoader = LocalImages.current, contentDescription = null,
                             modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     }
-                    Text(
-                        number.toString().padStart(2, '0'),
-                        Modifier.align(Alignment.TopStart).padding(10.dp)
-                            .background(Color(0xBE10171C), RoundedCornerShape(7.dp))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                            .clearAndSetSemantics { contentDescription = "Серия $number" },
-                        color = Color.White,
-                        style = if (tv) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (continuing && total > 0) LinearProgressIndicator(
-                        progress = { (elapsed.toFloat() / total).coerceIn(0f, 1f) },
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).clearAndSetSemantics {},
-                        color = colors.primary, trackColor = Color.Black.copy(alpha = .55f),
-                        gapSize = 0.dp, drawStopIndicator = {})
+                    val watched = position?.completed == true
+                    val badgeInk = if (watched) Color(0xFFC7FF68) else Color.White
+                    Row(Modifier.align(Alignment.TopStart).padding(10.dp)
+                        .background(if (watched) Color(0xFF30450F) else Color(0xBE10171C), RoundedCornerShape(7.dp))
+                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                        .clearAndSetSemantics { contentDescription = "Серия $number" },
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(number.toString().padStart(2, '0'), color = badgeInk, fontSize = 16.sp,
+                            lineHeight = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.sp)
+                        if (watched) Icon(Icons.Outlined.Check, null, Modifier.size(13.dp), tint = badgeInk)
+                    }
                 }
-                Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text(episode.name, style = MaterialTheme.typography.bodyLarge, lineHeight = 20.sp,
+                Column(Modifier.fillMaxWidth().weight(1f).padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 15.dp)) {
+                    Text(episode.name, style = MaterialTheme.typography.bodyLarge, fontSize = 16.sp,
+                        lineHeight = 23.sp, letterSpacing = 0.sp, color = if (dark) Color(0xFFF0F2EB) else colors.onSurface,
                         fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (caption != null) {
+                    if (visibleCaption != null) Text(visibleCaption, Modifier.padding(top = if (continuing) 11.5.dp else 8.5.dp), style = captionStyle,
+                        color = if (dark) Color(0xFFB3BDC8) else colors.onSurfaceVariant)
+                    if (continuing && total > 0) {
                         Spacer(Modifier.weight(1f))
-                        Text(caption, Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodySmall,
-                            fontSize = 13.sp, lineHeight = 16.sp, color = colors.onSurfaceVariant,
-                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(RoundedCornerShape(50))
+                            .background(if (dark) Color(0xFF3C4551) else colors.surfaceContainerHighest)) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth((elapsed.toFloat() / total).coerceIn(0f, 1f))
+                                .background(if (dark) Color(0xFFC7FF68) else colors.primary))
+                        }
                     }
                 }
             }

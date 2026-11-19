@@ -3,7 +3,7 @@
 ## 0.11.0
 
 - Show artwork, episode and watch progress together on continue-watching cards on phones, tablets and Android TV.
-- Browse film and series details with a cinematic header, dedicated source tab and a vertical episode grid.
+- Browse film and series details with a cinematic header, dedicated source tab and a vertical episode grid. Completed episodes have a checked number badge and a watched label.
 
 ## 0.10.1
 
