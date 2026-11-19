@@ -58,6 +58,10 @@ class MetadataFlowTest {
     compose.waitUntil(10000) { compose.onAllNodesWithTag("season-selector").fetchSemanticsNodes().isNotEmpty() }
     val grid = compose.onNodeWithTag("detail-episode-grid")
     grid.performScrollToNode(hasTestTag("episode-1"))
+    val banner = compose.onNodeWithTag("episode-banner-1", useUnmergedTree = true).getUnclippedBoundsInRoot()
+    val badge = compose.onNodeWithContentDescription("Серия 1", useUnmergedTree = true).getUnclippedBoundsInRoot()
+    Assert.assertTrue(badge.left > banner.left && badge.top > banner.top)
+    Assert.assertTrue(badge.right < (banner.left + banner.right) / 2)
     val first = compose.onNodeWithTag("episode-1").getUnclippedBoundsInRoot()
     val second = compose.onNodeWithTag("episode-2").getUnclippedBoundsInRoot()
     Assert.assertEquals(first.top.value, second.top.value, 1f)

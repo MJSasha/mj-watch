@@ -46,6 +46,7 @@ class CatalogSectionsUiTest {
             compose.onNode(hasText(section.label) and isSelectable()).performScrollTo().performClick()
             compose.waitUntil(10000){!model.state.value.catalogBusy&&model.state.value.catalog.singleOrNull()?.title=="Карточка: ${section.label}"}
             compose.onNodeWithTag("hero-open").performClick()
+            compose.onNodeWithTag("detail-tab-about").performClick()
             compose.onNodeWithText("Описание ${section.label}").assertExists()
             compose.runOnIdle {model.back()}
             compose.onNode(hasText(section.label) and isSelectable()).assertIsSelected()

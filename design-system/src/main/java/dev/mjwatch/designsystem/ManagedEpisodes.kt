@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -226,9 +225,16 @@ private fun episodeStill(path: String, config: Config): String? {
                         if (image != null) AsyncImage(model = image, imageLoader = LocalImages.current, contentDescription = null,
                             modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     }
-                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .58f)))))
-                    if (episode.name != "Серия $number") Text("Серия $number", Modifier.align(Alignment.BottomStart).padding(10.dp), color = Color.White,
-                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        number.toString().padStart(2, '0'),
+                        Modifier.align(Alignment.TopStart).padding(10.dp)
+                            .background(Color(0xBE10171C), RoundedCornerShape(7.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                            .clearAndSetSemantics { contentDescription = "Серия $number" },
+                        color = Color.White,
+                        style = if (tv) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                     val duration = position?.durationMs ?: 0
                     if (hasProgress && duration > 0) LinearProgressIndicator(
                         progress = { (position.positionMs.toFloat() / duration).coerceIn(0f, 1f) },
