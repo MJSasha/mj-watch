@@ -1,0 +1,37 @@
+{
+  "release": "https://github.com/MJSasha/mj-watch/releases/tag/test-143",
+  "commit": "b7e43cfa4da00706d504ede74e767f4fa54de2b1",
+  "packages": {
+    "mobile": {
+      "packageName": "dev.mjwatch.mobile",
+      "versionName": "0.9.17",
+      "versionCode": 1143,
+      "sha256": "627c274c29a388e4aa84715938480a8306b17632cbf807513dc724c29c4557c0",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    },
+    "tv": {
+      "packageName": "dev.mjwatch.tv",
+      "versionName": "0.9.17",
+      "versionCode": 1143,
+      "sha256": "c21983690b309507b3ee635cb1bce80d3dfcf6e2527b9305de6a89b3a53ec391",
+      "certificateSha256": "c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad",
+      "debuggable": false
+    }
+  },
+  "server": {
+    "version": "0.1.8",
+    "signatureVerified": true,
+    "previousSigningKeyPreserved": true,
+    "keySha256": "84f4b89e1ee3057861847812ffb8c450e2d6c69a2bcf11535302a3494aeac8a6"
+  },
+  "verified": true,
+  "ci": {
+    "url": "https://github.com/MJSasha/mj-watch/actions/runs/44509073902",
+    "attempt": 2,
+    "build": "success",
+    "mobileRuntime": "success",
+    "tvRuntime": "success",
+    "initialMobileFailure": "KSP dependency resolution before compilation; retry succeeded without source changes"
+  }
+}
