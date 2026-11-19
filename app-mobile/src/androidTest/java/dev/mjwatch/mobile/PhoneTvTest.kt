@@ -74,8 +74,9 @@ class PhoneTvTest {
         compose.waitUntil(10000){compose.onAllNodesWithTag("target-${first.id}").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("target-${first.id}").performClick()
         waitFor("Connection was acknowledged"){RemotePlaybackService.state.value.canLaunch}
-        compose.onNodeWithTag("watch-on-tv").assertExists();proof("02-connected")
-        compose.onNodeWithTag("watch-on-tv").performClick()
+        compose.onNodeWithTag("connected-tv").assertExists();proof("02-connected")
+        compose.onNodeWithTag("detail-sources").performClick()
+        compose.onNodeWithTag("source-continue").performClick()
         compose.onNodeWithTag("source-continue-tv").performClick()
         compose.waitUntil(25000){model.state.value.page=="files"||(!model.state.value.busy&&model.state.value.message.isNotBlank())}
         Assert.assertEquals("files",model.state.value.page)

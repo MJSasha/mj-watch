@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1
+
+- Open downloads within the mobile library tabs. Keep playback and device downloads separate, and choose the playback destination when a TV is connected. Show release quality on the source instead of repeating it on action buttons.
+
 ## 0.10.0
 
 - Download a film or individual episodes to a phone or tablet, then open the saved files from Downloads without connecting to the server. Track progress, retry interrupted downloads and remove local copies from the same screen.

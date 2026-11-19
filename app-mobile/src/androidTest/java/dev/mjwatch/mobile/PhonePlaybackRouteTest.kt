@@ -51,9 +51,11 @@ class PhonePlaybackRouteTest {
         }
         i.runOnMainSync {Assert.assertTrue(player!!.intent.getBooleanExtra("mobile",false));player!!.finish()}
     }
-    @Test fun connectedTelevisionHasSeparateLaunchAction() {
+    @Test fun connectedTelevisionOffersPlaybackDestinationAfterWatch() {
         selectRelease(true)
-        ui.onNodeWithTag("source-continue").assertIsDisplayed()
+        ui.onNodeWithTag("source-continue-tv").assertDoesNotExist()
+        ui.onNodeWithTag("source-continue").assertIsDisplayed().performClick()
+        ui.onNodeWithTag("source-continue-local").assertIsDisplayed()
         ui.onNodeWithTag("source-continue-tv").assertIsDisplayed().performClick()
         lateinit var model:WatchModel
         ui.runOnIdle {model=ViewModelProvider(ui.activity)[WatchModel::class.java]}

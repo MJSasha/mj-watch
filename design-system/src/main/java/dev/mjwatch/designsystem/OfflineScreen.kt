@@ -72,22 +72,24 @@ internal fun OfflineScreen(model: WatchModel, tv: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { Text("Доступно без подключения к сети", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (error.isNotBlank()) item(span = { GridItemSpan(maxLineSpan) }) {
             Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
         if (downloads.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("Загрузок пока нет. Выберите раздачу и нажмите «Скачать».", modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Загрузок пока нет. Чтобы смотреть без сети, выберите раздачу и нажмите «Скачать».", modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(downloads, key = { it.id }) { item ->
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        listOfNotNull(item.season?.let { "Сезон $it" }, item.episode?.let { "Серия $it" }, fileLabel(item.path)).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    val subtitle = listOfNotNull(
+                        item.season?.let { "Сезон $it" },
+                        item.episode?.let { "Серия $it" },
+                        fileLabel(item.path).takeUnless { it.equals(item.title, ignoreCase = true) }
+                    ).joinToString(" · ")
+                    if (subtitle.isNotBlank()) {
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     val status = when (item.state) {
                         OfflineState.QUEUED -> "В очереди"
                         OfflineState.DOWNLOADING -> if (item.totalBytes > 0) {
@@ -101,7 +103,7 @@ internal fun OfflineScreen(model: WatchModel, tv: Boolean) {
                     Text(
                         status,
                         color = if (item.state == OfflineState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                        modifier = if (item.state == OfflineState.DOWNLOADING) Modifier else Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                     )
                     if (item.state == OfflineState.DOWNLOADING && item.totalBytes > 0) {
                         LinearProgressIndicator(
