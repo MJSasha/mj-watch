@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -211,9 +212,19 @@ private fun DetailHero(
                             loading=state.busy && state.page=="detail",icon=Icons.Outlined.PlayArrow) {
                             if (saved == null) choose() else model.resume(saved)
                         }
-                        Action(if(bookmarked)"В моём" else "В моё",tv,Modifier.testTag("detail-bookmark").semantics {
-                            contentDescription=if(bookmarked)"Убрать из «Буду смотреть»" else "В «Буду смотреть»"
-                        },secondary=true,icon=if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,onClick=model::bookmark)
+                        val bookmarkLabel = if (bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»"
+                        val bookmarkIcon = if (bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder
+                        if (tv) {
+                            Action(if (bookmarked) "В моём" else "В моё", true,
+                                Modifier.testTag("detail-bookmark").semantics { contentDescription = bookmarkLabel },
+                                secondary = true, icon = bookmarkIcon, onClick = model::bookmark)
+                        } else {
+                            FilledTonalIconToggleButton(
+                                checked = bookmarked, onCheckedChange = { model.bookmark() },
+                                modifier = Modifier.size(52.dp).testTag("detail-bookmark"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Icon(bookmarkIcon, bookmarkLabel) }
+                        }
                     }
                 }
             }

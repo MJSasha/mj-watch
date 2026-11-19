@@ -119,7 +119,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val inset = if (tv) tvUnit(40f) else if (maxWidth >= 600.dp) 28.dp else 16.dp
         val gap = if (tv) 16.dp else 12.dp
         val cellWidth = (if (tv) 200.dp else 152.dp) * LocalDensity.current.fontScale.coerceAtLeast(1f)
-        val columns = ((maxWidth - inset * 2 + gap) / (cellWidth + gap)).toInt().coerceIn(2, 8)
+        val columns = ((maxWidth - inset * 2 + gap) / (cellWidth + gap)).toInt().coerceIn(2, if (maxWidth >= 600.dp) 3 else 2)
         val groups = remember(episodes, columns) { episodes.orEmpty().chunked(columns) }
         val listState = rememberLazyListState()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
@@ -132,6 +132,14 @@ private fun episodeStill(path: String, config: Config): String? {
                     items(seasons.orEmpty(), key = { it }) { number ->
                         Pill(if (number == 0) "Спецвыпуски" else "Сезон $number", season == number, tv) { season = number }
                     }
+                }
+            }
+            if (groups.isNotEmpty()) item("episode-count") {
+                Row(Modifier.fillMaxWidth().padding(horizontal = inset),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Эпизоды", style = MaterialTheme.typography.titleLarge)
+                    Text(episodes.orEmpty().size.toString(), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             when {

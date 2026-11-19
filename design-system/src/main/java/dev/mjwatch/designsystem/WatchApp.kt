@@ -736,8 +736,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     NativeCard(tv,cardModifier,onLongClick={menu=true},onClick={onOpen();model.restore(e)}) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=if(tv) tvUnit(160f) else 96.dp),
             verticalAlignment=Alignment.CenterVertically) {
-            Artwork(metadata,config,Modifier.width(if(tv) tvUnit(200f) else 84.dp).fillMaxHeight().testTag("library-poster-${e.id}"),
-                backdrop=true,demo=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null)
+            Box(Modifier.width(if(tv) tvUnit(200f) else 84.dp).fillMaxHeight().testTag("library-poster-${e.id}")) {
+                Artwork(metadata, config, Modifier.matchParentSize(), backdrop=true,
+                    demo=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null)
+            }
             Column(Modifier.weight(1f).padding(start=if(tv) 20.dp else 12.dp,end=8.dp,top=8.dp,bottom=8.dp),
                 verticalArrangement=Arrangement.spacedBy(if(tv) 8.dp else 4.dp)) {
                 Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) 22.sp else 18.sp,lineHeight=if(tv) 28.sp else 22.sp,

@@ -45,6 +45,7 @@ class OpenIssuesUiTest {
         Assert.assertEquals(series.left.value,poster.left.value,1f)
         Assert.assertEquals(series.height.value,poster.height.value,1f)
         Assert.assertEquals(84f,poster.width.value,1f)
+        Assert.assertEquals("Artwork must not inflate the history row",96f,series.height.value,1f)
         ui.onNodeWithText("С2 · Серия 3 · 1 из 5 мин").assertExists()
         ui.onNodeWithText("1 из 5 мин").assertExists()
         capture("cards")
