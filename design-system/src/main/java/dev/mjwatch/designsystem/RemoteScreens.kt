@@ -94,7 +94,7 @@ import kotlinx.coroutines.*
     }
 }
 
-@Composable internal fun RemoteStatus(model:WatchModel,contentId:String,metadataId:String?,onStart:()->Unit,modifier:Modifier=Modifier) {
+@Composable internal fun RemoteStatus(model:WatchModel,contentId:String,metadataId:String?,onStart:(()->Unit)?,modifier:Modifier=Modifier) {
     val remote by model.remote.collectAsState()
     val context=LocalContext.current
     val target=remote.target
@@ -113,7 +113,11 @@ import kotlinx.coroutines.*
                 }
             }
             remote.connected&&target!=null->{
-                Action("Смотреть на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,secondary=true,icon=Icons.Outlined.Tv,onClick=onStart)
+                if (onStart != null) {
+                    Action("Продолжить на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,secondary=true,icon=Icons.Outlined.Tv,onClick=onStart)
+                } else {
+                    Text("Подключён ТВ · ${target.name}",style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("connected-tv"))
+                }
             }
         }
         if(remote.message.isNotBlank()&&remote.connected)Text(remote.message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})

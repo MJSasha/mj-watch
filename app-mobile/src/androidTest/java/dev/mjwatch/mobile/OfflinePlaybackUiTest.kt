@@ -164,9 +164,11 @@ class OfflinePlaybackUiTest {
         assertEquals(listOf(1,2),downloads.filter {it.title==series.title}.mapNotNull {it.episode}.sorted())
         ActivityScenario.launch(MainActivity::class.java).use {
             awaitTag("app-content")
-            ui.onNode(hasText("Моё") or hasContentDescription("Моё")).performClick()
+            ui.onNode((hasText("Моё") or hasContentDescription("Моё")) and hasClickAction()).performClick()
             ui.onNodeWithText("Загрузки").performClick()
             awaitTag("offline-list")
+            ui.onNode(hasText("Моё") and !hasClickAction()).assertIsDisplayed()
+            ui.onNodeWithText("Загрузки").assertIsSelected()
             ui.waitUntil(8000) {ui.onAllNodesWithText(series.title).fetchSemanticsNodes().isNotEmpty()}
             capture("$viewport-ready")
             for(id in fileIds) {

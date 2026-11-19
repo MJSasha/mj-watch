@@ -158,7 +158,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         railItems.forEach {d->
                             if(d.id=="settings") Spacer(Modifier.weight(1f))
                             val selected = when {
-                                state.page == "downloads" -> d.id == "library"
                                 state.page.startsWith("settings-") || state.page == "connections" -> d.id == "settings"
                                 else -> state.page == d.id || (!top && state.originPage == d.id)
                             }
@@ -169,7 +168,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         if(!(tv&&(cinematic||state.page=="search"))&&state.page!="detail"&&!(state.page=="releases"&&!tv&&width<840)&&!(tv&&state.page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                                val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"downloads"->"Загрузки";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
+                                val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(state.page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 if(state.page=="home") HomeServerButton(state,model,tv)
                                 else if(state.config.demo&&state.page!="settings"&&state.page!="connections"&&!state.page.startsWith("settings-")) Badge("ДЕМО",accent=true)
@@ -185,7 +184,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             val bounded=if(tv) state.page=="settings-search"||state.page=="settings-server"&&!state.config.managed
                                 else state.page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(state.page=="settings-server"&&state.config.managed)
                             BoundedPane(bounded,maxWidth=if(tv) tvUnit(720f) else if(state.page=="releases"||state.page=="files") 840.dp else 640.dp) {
-                            saved.SaveableStateProvider(state.page+when(state.page) {"detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases"->state.query+":${state.releaseSeason}:${state.releaseEpisode}";"files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}";else->""}) {
+                            saved.SaveableStateProvider(state.page+when(state.page) {"detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases"->state.query+":${state.releaseSeason}:${state.releaseEpisode}";"files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}";"library","history"->if(tv) "" else state.config.profileKey;else->""}) {
                                 when(state.page) {
                                     "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,titles,progress,model,tv)
@@ -212,7 +211,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                         }
                                     } else ReleasesScreen(state,model,tv)
                                     "files"->FilesScreen(state,model,tv)
-                                    "downloads"->OfflineScreen(model,tv)
                                     "preparing"->PreparingScreen(state,model,tv)
                                 }
                             }
@@ -250,12 +248,19 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester),selected,onLongClick,onClick) {
         Column(Modifier.fillMaxWidth().padding(if(tv) 18.dp else 16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text(release.title,fontSize=if(tv) 17.sp else 16.sp,lineHeight=22.sp,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                if(release.resolution!="Не указано") Badge(release.resolution)
-                Regex("(?i)(HEVC|H[ .]?265|x265|H[ .]?264|x264|AV1)").find(release.title)?.value?.let {Badge(it.uppercase())}
-                Regex("(?i)(HDR10\\+?|HDR|SDR)").find(release.title)?.value?.let {Badge(it.uppercase())}
-                Badge(sizeLabel(release.size))
-                Badge(release.seeds?.let {"$it сидов"} ?: "Сиды не указаны",accent=(release.seeds ?: 0)>0,warning=release.seeds==0)
+            val codec = Regex("(?i)(HEVC|H[ .]?265|x265|H[ .]?264|x264|AV1)").find(release.title)?.value
+            val hdr = Regex("(?i)(HDR10\\+?|HDR|SDR)").find(release.title)?.value
+            val quality = release.resolution.takeUnless { it == "Не указано" }
+            if (tv || quality != null || codec != null || hdr != null || release.size != null || release.seeds != null) {
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    quality?.let { Badge(it) }
+                    codec?.let { Badge(it.uppercase()) }
+                    hdr?.let { Badge(it.uppercase()) }
+                    if (tv || release.size != null) Badge(sizeLabel(release.size))
+                    if (tv || release.seeds != null) {
+                        Badge(release.seeds?.let {"$it сидов"} ?: "Сиды не указаны",accent=(release.seeds ?: 0)>0,warning=release.seeds==0)
+                    }
+                }
             }
             Text(release.source,fontSize=if(tv) 16.sp else 13.sp,lineHeight=18.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -514,7 +519,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null)model.resume(saved) else choose()}
                     if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources")) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
                 }
-                RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart={if(saved!=null)model.resume(saved,onTv=true) else choose()})
+                RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart=saved?.let { progress -> { model.resume(progress,onTv=true) } })
             }
             Column((if(tv) Modifier else Modifier.widthIn(max=760.dp)).padding(horizontal=if(compact) 32.dp else inset),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                 WatchTabs(listOf("О фильме","Раздачи","Похожие"),tab,tv) {if(it=="Раздачи") choose() else tab=it}
@@ -542,7 +547,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null)model.resume(saved) else choose()}
                 if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources")) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
             }
-            RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart={if(saved!=null)model.resume(saved,onTv=true) else choose()})
+            RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart=saved?.let { progress -> { model.resume(progress,onTv=true) } })
         }
     }
 }
@@ -580,7 +585,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val header:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!tv&&LocalConfiguration.current.screenWidthDp<840) Heading("Выберите раздачу")
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-            listOf("Все","1080p","2160p","720p","Не указано").forEach {label->Pill(if(label=="2160p") "4K" else label,filter==label,tv) {filter=label}}
+            val quickQualities=listOf("Все","1080p","2160p","720p",if(tv)"Не указано" else filter).distinct()
+            quickQualities.forEach {label->
+                Pill(if(label=="2160p") "4K" else label,filter==label,tv) {filter=label}
+            }
         }
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
             Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,secondary=true,icon=Icons.Outlined.Tune){filters=true}
@@ -595,7 +603,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
         val resourceContext=LocalContext.current
         val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
-        Text("${countText} · свойства указаны источником",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
     val scrollingHeader=!tv
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -606,10 +614,43 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(releases.isEmpty()) item {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}
         }
         val selected=releases.firstOrNull {it.id==selectedId}
-        if(!tv&&selected!=null) Column(Modifier.padding(bottom=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Action("Смотреть на телефоне · ${selected.resolution}",false,Modifier.fillMaxWidth().testTag("source-continue"),icon=Icons.Outlined.PlayArrow) {model.playRelease(selected,season)}
-            Action("Скачать · ${selected.resolution}",false,Modifier.fillMaxWidth().testTag("source-download"),enabled=!s.config.demo,secondary=true,icon=Icons.Outlined.FileDownload) {model.playRelease(selected,season,download=true)}
-            if(remote.canLaunch) Action("Смотреть на ТВ · ${remote.target?.name} · ${selected.resolution}",false,Modifier.fillMaxWidth().testTag("source-continue-tv"),secondary=true,icon=Icons.Outlined.Tv) {model.playRelease(selected,season,onTv=true)}
+        if(!tv&&releases.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom=12.dp)) {
+            val gap=8.dp
+            val density = LocalDensity.current
+            val buttonWidth = if (maxWidth >= 320.dp * density.fontScale.coerceAtLeast(1f)) {
+                with(density) { ((constraints.maxWidth - gap.roundToPx()) / 2).toDp().coerceAtMost(240.dp) }
+            } else maxWidth
+            val target=remote.target?.takeIf {remote.connected&&remote.profileKey==s.config.profileKey}
+            var chooseDevice by remember(selected?.id,season,target?.id,target?.instance) {mutableStateOf(false)}
+            FlowRow(horizontalArrangement=Arrangement.spacedBy(gap),verticalArrangement=Arrangement.spacedBy(gap)) {
+                Box {
+                    val watchButton=Modifier.width(buttonWidth).testTag("source-continue").semantics {
+                        if(target!=null)stateDescription="Выбор экрана"
+                    }
+                    Action("Смотреть",false,watchButton,enabled=selected!=null,
+                        icon=if(target!=null) Icons.Outlined.ArrowDropDown else Icons.Outlined.PlayArrow) {
+                        if(selected!=null) {
+                            if(target==null)model.playRelease(selected,season) else chooseDevice=true
+                        }
+                    }
+                    if(target!=null&&selected!=null) DropdownMenu(expanded=chooseDevice,onDismissRequest={chooseDevice=false}) {
+                        DropdownMenuItem(text={Text("На этом устройстве")},leadingIcon={Icon(Icons.Outlined.Devices,null)},
+                            modifier=Modifier.heightIn(min=48.dp).testTag("source-continue-local"),onClick={
+                                chooseDevice=false
+                                model.playRelease(selected,season)
+                            })
+                        DropdownMenuItem(text={Text("На ТВ · ${target.name}")},leadingIcon={Icon(Icons.Outlined.Tv,null)},
+                            modifier=Modifier.heightIn(min=48.dp).testTag("source-continue-tv"),enabled=remote.canLaunch,onClick={
+                                chooseDevice=false
+                                val current=model.remote.value.target
+                                if(current?.id==target.id&&current.instance==target.instance)model.playRelease(selected,season,onTv=true)
+                            })
+                    }
+                }
+                Action("Скачать",false,Modifier.width(buttonWidth).heightIn(min=52.dp).testTag("source-download"),enabled=selected!=null&&!s.config.demo,secondary=true,icon=Icons.Outlined.FileDownload) {
+                    selected?.let {model.playRelease(it,season,download=true)}
+                }
+            }
         }
     }
 }
@@ -634,8 +675,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             (episode==null||episodeNumber(f.path).episode==episode)
     })
     fun launch(file:TorrentFile) {
-        if(!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
+        if(s.downloadSelection||!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
         if(!tv&&s.remotePlayback) {
+            val target=remote.target ?: return
+            val current=model.remote.value.target
+            if(current?.id!=target.id||current.instance!=target.instance)return
             dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(s.handle!!.hash,file.serverFileId,s.selectedMetadata?.title ?: s.selected!!.displayTitle(),s.selected!!.id,"${s.handle!!.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==file.path&&!it.completed}?.positionMs ?: 0))
             model.playerClosed();return
         }
@@ -666,14 +710,18 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(file!=null) {
             val p=progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==file.path}
             if(p!=null&&tv) Text("Сохранено ${time(p.positionMs)}${if(p.completed) " · завершено" else ""}")
-            if(!s.downloadSelection&&(tv||!s.remotePlayback||remote.canLaunch)) Action((if(tv)"Смотреть" else if(s.remotePlayback) "Смотреть на ТВ · ${remote.target?.name}" else "Смотреть на телефоне")+"${if(p!=null&&!p.completed) " с ${time(p.positionMs)}" else ""}",tv,Modifier.fillMaxWidth().testTag("file-continue"),icon=Icons.Outlined.PlayArrow) {launch(file)}
-            if(!tv&&(s.downloadSelection||!s.config.demo)) Action("Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),enabled=!s.config.demo,secondary=!s.downloadSelection,icon=Icons.Outlined.FileDownload) {
+            if(!s.downloadSelection) {
+                val onTv=!tv&&s.remotePlayback
+                val label=if(onTv) remote.target?.name?.let {"Смотреть на ТВ · $it"} ?: "Смотреть на ТВ" else "Смотреть"
+                Action(label+if(p!=null&&!p.completed) " с ${time(p.positionMs)}" else "",tv,Modifier.fillMaxWidth().testTag("file-continue"),enabled=!onTv||remote.canLaunch&&remote.profileKey==s.config.profileKey,icon=Icons.Outlined.PlayArrow) {launch(file)}
+            }
+            if(!tv&&s.downloadSelection) Action("Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),enabled=!s.config.demo,icon=Icons.Outlined.FileDownload) {
                 scope.launch {try {
                     OfflineDownloads.get(context).enqueue(s.config,s.selected!!,s.handle!!,file,s.selectedMetadata,episodeNumber(file.path).season,episodeNumber(file.path).episode)
-                    model.page("downloads")
+                    model.openDownloads()
                 } catch(e:kotlinx.coroutines.CancellationException) {throw e} catch(e:Exception) {downloadError=safeError(e)}}
             }
-        } else Text("Выберите файл для просмотра",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        } else Text(if(s.downloadSelection)"Выберите файл для загрузки" else "Выберите файл для просмотра",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
     val header:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(s.message.isNotBlank()||downloadError.isNotBlank()) Text(downloadError.ifBlank {s.message},color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
@@ -764,11 +812,17 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 @Composable private fun LibraryScreen(entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
     val libraryState by model.state.collectAsState()
     var tab by rememberSaveable { mutableStateOf(if(model.state.value.page=="history") "История" else "Продолжить") }
+    LaunchedEffect(libraryState.openDownloadsRequested) {
+        if(!tv&&libraryState.page=="library"&&libraryState.openDownloadsRequested) {
+            tab="Загрузки"
+            model.consumeOpenDownloads()
+        }
+    }
     var returnFocusId by rememberSaveable {mutableStateOf<String?>(null)}
     val filtered=entries.filter { e -> when(tab) { "Буду смотреть" -> e.entry.bookmarked; "Продолжить" -> e.entry.openedAt>0&&progress.any { it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0 }; else -> e.entry.openedAt>0 } }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        WatchTabs(if(tv) listOf("Продолжить","Буду смотреть","История") else listOf("Продолжить","Загрузки","Буду смотреть","История"),tab,tv) {if(it=="Загрузки") model.page("downloads") else tab=it}
-        LazyColumn(contentPadding=PaddingValues(8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        WatchTabs(if(tv) listOf("Продолжить","Буду смотреть","История") else listOf("Продолжить","Загрузки","Буду смотреть","История"),tab,tv) {if(it=="Загрузки"&&libraryState.page=="history") model.openDownloads() else tab=it}
+        if(tab=="Загрузки"&&!tv) OfflineScreen(model,false) else LazyColumn(contentPadding=PaddingValues(8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
             items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
         }

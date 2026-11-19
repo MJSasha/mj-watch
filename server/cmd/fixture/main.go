@@ -38,6 +38,10 @@ func main() {
 	listen := "127.0.0.1:" + port
 	controlListen := "127.0.0.1:" + controlPort
 	dir, video := os.Args[1], os.Args[2]
+	videoInfo, err := os.Stat(video)
+	if err != nil {
+		log.Fatal(err)
+	}
 	os.MkdirAll(dir, 0700)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "MJWatch isolated fixture"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(48 * time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, DNSNames: []string{"localhost"}}
@@ -57,9 +61,9 @@ func main() {
 			io.WriteString(w, "MatriX.145.2")
 		case "/torrents", "/torrent/upload":
 			w.Header().Set("Content-Type", "application/json")
-			files := []any{map[string]any{"id": 17, "path": "fixture/movie.mp4", "length": 2400000}}
+			files := []any{map[string]any{"id": 17, "path": "fixture/movie.mp4", "length": videoInfo.Size()}}
 			if os.Getenv("MJWATCH_FIXTURE_REMOTE") == "1" {
-				files = append(files, map[string]any{"id": 18, "path": "fixture/second.mp4", "length": 2400000})
+				files = append(files, map[string]any{"id": 18, "path": "fixture/second.mp4", "length": videoInfo.Size()})
 			}
 			json.NewEncoder(w).Encode(map[string]any{"hash": "0123456789012345678901234567890123456789", "file_stats": files})
 		case "/stream":
