@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -234,9 +235,9 @@ private fun episodeStill(path: String, config: Config): String? {
         continuing && total > 0 -> {
             val minutes = total >= 60_000
             val unit = if (minutes) 60_000 else 1_000
-            "Продолжить · ${elapsed.coerceAtMost(total) / unit} из ${total / unit} ${if (minutes) "мин" else "с"}"
+            "${elapsed.coerceAtMost(total) / unit} из ${total / unit} ${if (minutes) "мин" else "с"}"
         }
-        continuing -> "Продолжить · ${time(elapsed)}"
+        continuing -> time(elapsed)
         episode.minutes > 0 -> "${episode.minutes} мин"
         else -> null
     }
@@ -247,11 +248,12 @@ private fun episodeStill(path: String, config: Config): String? {
         else -> colors.surface
     }
     Box(modifier.fillMaxHeight()) {
-        NativeCard(tv, Modifier.fillMaxSize().onFocusChanged { focused = it.hasFocus }.testTag("episode-$number"), onLongClick = onMenu, onClick = onPlay) {
+        NativeCard(tv, Modifier.fillMaxSize().onFocusChanged { focused = it.hasFocus }.testTag("episode-$number")
+            .semantics { if (continuing) stateDescription = "Продолжить просмотр" }, onLongClick = onMenu, onClick = onPlay) {
             Column(Modifier.fillMaxSize().background(panel)) {
                 Box(Modifier.fillMaxWidth().aspectRatio(1.35f).background(colors.surfaceContainerHigh).testTag("episode-banner-$number")) {
                     val image = episode.image ?: item.backdrop ?: item.poster
-                    if (demo) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.demo_orbit), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                    if (demo && image == null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.demo_orbit), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     else {
                         Icon(Icons.Outlined.Movie, null, Modifier.align(Alignment.Center).size(28.dp), tint = colors.onSurfaceVariant)
                         if (image != null) AsyncImage(model = image, imageLoader = LocalImages.current, contentDescription = null,
@@ -267,16 +269,21 @@ private fun episodeStill(path: String, config: Config): String? {
                         style = if (tv) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
-                }
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(episode.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    if (caption != null) Text(caption, style = MaterialTheme.typography.bodySmall,
-                        fontSize = 13.sp, color = colors.onSurfaceVariant)
                     if (continuing && total > 0) LinearProgressIndicator(
                         progress = { (elapsed.toFloat() / total).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(4.dp),
-                        color = colors.primary, trackColor = colors.onSurfaceVariant.copy(alpha = .3f),
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).clearAndSetSemantics {},
+                        color = colors.primary, trackColor = Color.Black.copy(alpha = .55f),
                         gapSize = 0.dp, drawStopIndicator = {})
+                }
+                Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text(episode.name, style = MaterialTheme.typography.bodyLarge, lineHeight = 20.sp,
+                        fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (caption != null) {
+                        Spacer(Modifier.weight(1f))
+                        Text(caption, Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodySmall,
+                            fontSize = 13.sp, lineHeight = 16.sp, color = colors.onSurfaceVariant,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
