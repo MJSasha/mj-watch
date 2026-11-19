@@ -32,8 +32,16 @@ class MetadataFlowTest {
     compose.waitUntil(5000) {model.library.value.any {it.id==item.id&&it.bookmarked}}
     compose.onNodeWithText("Похожие").performClick()
     compose.onNodeWithText("Раздачи").performClick()
-    compose.waitUntil(10000) { compose.onAllNodesWithTag("release-list").fetchSemanticsNodes().isNotEmpty() }
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText(DemoReleases.items.first().title))
+    val releases = compose.onNodeWithTag("release-list")
+    val expected = hasText(DemoReleases.items.first().title)
+    compose.waitUntil(10000) {
+        try {
+            releases.performScrollToNode(expected)
+            true
+        } catch (_: AssertionError) {
+            false
+        }
+    }
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
     compose.onNodeWithTag("source-continue").assertIsDisplayed()
     compose.runOnIdle { Assert.assertEquals("detail", model.state.value.page) }
