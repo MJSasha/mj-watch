@@ -1,6 +1,6 @@
 # Release filters and episode selection — 2026-11-19
 
-Prepared for release 0.9.16 on top of published 0.9.15. Final published artifact verification is recorded separately after CI.
+Published [MJWatch 0.9.16](https://github.com/MJSasha/mj-watch/releases/tag/test-142), version code 1142, from commit `41bf91b4c76c576f5728dbcc8080a816f83aeeb5`. [Release CI](https://github.com/MJSasha/mj-watch/actions/runs/44491183531) passed build and both mobile/TV runtime jobs. Downloaded mobile/TV APKs, update descriptor, checksums and signed server supply were verified: see [release-verification.json](release-verification.json). APK signing identity and server signing key match the previous release.
 
 ## Changes
 
