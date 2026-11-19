@@ -128,9 +128,14 @@ class ContractsTest {
         assertEquals("none",exported.getJSONObject("metadata").getString("provider"))
     }
     @Test fun metadataParserAndOfflineCache()=runBlocking {
-        val items=TmdbAdapter.parse("""{"results":[{"id":999999999,"media_type":"movie","title":"Fixture","release_date":"2026-01-01","genre_ids":[16],"original_language":"ja","overview":"Fixture description","backdrop_path":"/fixture.jpg"},{"id":7,"media_type":"person","name":"Ignored"}]}""")
+        val items=TmdbAdapter.parse("""{"results":[{"id":999999999,"media_type":"movie","title":"Fixture","release_date":"2026-01-01","genre_ids":[16],"genres":[{"name":"Фантастика"}],"runtime":108,"original_language":"ja","overview":"Fixture description","backdrop_path":"/fixture.jpg"},{"id":7,"media_type":"person","name":"Ignored"}]}""")
         assertEquals(1,items.size);assertEquals(2026,items.single().year);assertTrue(items.single().animation);assertNull(items.single().poster)
+        assertEquals("Фантастика", items.single().genre)
+        assertEquals(108, items.single().runtimeMinutes)
         assertEquals(items.single(),metadataFromJson(items.single().json()))
+        val legacy = metadataFromJson("""{"id":"old","title":"Old"}""")
+        assertNull(legacy.genre)
+        assertNull(legacy.runtimeMinutes)
         val db=androidx.room.Room.inMemoryDatabaseBuilder(org.robolectric.RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
         try {
             var calls=0;var offline=false

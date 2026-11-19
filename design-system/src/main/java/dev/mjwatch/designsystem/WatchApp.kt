@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -140,8 +141,31 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&top&&state.configured&&!imeVisible) {
-                Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
+            val detailNav=state.page=="detail" && !rail && width<600 && LocalConfiguration.current.screenHeightDp>=480 &&
+                (LocalConfiguration.current.fontScale<1.5f || LocalConfiguration.current.screenHeightDp>=740)
+            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&(top||detailNav)&&state.configured&&!imeVisible) {
+                if(detailNav) {
+                    val navBackground=if(colors.background.luminance()<.5f) androidx.compose.ui.graphics.Color(0xff0c1015) else colors.background
+                    Column(Modifier.background(navBackground).windowInsetsPadding(WindowInsets.navigationBars)) {
+                        HorizontalDivider(color=colors.onSurface.copy(alpha=.12f))
+                        val columns=if(LocalConfiguration.current.fontScale>=1.5f&&width<512) 2 else destinations.size
+                        destinations.chunked(columns).forEach { row ->
+                            Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                row.forEach {d->
+                                    val selected=d.id==state.originPage || d.id=="library"&&state.originPage=="history"
+                                    val tint=if(selected)colors.primary else colors.onSurfaceVariant
+                                    Column(Modifier.weight(1f).heightIn(min=52.dp).clip(RoundedCornerShape(12.dp))
+                                        .background(if(selected) colors.primary.copy(alpha=.10f) else navBackground)
+                                        .selectable(selected,role=Role.Tab,onClick={model.page(d.id)}).padding(horizontal=2.dp,vertical=3.dp),
+                                        verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+                                        Icon(d.icon,null,Modifier.size(22.dp),tint=tint)
+                                        Text(d.title,fontSize=11.sp,lineHeight=15.sp,color=tint,maxLines=1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
                     val fontScale=LocalConfiguration.current.fontScale
                     val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
                     destinations.chunked(columns).forEach {row->
@@ -731,37 +755,47 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val subtitle=listOfNotNull(episode,elapsed).joinToString(" · ").ifEmpty {
         metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source
     }
+    val colors=MaterialTheme.colorScheme
+    val dark=colors.background.luminance()<.5f
+    val surface=if(dark) androidx.compose.ui.graphics.Color(0xFF1F2732) else colors.surface
+    val secondary=if(dark) androidx.compose.ui.graphics.Color(0xFFB3BDC8) else colors.onSurfaceVariant
+    val track=if(dark) androidx.compose.ui.graphics.Color(0xFF3C4551) else colors.outline.copy(alpha=.32f)
+    val artWidth=if(tv) tvUnit(200f) else 84.dp
+    val minHeight=if(tv) maxOf(tvUnit(160f),artWidth/1.14f) else 96.dp
     val cardModifier=Modifier.fillMaxWidth().focusRequester(requester)
         .onFocusChanged {if(it.isFocused)onFocus()}.testTag("library-${e.id}")
     NativeCard(tv,cardModifier,onLongClick={menu=true},onClick={onOpen();model.restore(e)}) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=if(tv) tvUnit(160f) else 96.dp),
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=minHeight).background(surface),
             verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.width(if(tv) tvUnit(200f) else 84.dp).fillMaxHeight().testTag("library-poster-${e.id}")) {
-                Artwork(metadata, config, Modifier.matchParentSize(), backdrop=true,
+            Box(Modifier.width(artWidth).fillMaxHeight().testTag("library-poster-${e.id}")) {
+                Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,
                     demo=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null)
             }
-            Column(Modifier.weight(1f).padding(start=if(tv) 20.dp else 12.dp,end=8.dp,top=8.dp,bottom=8.dp),
-                verticalArrangement=Arrangement.spacedBy(if(tv) 8.dp else 4.dp)) {
-                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) 22.sp else 18.sp,lineHeight=if(tv) 28.sp else 22.sp,
+            Column(Modifier.weight(1f).padding(
+                start=if(tv) tvUnit(24f) else 12.dp,end=if(tv) tvUnit(24f) else 12.dp,
+                top=if(tv) tvUnit(20f) else 8.dp,bottom=if(tv) tvUnit(20f) else 8.dp
+            ), verticalArrangement=Arrangement.spacedBy(if(tv) tvUnit(8f) else 4.dp)) {
+                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 18.sp,
+                    lineHeight=if(tv) tvUnit(32f).value.sp else 22.sp,color=colors.onSurface,
                     maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if(subtitle.isNotEmpty()) Text(subtitle,fontSize=if(tv) 16.sp else 14.sp,lineHeight=if(tv) 22.sp else 18.sp,
-                    color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(subtitle.isNotEmpty()) Text(subtitle,fontSize=if(tv) tvUnit(18f).value.sp else 14.sp,
+                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=secondary)
                 if (position != null && duration != null) {
                     val fraction by animateFloatAsState(
                         (position.toFloat() / duration).coerceIn(0f, 1f), tween(200), label = "history-progress"
                     )
                     LinearProgressIndicator(
                         progress = { fraction },
-                        modifier = Modifier.padding(top=4.dp).fillMaxWidth().height(if(tv) 5.dp else 4.dp),
-                        trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.28f),
-                        gapSize = 0.dp, drawStopIndicator = {}
+                        modifier = Modifier.padding(top=if(tv) tvUnit(5f) else 4.dp)
+                            .fillMaxWidth().height(if(tv) tvUnit(5f) else 4.dp),
+                        trackColor = track,gapSize = 0.dp, drawStopIndicator = {}
                     )
                 }
             }
             if(showMenu&&!tv) IconButton(onClick={menu=true}) {Icon(Icons.Outlined.MoreVert,"Действия с «${e.title}»")}
             else Icon(Icons.Outlined.PlayCircle,null,
-                modifier=Modifier.padding(end=if(tv) 20.dp else 16.dp).size(if(tv) 32.dp else 24.dp),
-                tint=MaterialTheme.colorScheme.primary)
+                modifier=Modifier.padding(end=if(tv) tvUnit(24f) else 18.dp).size(if(tv) tvUnit(32f) else 24.dp),
+                tint=colors.primary)
         }
     }
 }

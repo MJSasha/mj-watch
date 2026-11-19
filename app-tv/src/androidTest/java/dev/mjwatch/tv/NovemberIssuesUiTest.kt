@@ -58,7 +58,7 @@ class NovemberIssuesUiTest {
         compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-fixture:film"))
         val film=compose.onNodeWithTag("library-fixture:film").getUnclippedBoundsInRoot()
         val series=compose.onNodeWithTag("library-fixture:series").getUnclippedBoundsInRoot()
-        val expectedHeight=160f*compose.activity.resources.configuration.screenWidthDp/1280f
+        val expectedHeight=(200f/1.14f)*compose.activity.resources.configuration.screenWidthDp/1280f
         Assert.assertEquals(expectedHeight,film.height.value,1f)
         Assert.assertEquals(expectedHeight,series.height.value,1f)
         val artwork=compose.onNodeWithTag("library-poster-fixture:series",useUnmergedTree=true).getUnclippedBoundsInRoot()

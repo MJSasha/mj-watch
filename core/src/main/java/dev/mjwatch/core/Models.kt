@@ -29,7 +29,7 @@ interface StreamGateway {
     fun stream(handle: TorrentHandle, file: TorrentFile): StreamRequest
 }
 interface MetadataAdapter { suspend fun search(query: String): List<Metadata>; suspend fun home():List<Metadata> = emptyList(); suspend fun browse(section:CatalogSection):List<Metadata> = home().filter(section::matches); suspend fun details(id:String):Metadata?=null }
-data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null)
+data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null, val genre:String?=null, val runtimeMinutes:Int?=null)
 object NoMetadata : MetadataAdapter { override suspend fun search(query: String) = emptyList<Metadata>() }
 object DemoReleases : ReleaseRepository {
     val items = listOf(Release("demo:orbit", "Тихая орбита • тестовое видео 720p", "Локальный fixture", seeds = 8),

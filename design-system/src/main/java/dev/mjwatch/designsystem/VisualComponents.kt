@@ -113,13 +113,13 @@ import kotlinx.coroutines.launch
     if(tv) androidx.tv.material3.Card(onClick={if(!pendingLongClick)onClick()},onLongClick=onLongClick?.let {action->{if(remoteHeld)pendingLongClick=true else action()}},modifier=modifier.then(shelfModifier).then(remoteModifier),scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(!outlined) Color.Transparent else if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=if(outlined) colors.primaryContainer else Color.Transparent),border=androidx.tv.material3.CardDefaults.border(focusedBorder=if(outlined) tvFocusBorder(16.dp) else androidx.tv.material3.Border.None)) {content()}
     else Card(modifier=modifier.combinedClickable(onClick=onClick,onLongClick=onLongClick),shape=shape,colors=CardDefaults.cardColors(containerColor=if(selected) colors.primaryContainer else colors.surface),border=if(selected) BorderStroke(1.dp,colors.primary) else null) {content()}
 }
-@Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false) {
+@Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false,alignment:Alignment?=null) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        if(demo) Image(painterResource(R.drawable.demo_orbit),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=if(backdrop) BiasAlignment(.38f,0f) else Alignment.CenterEnd)
+        if(demo) Image(painterResource(R.drawable.demo_orbit),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.CenterEnd)
         else {
             Icon(Icons.Outlined.Movie,null,Modifier.align(Alignment.Center).size(40.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             val uri=if(config.metadataProvider=="tmdb") if(backdrop) metadata?.backdrop ?: metadata?.poster else metadata?.poster else null
-            if(uri!=null) AsyncImage(model=uri,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
+            if(uri!=null) AsyncImage(model=uri,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
         }
     }
 }
@@ -130,11 +130,11 @@ internal fun Release.displayTitle()=when(id) {"demo:orbit"->"Тихая орби
 internal fun fileLabel(path:String):String=path.substringAfterLast('/').substringBeforeLast('.')
 internal fun sizeLabel(bytes:Long?)=bytes?.let {if(it>=1_000_000_000) "%.1f ГБ".format(it/1e9) else "%.1f МБ".format(it/1e6)} ?: "Размер не указан"
 internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фильм"
-@Composable internal fun WatchTabs(labels:List<String>,selected:String,tv:Boolean=false,selectedFocus:FocusRequester?=null,tabTag:(String)->String?={null},onSelect:(String)->Unit) {
+@Composable internal fun WatchTabs(labels:List<String>,selected:String,tv:Boolean=false,selectedFocus:FocusRequester?=null,onSelect:(String)->Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(if(tv) 16.dp else 20.dp)) {
         labels.forEach {label->
             val active=selected==label
-            Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).then(tabTag(label)?.let { Modifier.testTag(it) } ?: Modifier).then(if(active&&selectedFocus!=null)Modifier.focusRequester(selectedFocus) else Modifier).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
+            Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).then(if(active&&selectedFocus!=null)Modifier.focusRequester(selectedFocus) else Modifier).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
                 Text(label,color=if(active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=if(tv) 18.sp else 14.sp,lineHeight=if(tv) 24.sp else 20.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(vertical=12.dp))
                 Box(Modifier.height(3.dp).widthIn(min=32.dp).fillMaxWidth().background(if(active) MaterialTheme.colorScheme.primary else Color.Transparent))
             }

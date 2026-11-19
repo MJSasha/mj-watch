@@ -43,17 +43,21 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
                     val genreIds=item.optJSONArray("genre_ids")
                     Metadata("tmdb:$kind:${item.getInt("id")}",item.optString(if(kind=="movie") "title" else "name").ifBlank {item.optString(if(kind=="movie") "original_title" else "original_name")},
                         image("poster_path"),item.optString("overview"),kind,item.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),
-                        image("backdrop_path"),(0 until (genreIds?.length() ?: 0)).any {genreIds!!.optInt(it)==16},item.optString("original_language").takeIf {it.isNotBlank()})
+                        image("backdrop_path"),(0 until (genreIds?.length() ?: 0)).any {genreIds!!.optInt(it)==16},item.optString("original_language").takeIf {it.isNotBlank()}, item.primaryGenre(), item.runtimeMinutes())
                 }
             }
         }
     }
 }
+internal fun JSONObject.primaryGenre(): String? = optJSONArray("genres")?.optJSONObject(0)
+    ?.optString("name")?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+internal fun JSONObject.runtimeMinutes(): Int? = optInt("runtime").takeIf { it > 0 }
+
 fun Metadata.json():String=JSONObject().put("id",id).put("title",title).put("poster",poster).put("overview",overview)
-    .put("kind",kind).put("year",year).put("backdrop",backdrop).put("animation",animation).put("originalLanguage",originalLanguage).toString()
+    .put("kind",kind).put("year",year).put("backdrop",backdrop).put("animation",animation).put("originalLanguage",originalLanguage).put("genre",genre).put("runtimeMinutes",runtimeMinutes).toString()
 fun metadataFromJson(raw:String):Metadata {val j=JSONObject(raw)
     fun optional(key:String)=if(j.isNull(key)) null else j.optString(key)
-    return Metadata(j.getString("id"),j.getString("title"),optional("poster"),optional("overview"),j.optString("kind","movie"),if(j.isNull("year")) null else j.getInt("year"),optional("backdrop"),j.optBoolean("animation"),optional("originalLanguage"))
+    return Metadata(j.getString("id"),j.getString("title"),optional("poster"),optional("overview"),j.optString("kind","movie"),if(j.isNull("year")) null else j.getInt("year"),optional("backdrop"),j.optBoolean("animation"),optional("originalLanguage"),optional("genre"),j.optInt("runtimeMinutes").takeIf { it > 0 })
 }
 data class MetadataResult(val items:List<Metadata>,val cached:Boolean)
 class MetadataRepository(private val adapter:MetadataAdapter,private val dao:WatchDao,private val namespace:String="") {
@@ -61,6 +65,20 @@ class MetadataRepository(private val adapter:MetadataAdapter,private val dao:Wat
         val key=if(namespace.isBlank())id else "$namespace:$id"
         dao.metadata(key)?.let {return metadataFromJson(it.json)}
         return adapter.details(id)?.also {dao.put(CachedMetadata(key,it.json(),System.currentTimeMillis()))}
+    }
+    suspend fun titleFacts(id: String): Metadata? {
+        // Catalogue entries and detail responses have different fields. Keep the richer
+        // response when refreshing a shelf replaces a catalogue entry.
+        val key = "$namespace:detail:$id"
+        val cached = dao.metadata(key)
+        if (cached != null && System.currentTimeMillis() - cached.updatedAt < 86_400_000L) return metadataFromJson(cached.json)
+        return try {
+            adapter.details(id)?.also { dao.put(CachedMetadata(key, it.json(), System.currentTimeMillis())) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            cached?.let { metadataFromJson(it.json) }
+        }
     }
     suspend fun search(query:String)=load("${if(namespace.isBlank()) "" else "$namespace:"}search:$query") {adapter.search(query)}
     suspend fun home(force:Boolean=false,section:CatalogSection=CatalogSection.FOR_YOU)=load("${if(namespace.isBlank()) "" else "$namespace:"}home${if(section==CatalogSection.FOR_YOU)"" else ":${section.key}"}",force) {adapter.browse(section)}
