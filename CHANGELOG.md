@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.0
+
+- Show artwork, episode and watch progress together on continue-watching cards on phones, tablets and Android TV.
+- Browse film and series details with a cinematic header, dedicated source tab and a vertical episode grid.
+
 ## 0.10.1
 
 - Open downloads within the mobile library tabs. Keep playback and device downloads separate, and choose the playback destination when a TV is connected. Show release quality on the source instead of repeating it on action buttons.

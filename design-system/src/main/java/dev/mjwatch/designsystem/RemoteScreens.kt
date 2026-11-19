@@ -56,7 +56,7 @@ import kotlinx.coroutines.*
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun TargetSheet(s:WatchState,model:WatchModel,onDismiss:()->Unit) {
+@Composable internal fun TargetSheet(s:WatchState,model:WatchModel,onDismiss:()->Unit,onConnected:((String)->Unit)?=null) {
     val context=LocalContext.current
     var devices by remember {mutableStateOf<List<ManagedDevice>?>(null)}
     var message by remember {mutableStateOf("")}
@@ -80,7 +80,7 @@ import kotlinx.coroutines.*
                     connecting=device.id;message=""
                     scope.launch {try {
                         withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("remote/${device.id}/connect","POST")}
-                        ensureActive();RemotePlaybackService.connect(context,device.id,device.name);onDismiss()
+                        ensureActive();RemotePlaybackService.connect(context,device.id,device.name);if(onConnected!=null)onConnected(device.id) else onDismiss()
                     }catch(e:CancellationException){throw e}catch(e:Exception){message="ТВ недоступен. Проверьте соединение.";connecting=null}}
                 },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("target-${device.id}")) {
                     Icon(Icons.Outlined.Tv,null);Spacer(Modifier.width(12.dp))
@@ -114,7 +114,7 @@ import kotlinx.coroutines.*
             }
             remote.connected&&target!=null->{
                 if (onStart != null) {
-                    Action("Продолжить на ТВ · ${target.name}",false,Modifier.fillMaxWidth().testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,secondary=true,icon=Icons.Outlined.Tv,onClick=onStart)
+                    Action("Продолжить на ТВ · ${target.name}",false,Modifier.testTag("watch-on-tv"),enabled=remote.canLaunch,loading=remote.busy,secondary=true,icon=Icons.Outlined.Tv,onClick=onStart)
                 } else {
                     Text("Подключён ТВ · ${target.name}",style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("connected-tv"))
                 }

@@ -57,7 +57,8 @@ class PhoneTvTest {
         val bookmark=compose.onNodeWithTag("detail-bookmark").fetchSemanticsNode().boundsInRoot
         val density=compose.activity.resources.displayMetrics.density
         Assert.assertTrue(cast.width/density>=48&&cast.height/density>=48)
-        Assert.assertTrue(bookmark.width/density>=48&&bookmark.left-cast.right>=8*density-.5f)
+        Assert.assertTrue(bookmark.width/density>=48&&bookmark.height/density>=48)
+        Assert.assertTrue("Cast and bookmark are distinct touch targets", !bookmark.overlaps(cast))
         compose.onNodeWithTag("watch-on-tv").assertDoesNotExist()
         compose.runOnIdle {model.playRelease(model.state.value.selected!!,null,onTv=true);Assert.assertEquals("detail",model.state.value.page);Assert.assertFalse(model.state.value.busy)}
         compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()

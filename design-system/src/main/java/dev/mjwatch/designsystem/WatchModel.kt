@@ -11,8 +11,14 @@ import okhttp3.Credentials
 
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
+    val episodeTargetId:String?=null,val episodeDownload:Boolean=false,
     val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
+    private var cachedEpisodeCatalog: EpisodeCatalog? = null
+    internal fun episodeCatalog(id: String, config: Config): EpisodeCatalog =
+        cachedEpisodeCatalog?.takeIf { it.id == id && it.config == config }
+            ?: EpisodeCatalog(id, config).also { cachedEpisodeCatalog = it }
+
     val isTv=app.packageName.endsWith(".tv")
     val remote=dev.mjwatch.playback.RemotePlaybackService.state
     val canStartPlayback get()=isTv||!state.value.remotePlayback||remote.value.canLaunch&&remote.value.profileKey==state.value.config.profileKey
@@ -66,7 +72,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         var first=true;var provider:String?=null
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
             val changed=state.value.config.profileKey!=c.profileKey
-            if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="",openDownloadsRequested=false)}}
+            if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="",openDownloadsRequested=false)}}
             update {it.copy(initializing=false,config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first&&it.page!="invitation-register") if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
             if(provider!="${c.profileKey}:${c.metadataProvider}") {provider="${c.profileKey}:${c.metadataProvider}";refreshCatalog()}
             first=false
@@ -88,9 +94,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun preferencesChanged(){val c=state.value.config;val prefs=getApplication<Application>().getSharedPreferences("playback-preferences",0);managed.storePreferences(c);if(c.historyEnabled)viewModelScope.launch(Dispatchers.IO){managed.record(c,"preferences","profile",org.json.JSONObject().put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null)))}}
     fun legacyHandled(){update {it.copy(legacyHistoryRecords=0)}}
     fun discardDraft() {draftConfig=null;draftKey="";draftUser="";draftPassword="";draftMetadata=""}
-    fun page(page:String) { cancel(); update { it.copy(page=page,message="",openDownloadsRequested=false) };if(page in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(page)} }
+    fun page(page:String) { detailOrigin=null; cancel(); update { it.copy(page=page,message="",openDownloadsRequested=false) };if(page in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(page)} }
     fun openDownloads() {
         if(isTv) return
+        detailOrigin=null
         cancel()
         update {it.copy(page="library",message="",openDownloadsRequested=true)}
         viewModelScope.launch {settings.destination("library")}
@@ -99,6 +106,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun back() {
         if(state.value.page=="invitation-register"){if(invitation.state.value.busy)return;invitation.dismiss()}
         val s=state.value;cancel()
+        if(s.page in setOf("preparing","files") && detailOrigin!=null) {
+            playerClosed()
+            return
+        }
         val target=when {s.page=="server-update"->"server-maintenance";s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-pairing")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="",openDownloadsRequested=false)}
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
@@ -127,7 +138,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
     }
     fun search(query:String) {
-        cancel(); pageIndex=0; val token=generation; update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==query.trim()},metadata=emptyList(),results=emptyList(),more=false,releaseSeason=null,releaseEpisode=null,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
+        cancel(); pageIndex=0; val token=generation; update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==query.trim()},metadata=emptyList(),results=emptyList(),more=false,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
         if(query.trim().length<2) { update { it.copy(results=emptyList()) }; return }
         work=viewModelScope.launch {
             delay(400)
@@ -158,18 +169,34 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun metadata(item:Metadata,focusKey:String=item.id,cache:Boolean=true) {
-        cancel();update {it.copy(selectedMetadata=item,selected=null,remotePlayback=false,downloadSelection=false,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
+        detailOrigin=null
+        cancel();update {it.copy(selectedMetadata=item,selected=null,episodeTargetId=null,episodeDownload=false,remotePlayback=false,downloadSelection=false,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled){if(cache)dao.put(CachedMetadata("${c.scope}:${item.id}",item.json(),System.currentTimeMillis()));managed.record(c,"opening",item.id,LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id).syncJson())}}
     }
+    private data class DetailOrigin(val release:Release?, val focusKey:String)
+    private var detailOrigin:DetailOrigin?=null
+    private var detailSourceKey:Pair<Config,String>?=null
+    private var detailSourceResult:SearchResult?=null
+
+    /** Look up sources for the detail tab without replacing the user's search results. */
+    suspend fun titleReleases(title:String,refresh:Boolean=false):SearchResult {
+        val key=state.value.config to title
+        if(!refresh && detailSourceKey==key) detailSourceResult?.let {return it}
+        val repository=repositories().first
+        return withContext(Dispatchers.IO) {repository.search(title)}.also {result ->
+            detailSourceKey=key
+            detailSourceResult=result
+        }
+    }
     fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title);update {it.copy(page="releases")}}
-    fun findEpisodeReleases(item:Metadata,season:Int,episode:Int) {
+    fun findEpisodeReleases(item:Metadata,season:Int,episode:Int,targetId:String?=null,download:Boolean=false) {
         search(item.title)
-        update {it.copy(selectedMetadata=item,page="releases",releaseSeason=season,releaseEpisode=episode)}
+        update {it.copy(selectedMetadata=item,page="releases",releaseSeason=season,releaseEpisode=episode,episodeTargetId=targetId,episodeDownload=download,resumePath=null)}
     }
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
-        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,remotePlayback=false,downloadSelection=false,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
+        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,episodeTargetId=null,episodeDownload=false,remotePlayback=false,downloadSelection=false,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled) {
             secrets.put("release:${c.scope}:${release.id}",release.json())
@@ -189,6 +216,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }}
     fun resume(saved:Progress,onTv:Boolean=false) {
+        detailOrigin=null
         if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
         android.util.Log.d("MJWatch","Resume requested")
         if(state.value.busy) return
@@ -241,9 +269,11 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun clearUndo() {update {it.copy(removed=null)}}
-    fun playRelease(release:Release,season:Int?,onTv:Boolean=false,download:Boolean=false) {
+    fun playRelease(release:Release,season:Int?,onTv:Boolean=false,download:Boolean=false,fromDetailTab:Boolean=false) {
         if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
+        val origin=if(fromDetailTab) DetailOrigin(state.value.selected,state.value.focusKey) else null
         if(state.value.selected?.id!=release.id)open(release)
+        detailOrigin=origin
         update {it.copy(remotePlayback=onTv,downloadSelection=download,releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
         prepare()
     }
@@ -269,7 +299,13 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             } catch(e:Exception) { if(token==generation) update { it.copy(busy=false,message=safeError(e)) } }
         }
     }
-    fun playerClosed() {update {it.copy(page="detail")}}
+    fun playerClosed() {
+        val origin=detailOrigin
+        detailOrigin=null
+        update {if(origin==null) it.copy(page="detail") else it.copy(page="detail",selected=origin.release,
+            focusKey=origin.focusKey,message="",handle=null,releaseSeason=null,releaseEpisode=null,resumePath=null,
+            remotePlayback=false,downloadSelection=false,episodeTargetId=null,episodeDownload=false)}
+    }
     fun stream(file:TorrentFile): StreamRequest = repositories().second.stream(state.value.handle!!,file)
     fun check(jackett:Boolean,c:Config,key:String,user:String,password:String) {
         val revision=checkRevision;checkJobs[jackett]?.cancel()

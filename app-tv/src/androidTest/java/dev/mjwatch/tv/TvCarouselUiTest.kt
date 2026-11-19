@@ -68,7 +68,7 @@ class TvCarouselUiTest {
         val lower=compose.onNodeWithTag("home-shelf-catalog").fetchSemanticsNode().boundsInRoot
         val expectedGap=32f*compose.activity.resources.configuration.screenWidthDp/1280f*compose.activity.resources.displayMetrics.density
         Assert.assertEquals(expectedGap,lower.top-upper.bottom,2f)
-        compose.onNodeWithText("Сезон 2 · Серия 4").assertIsDisplayed()
+        compose.onNodeWithText("С2 · Серия 4",substring=true).assertIsDisplayed()
         compose.onNodeWithText("OK",substring=true).assertDoesNotExist()
         compose.onNodeWithText("Каталог из кеша").assertDoesNotExist()
         capture("home-compact-shelves")

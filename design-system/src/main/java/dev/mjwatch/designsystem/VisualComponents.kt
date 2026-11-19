@@ -130,11 +130,11 @@ internal fun Release.displayTitle()=when(id) {"demo:orbit"->"Тихая орби
 internal fun fileLabel(path:String):String=path.substringAfterLast('/').substringBeforeLast('.')
 internal fun sizeLabel(bytes:Long?)=bytes?.let {if(it>=1_000_000_000) "%.1f ГБ".format(it/1e9) else "%.1f МБ".format(it/1e6)} ?: "Размер не указан"
 internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фильм"
-@Composable internal fun WatchTabs(labels:List<String>,selected:String,tv:Boolean=false,selectedFocus:FocusRequester?=null,onSelect:(String)->Unit) {
+@Composable internal fun WatchTabs(labels:List<String>,selected:String,tv:Boolean=false,selectedFocus:FocusRequester?=null,tabTag:(String)->String?={null},onSelect:(String)->Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(if(tv) 16.dp else 20.dp)) {
         labels.forEach {label->
             val active=selected==label
-            Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).then(if(active&&selectedFocus!=null)Modifier.focusRequester(selectedFocus) else Modifier).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
+            Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).then(tabTag(label)?.let { Modifier.testTag(it) } ?: Modifier).then(if(active&&selectedFocus!=null)Modifier.focusRequester(selectedFocus) else Modifier).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
                 Text(label,color=if(active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=if(tv) 18.sp else 14.sp,lineHeight=if(tv) 24.sp else 20.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(vertical=12.dp))
                 Box(Modifier.height(3.dp).widthIn(min=32.dp).fillMaxWidth().background(if(active) MaterialTheme.colorScheme.primary else Color.Transparent))
             }

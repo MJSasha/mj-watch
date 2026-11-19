@@ -1,5 +1,7 @@
 package dev.mjwatch.mobile
 
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -40,9 +42,13 @@ class OpenIssuesUiTest {
         val series=ui.onNodeWithTag("library-demo:series").getUnclippedBoundsInRoot()
         Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
         val poster=ui.onNodeWithTag("library-poster-demo:series",useUnmergedTree=true).getUnclippedBoundsInRoot()
-        Assert.assertEquals(2f/3f,((poster.right-poster.left)/(poster.bottom-poster.top)),0.01f)
+        Assert.assertEquals(series.left.value,poster.left.value,1f)
+        Assert.assertEquals(series.height.value,poster.height.value,1f)
+        Assert.assertEquals(84f,poster.width.value,1f)
+        ui.onNodeWithText("С2 · Серия 3 · 1 из 5 мин").assertExists()
+        ui.onNodeWithText("1 из 5 мин").assertExists()
         capture("cards")
-        ui.onNodeWithContentDescription("Действия с «Сериал с длинным названием»").performClick()
+        ui.onNodeWithTag("library-demo:series").performTouchInput {longClick()}
         ui.onNodeWithText("Удалить").assertIsDisplayed()
         ui.onNodeWithText("Отмена").assertIsDisplayed()
         capture("history-dialog")
