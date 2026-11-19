@@ -11,7 +11,7 @@ import okhttp3.Credentials
 
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
-    val remotePlayback:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
+    val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
 class WatchModel(app:Application): AndroidViewModel(app) {
     val isTv=app.packageName.endsWith(".tv")
     val remote=dev.mjwatch.playback.RemotePlaybackService.state
@@ -92,7 +92,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun back() {
         if(state.value.page=="invitation-register"){if(invitation.state.value.busy)return;invitation.dismiss()}
         val s=state.value;cancel()
-        val target=when {s.page=="server-update"->"server-maintenance";s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-pairing")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
+        val target=when {s.page=="server-update"->"server-maintenance";s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-pairing")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page=="downloads" -> "library";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="")}
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
@@ -151,7 +151,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun metadata(item:Metadata,focusKey:String=item.id,cache:Boolean=true) {
-        cancel();update {it.copy(selectedMetadata=item,selected=null,remotePlayback=false,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
+        cancel();update {it.copy(selectedMetadata=item,selected=null,remotePlayback=false,downloadSelection=false,resumePath=null,releaseSeason=null,releaseEpisode=null,page="detail",originPage=if(it.page in setOf("home","search","library","history")) it.page else it.originPage,focusKey=focusKey,handle=null)}
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled){if(cache)dao.put(CachedMetadata("${c.scope}:${item.id}",item.json(),System.currentTimeMillis()));managed.record(c,"opening",item.id,LibraryEntry(item.id,item.title,"TMDB",System.currentTimeMillis(),metadataId=item.id).syncJson())}}
     }
@@ -162,7 +162,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
-        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,remotePlayback=false,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
+        cancel(); update { it.copy(selectedMetadata=metadata,selected=release,remotePlayback=false,downloadSelection=false,resumePath=null,page="detail",originPage=if(it.page in listOf("search","home","library","history")) it.page else it.originPage,focusKey=if(it.page=="releases"&&metadata!=null) it.focusKey else focusKey,handle=null,message="") }
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled) {
             secrets.put("release:${c.scope}:${release.id}",release.json())
@@ -234,10 +234,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun clearUndo() {update {it.copy(removed=null)}}
-    fun playRelease(release:Release,season:Int?,onTv:Boolean=false) {
+    fun playRelease(release:Release,season:Int?,onTv:Boolean=false,download:Boolean=false) {
         if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
         if(state.value.selected?.id!=release.id)open(release)
-        update {it.copy(remotePlayback=onTv,releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
+        update {it.copy(remotePlayback=onTv,downloadSelection=download,releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
         prepare()
     }
     fun prepare() {
