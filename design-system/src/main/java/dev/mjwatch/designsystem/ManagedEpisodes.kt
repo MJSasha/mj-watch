@@ -37,6 +37,17 @@ internal data class Episode(val number: Int, val name: String, val minutes: Int 
 internal class EpisodeCatalog(val id: String, val config: Config) {
     var seasons: List<Int>? = null
     val episodes = android.util.LruCache<Int, List<Episode>>(4)
+    val demo = id == "demo:series" && config.demo
+    init {
+        if (demo) {
+            val files = DemoGateway.files.filter { it.video && !it.sample }.map { episodeNumber(it.path) }
+                .filter { it.season != null && it.episode != null }.groupBy { it.season!! }
+            seasons = files.keys.sorted()
+            files.forEach { (season, numbers) ->
+                episodes.put(season, numbers.mapNotNull { it.episode }.distinct().sorted().map { Episode(it, "Серия $it") })
+            }
+        }
+    }
 }
 
 private fun JSONObject.rows(key: String): List<JSONObject> {
@@ -67,7 +78,7 @@ private fun episodeStill(path: String, config: Config): String? {
     header: @Composable () -> Unit = {}
 ) {
     val catalog = remember(item.id, config) { model.episodeCatalog(item.id, config) }
-    var season by rememberSaveable(item.id) { mutableStateOf<Int?>(null) }
+    var season by rememberSaveable(item.id) { mutableStateOf(catalog.seasons?.firstOrNull().takeIf { catalog.demo }) }
     var seasons by remember(catalog) { mutableStateOf(catalog.seasons) }
     var episodes by remember(catalog, season) { mutableStateOf(season?.let { catalog.episodes.get(it) }) }
     var message by remember(item.id, config, season) { mutableStateOf("") }
@@ -75,13 +86,13 @@ private fun episodeStill(path: String, config: Config): String? {
     var menu by remember(item.id, season) { mutableStateOf<Episode?>(null) }
     var connectFor by remember(item.id, season) { mutableStateOf<Episode?>(null) }
     val positions = remember(progress) { progress.sortedBy { it.updatedAt }.associateBy { episodeNumber(it.path) } }
-    val demo = item.id == "demo:series" && config.demo
 
     LaunchedEffect(item.id, config, season, retry) {
         message = ""
+        if (catalog.demo) return@LaunchedEffect
         try {
             val available = seasons ?: withContext(Dispatchers.IO) {
-                if (demo) listOf(1) else fetchTvMetadata(item, config, model).rows("seasons")
+                fetchTvMetadata(item, config, model).rows("seasons")
                     .map { it.getInt("season_number") }.distinct().sortedWith(compareBy<Int> { it == 0 }.thenBy { it })
             }.also { catalog.seasons = it; seasons = it }
             val number = season
@@ -89,10 +100,7 @@ private fun episodeStill(path: String, config: Config): String? {
                 season = positions.filterKeys { it.season in available }.maxByOrNull { it.value.updatedAt }?.key?.season ?: available.first()
             } else if (number != null && number in available && episodes == null) {
                 episodes = withContext(Dispatchers.IO) {
-                    if (demo) {
-                        DemoGateway.status(item.id).files.filter { it.video && !it.sample }
-                            .mapNotNull { episodeNumber(it.path).episode }.distinct().sorted().map { Episode(it, "Серия $it") }
-                    } else fetchTvMetadata(item, config, model, number).rows("episodes").map { row ->
+                    fetchTvMetadata(item, config, model, number).rows("episodes").map { row ->
                         val episode = row.getInt("episode_number")
                         val name = row.optString("name").takeUnless { it.isBlank() || it == "null" } ?: "Серия $episode"
                         Episode(episode, name, row.optInt("runtime"), episodeStill(row.optString("still_path"), config))
@@ -140,7 +148,7 @@ private fun episodeStill(path: String, config: Config): String? {
                     Row(Modifier.fillMaxWidth().padding(horizontal = inset), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         group.forEach { episode ->
                             val position = positions[EpisodeNumber(season, episode.number)]
-                            EpisodeTile(item, episode, position, demo, tv, Modifier.weight(1f),
+                            EpisodeTile(item, episode, position, catalog.demo, tv, Modifier.weight(1f),
                                 onMenu = { menu = episode }, onPlay = {
                                     if (position != null && !position.completed && position.positionMs > 0) model.resume(position)
                                     else releases(episode)
