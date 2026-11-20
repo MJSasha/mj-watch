@@ -45,16 +45,13 @@ internal interface OfflineDao {
     @Query("SELECT * FROM downloads WHERE profile = :profile AND id = :id")
     suspend fun get(profile: String, id: String): OfflineRecord?
 
-    @Query("SELECT * FROM downloads WHERE state IN ('QUEUED', 'DOWNLOADING') ORDER BY createdAt, id LIMIT 1")
-    suspend fun next(): OfflineRecord?
+    @Query("SELECT * FROM downloads WHERE profile = :profile AND state IN ('QUEUED', 'DOWNLOADING') ORDER BY createdAt, id LIMIT 1")
+    suspend fun next(profile: String): OfflineRecord?
 
     @Upsert suspend fun put(record: OfflineRecord)
 
     @Query("UPDATE downloads SET state = :state, bytesDownloaded = :bytes, error = :error WHERE id = :id")
     suspend fun update(id: String, state: OfflineState, bytes: Long, error: String? = null)
-
-    @Query("UPDATE downloads SET state = 'FAILED', error = :message WHERE state IN ('QUEUED', 'DOWNLOADING')")
-    suspend fun interrupt(message: String)
 
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun delete(id: String)

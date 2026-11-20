@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -77,6 +78,29 @@ internal suspend fun transferOfflineFile(
             }
         } finally {
             stopCall.cancel()
+        }
+    }
+}
+
+
+internal suspend fun retryOfflineTransfer(onRetry: () -> Unit, transfer: suspend () -> Unit) {
+    val delays = longArrayOf(1_000, 3_000, 8_000)
+    var attempt = 0
+    while (true) {
+        try {
+            transfer()
+            return
+        } catch (e: IOException) {
+            currentCoroutineContext().ensureActive()
+            val transient = when (e) {
+                is HttpFailure -> e.status in setOf(408, 429, 500, 502, 503, 504)
+                is EOFException, is java.net.SocketTimeoutException, is java.net.SocketException,
+                is java.net.UnknownHostException, is java.net.ProtocolException -> true
+                else -> false
+            }
+            if (!transient || attempt == delays.size) throw e
+            onRetry()
+            delay(maxOf(delays[attempt++], (e as? HttpFailure)?.retryAfterSeconds?.coerceIn(0, 60)?.times(1000) ?: 0))
         }
     }
 }
