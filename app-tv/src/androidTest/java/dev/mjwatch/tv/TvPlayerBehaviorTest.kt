@@ -2,6 +2,9 @@
 package dev.mjwatch.tv
 
 import android.content.Intent
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.view.KeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.key.Key
@@ -73,9 +76,9 @@ class TvPlayerBehaviorTest {
         }
         compose.waitForIdle()
     }
-    private fun launch(series:Boolean=false,title:String="TV remote regression",label:String="1.mp4"):PlaybackActivity {
+    private fun launch(series:Boolean=false,title:String="TV remote regression",label:String="1.mp4",episodeCount:Int=if(series) 2 else 1):PlaybackActivity {
         val c=instrumentation.targetContext
-        val queue=(1..if(series)2 else 1).map {PlaybackEpisode("asset:///demo.mp4",if(series&&it>1)"$it.mp4" else label,it)}
+        val queue=(1..episodeCount).map {PlaybackEpisode("asset:///demo.mp4",if(series&&it>1)"$it.mp4" else label,it)}
         c.startActivity(Intent(c,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",queue.first().uri).putExtra("title",title).putExtra("mobile",false).putExtra("path",queue.first().path).putExtra("fileId",1).putExtra("episodes",PlaybackEpisode.encode(queue)))
         var a:PlaybackActivity?=null
         compose.waitUntil(20000) {instrumentation.runOnMainSync {a=activity()?.takeIf {it.firstFrameSeen}};a!=null}
@@ -166,6 +169,46 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {var gone=false;instrumentation.runOnMainSync {gone=activity()==null};gone}
         compose.onNodeWithText("История").assertExists()
+    }
+    private fun withSystemController(block:(MediaController)->Unit) {
+        val context=instrumentation.targetContext
+        instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.MEDIA_CONTENT_CONTROL")
+        try {
+            val manager=context.getSystemService(MediaSessionManager::class.java)
+            var controller:MediaController?=null
+            compose.waitUntil(5000) {
+                controller=manager.getActiveSessions(null).firstOrNull {it.packageName==context.packageName && it.playbackState!=null}
+                controller!=null
+            }
+            block(controller!!)
+        } finally {instrumentation.uiAutomation.dropShellPermissionIdentity()}
+    }
+    @Test fun systemNextPlaysTheFollowingEpisodeAndDisappearsAtTheEnd() {
+        val a=launch(series=true,episodeCount=3)
+        withSystemController {controller->
+            for(file in 2..3) {
+                compose.waitUntil(5000) {checkNotNull(controller.playbackState).actions and PlaybackState.ACTION_SKIP_TO_NEXT!=0L}
+                controller.transportControls.skipToNext()
+                compose.waitUntil(10000) {
+                    var playing=false
+                    instrumentation.runOnMainSync {playing=a.intent.getIntExtra("fileId",0)==file && a.firstFrameSeen}
+                    playing
+                }
+            }
+            compose.waitUntil(5000) {checkNotNull(controller.playbackState).actions and PlaybackState.ACTION_SKIP_TO_NEXT==0L}
+            controller.transportControls.skipToNext()
+            instrumentation.waitForIdleSync()
+            Assert.assertEquals(3,a.intent.getIntExtra("fileId",0))
+        }
+    }
+    @Test fun systemNextIsUnavailableForStandaloneFilm() {
+        val a=launch()
+        withSystemController {controller->
+            Assert.assertEquals(0L,checkNotNull(controller.playbackState).actions and PlaybackState.ACTION_SKIP_TO_NEXT)
+            controller.transportControls.skipToNext()
+            instrumentation.waitForIdleSync()
+            Assert.assertEquals(1,a.intent.getIntExtra("fileId",0))
+        }
     }
     @Test fun hardwareEpisodeChangeIsSingleAndRecreationPreservesPausePositionAndSpeed() {
         var a=launch(true)
