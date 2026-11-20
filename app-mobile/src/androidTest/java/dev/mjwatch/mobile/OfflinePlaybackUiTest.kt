@@ -175,7 +175,7 @@ class OfflinePlaybackUiTest {
             ui.onNodeWithTag("detail-offline").assertIsDisplayed().performClick()
             awaitPlaying(movie.fileId, checkNotNull(runBlocking { store.localFile(config, movie.id) }))
             assertNull(connectivity.activeNetwork)
-            device.pressBack()
+            leavePlayer()
             awaitTag("detail-offline")
             ui.onNode((hasText("Моё") or hasContentDescription("Моё")) and hasClickAction()).performClick()
             ui.onNodeWithText("Загрузки").performClick()
@@ -193,7 +193,7 @@ class OfflinePlaybackUiTest {
                 awaitPlaying(id,file)
                 assertNull(connectivity.activeNetwork)
                 if(id==17)capture("$viewport-player")
-                device.pressBack()
+                leavePlayer()
                 awaitTag("offline-list")
             }
         }
@@ -227,6 +227,14 @@ class OfflinePlaybackUiTest {
                 secrets.put(expiry,"")
                 runBlocking {Settings(context).save(previous)}
             }
+        }
+    }
+
+    private fun leavePlayer() {
+        instrumentation.runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<PlaybackActivity>().single()
+            activity.onBackPressedDispatcher.onBackPressed()
         }
     }
 
