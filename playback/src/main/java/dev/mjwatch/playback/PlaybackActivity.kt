@@ -79,7 +79,7 @@ class PlaybackActivity : ComponentActivity() {
                 "stop"->stopActivePlayback()
             }
         }
-        fun stopActivePlayback() {active?.get()?.let {it.finalWrite=it.save();it.releasePlayer();it.finish()}}
+        fun stopActivePlayback() {active?.get()?.let {it.save();it.releasePlayer();it.finish()}}
     }
     private val offline get()=intent.getBooleanExtra(EXTRA_OFFLINE,false)
     private var episodes=emptyList<PlaybackEpisode>()
@@ -91,7 +91,8 @@ class PlaybackActivity : ComponentActivity() {
     private var controlsVisible by androidx.compose.runtime.mutableStateOf(true)
     private lateinit var overlay:androidx.compose.ui.platform.ComposeView
     private var released=false
-    private var finalWrite:Job?=null
+    private var lastProgressWrite:Job?=null
+    private var episodeCompleted=false
     private val decoderFallback=DecoderFallback()
     private var bufferPlan=PlaybackBuffer(4*1048576,4*1048576)
     private var bufferTargetBytes=4*1048576
@@ -119,7 +120,7 @@ class PlaybackActivity : ComponentActivity() {
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        active?.get()?.takeIf {it!==this}?.let {previous -> previous.finalWrite=previous.save();previous.releasePlayer();previous.finish()}
+        active?.get()?.takeIf {it!==this}?.let {previous -> previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         playbackSession=intent.getStringExtra("remoteSession") ?: playbackSession
@@ -254,7 +255,7 @@ class PlaybackActivity : ComponentActivity() {
         if(!offline&&!validStreamUri(episode.uri,config))return
         save()
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
-        firstFrame=false;firstFrameSeen=false;terminalError=false;retries=0
+        firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
@@ -344,11 +345,28 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
-    private fun save(ended:Boolean=false): Job? {
-        if(!::player.isInitialized||released||!firstFrame||playbackConfig?.historyEnabled!=true) return null
-        val duration=player.duration.takeIf { it>0 }; val position=player.currentPosition.coerceAtLeast(0)
-        val p=Progress(contentIdentity.ifBlank {"$releaseId|$path"},releaseId,fileId,path,position,duration,System.currentTimeMillis(),ended || duration?.let { position>=it*0.95 }==true)
-        return scope.launch { saveMutex.lock(); try { withContext(Dispatchers.IO) {val config=playbackConfig!!;if(Settings(applicationContext).config.first().profileKey!=config.profileKey)return@withContext;val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao());engine.enqueue("progress",p.key,p.syncJson(),playSession=playbackSession,sequence=++playbackSequence);if(!offline)runCatching {engine.sync()};Unit} } finally {saveMutex.unlock()} }
+    private fun save(ended:Boolean=false) {
+        val config=playbackConfig ?: return
+        if(!::player.isInitialized || released || !firstFrame || !config.historyEnabled) return
+        val duration=player.duration.takeIf { it>0 }
+        val position=player.currentPosition.coerceAtLeast(0)
+        episodeCompleted=episodeCompleted || ended || duration?.let { position>=it*0.95 }==true
+        val progress=Progress(contentIdentity.ifBlank {"$releaseId|$path"},releaseId,fileId,path,position,duration,System.currentTimeMillis(),episodeCompleted)
+        val sessionId=playbackSession
+        val sequence=++playbackSequence
+        lastProgressWrite=scope.launch {
+            saveMutex.lock()
+            try {
+                withContext(Dispatchers.IO) {
+                    if(Settings(applicationContext).config.first().profileKey!=config.profileKey) return@withContext
+                    val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao())
+                    engine.enqueue("progress",progress.key,progress.syncJson(),playSession=sessionId,sequence=sequence)
+                    if(!offline) runCatching {engine.sync()}
+                }
+            } finally {
+                saveMutex.unlock()
+            }
+        }
     }
     private fun tracks() {
         if(!::player.isInitialized) return
@@ -386,7 +404,7 @@ class PlaybackActivity : ComponentActivity() {
         }
         dialog.listView.selector=android.graphics.drawable.InsetDrawable(focus,(2*density).toInt())
     }
-    private fun exitPlayback() {finalWrite=save();finish()}
+    private fun exitPlayback() {save();finish()}
     private fun videoSettings() {
         if(!::player.isInitialized||released)return
         val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
@@ -428,9 +446,10 @@ class PlaybackActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
-    private fun releasePlayer() {if(!released) {released=true;recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
+    private fun releasePlayer() {if(!released) {released=true;episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
-        val pending=save() ?: finalWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
+        save()
+        val pending=lastProgressWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
         if(active?.get()===this) active=null
         // Finish the final atomic Room write before closing the database.
         scope.launch { pending?.join(); db.close(); scope.cancel() }

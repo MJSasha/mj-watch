@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.tv
 
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
@@ -56,7 +58,13 @@ class NovemberIssuesUiTest {
         compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-fixture:film"))
         val film=compose.onNodeWithTag("library-fixture:film").getUnclippedBoundsInRoot()
         val series=compose.onNodeWithTag("library-fixture:series").getUnclippedBoundsInRoot()
-        Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
+        val expectedHeight=(200f/1.14f)*compose.activity.resources.configuration.screenWidthDp/1280f
+        Assert.assertEquals(expectedHeight,film.height.value,1f)
+        Assert.assertEquals(expectedHeight,series.height.value,1f)
+        val artwork=compose.onNodeWithTag("library-poster-fixture:series",useUnmergedTree=true).getUnclippedBoundsInRoot()
+        Assert.assertEquals(series.left.value,artwork.left.value,1f)
+        Assert.assertEquals(series.height.value,artwork.height.value,1f)
+        Assert.assertTrue("Artwork shares the row with the caption",artwork.width < series.width/2f)
         capture("equal-continue-cards")
     }
     private fun capture(name:String) {
@@ -67,7 +75,7 @@ class NovemberIssuesUiTest {
     }
     @Test fun episodeAndHistoryDeletion() {
         val m=model()
-        compose.onNodeWithText("Сезон 2 · Серия 3").assertIsDisplayed()
+        compose.onNodeWithText("С2 · Серия 3",substring=true).assertIsDisplayed()
         capture("history-episode")
         val card=compose.onNodeWithText("Тест истории")
         card.performSemanticsAction(SemanticsActions.RequestFocus)

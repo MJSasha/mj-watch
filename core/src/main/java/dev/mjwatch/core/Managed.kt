@@ -41,7 +41,11 @@ data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val hi
   entities.forEach {e->if(pending.none {it.kind==e.kind&&it.entityKey==e.entityKey}) put(e)}
   put(cursor)
  }
- @Transaction suspend fun acknowledged(pending:OutboxEntry,entity:SyncEntity) {acknowledge(pending.id);put(entity)}
+ @Transaction suspend fun acknowledged(event:OutboxEntry,server:SyncEntity) {
+  acknowledge(event.id)
+  val newest=pending(server.scope).lastOrNull {it.kind==server.kind && it.entityKey==server.entityKey}
+  put(if(newest==null) server else server.copy(json=newest.json,deleted=newest.operation=="delete"))
+ }
 }
 /** The private CA is scoped to the managed origin; other integrations keep system trust. */
 fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpClient {
@@ -111,7 +115,7 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
  private fun parse(j:JSONObject):List<Metadata> {val a=j.optJSONArray("results") ?: JSONArray();return (0 until a.length()).mapNotNull {index->val v=a.getJSONObject(index);val kind=v.optString("media_type");if(kind !in setOf("movie","tv")) null else {
   fun image(k:String)=v.optString(k).takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/api/v1/").let {p->"api/v1/$p"}).toString()}
   val genres=v.optJSONArray("genre_ids") ?: JSONArray()
-  Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"))
+  Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"),v.primaryGenre(),v.runtimeMinutes())
  }}}
  override suspend fun search(query:String)=parse(api.authorized("metadata/search?query="+java.net.URLEncoder.encode(query,"UTF-8")))
  override suspend fun home()=parse(api.authorized("metadata/home"))

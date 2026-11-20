@@ -30,11 +30,46 @@ class MetadataFlowTest {
     compose.onNodeWithText(item.overview!!).assertExists()
     compose.onNodeWithContentDescription("В «Буду смотреть»").performClick()
     compose.waitUntil(5000) {model.library.value.any {it.id==item.id&&it.bookmarked}}
+    compose.onNodeWithText("Похожие").performClick()
     compose.onNodeWithText("Раздачи").performClick()
-    compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText(DemoReleases.items.first().title))
+    val releases = compose.onNodeWithTag("release-list")
+    val expected = hasText(DemoReleases.items.first().title)
+    compose.waitUntil(10000) {
+        try {
+            releases.performScrollToNode(expected)
+            true
+        } catch (_: AssertionError) {
+            false
+        }
+    }
     compose.onNodeWithText(DemoReleases.items.first().title).performClick()
     compose.onNodeWithTag("source-continue").assertIsDisplayed()
+    compose.runOnIdle { Assert.assertEquals("detail", model.state.value.page) }
     compose.runOnIdle {Assert.assertTrue(model.library.value.any {it.id==item.id&&it.bookmarked});Assert.assertFalse(model.library.value.any {it.id==DemoReleases.items.first().id});Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)}
+ }
+ @Test fun episodeGridAndActionMenu() {
+    lateinit var model: WatchModel
+    compose.runOnIdle { model = ViewModelProvider(compose.activity)[WatchModel::class.java] }
+    compose.waitUntil(10000) { model.state.value.catalog.any { it.id == item.id } }
+    val release = DemoReleases.items.single { it.id == "demo:series" }
+    compose.runOnIdle {
+        model.open(release, metadata = Metadata(release.id, "Тестовый сериал", null, null, kind = "tv"))
+    }
+    compose.waitUntil(10000) { compose.onAllNodesWithTag("season-selector").fetchSemanticsNodes().isNotEmpty() }
+    val grid = compose.onNodeWithTag("detail-episode-grid")
+    grid.performScrollToNode(hasTestTag("episode-1"))
+    val banner = compose.onNodeWithTag("episode-banner-1", useUnmergedTree = true).getUnclippedBoundsInRoot()
+    val badge = compose.onNodeWithContentDescription("Серия 1", useUnmergedTree = true).getUnclippedBoundsInRoot()
+    Assert.assertTrue(badge.left > banner.left && badge.top > banner.top)
+    Assert.assertTrue(badge.right < (banner.left + banner.right) / 2)
+    val first = compose.onNodeWithTag("episode-1").getUnclippedBoundsInRoot()
+    val second = compose.onNodeWithTag("episode-2").getUnclippedBoundsInRoot()
+    Assert.assertEquals(first.top.value, second.top.value, 1f)
+    Assert.assertTrue(first.right <= second.left)
+    compose.onNodeWithTag("episode-menu-2").performClick()
+    compose.onNodeWithText("Сезон 1 · Серия 2").assertIsDisplayed()
+    compose.onNodeWithText("Скачать").assertExists()
+    androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+    compose.onNodeWithTag("episode-2").assertIsDisplayed()
  }
 }

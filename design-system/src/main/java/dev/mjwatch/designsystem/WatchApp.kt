@@ -6,6 +6,7 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -21,13 +22,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -140,8 +141,31 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&top&&state.configured&&!imeVisible) {
-                Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
+            val detailNav=state.page=="detail" && !rail && width<600 && LocalConfiguration.current.screenHeightDp>=480 &&
+                (LocalConfiguration.current.fontScale<1.5f || LocalConfiguration.current.screenHeightDp>=740)
+            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&(top||detailNav)&&state.configured&&!imeVisible) {
+                if(detailNav) {
+                    val navBackground=if(colors.background.luminance()<.5f) androidx.compose.ui.graphics.Color(0xff0c1015) else colors.background
+                    Column(Modifier.background(navBackground).windowInsetsPadding(WindowInsets.navigationBars)) {
+                        HorizontalDivider(color=colors.onSurface.copy(alpha=.12f))
+                        val columns=if(LocalConfiguration.current.fontScale>=1.5f&&width<512) 2 else destinations.size
+                        destinations.chunked(columns).forEach { row ->
+                            Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                row.forEach {d->
+                                    val selected=d.id==state.originPage || d.id=="library"&&state.originPage=="history"
+                                    val tint=if(selected)colors.primary else colors.onSurfaceVariant
+                                    Column(Modifier.weight(1f).heightIn(min=52.dp).clip(RoundedCornerShape(12.dp))
+                                        .background(if(selected) colors.primary.copy(alpha=.10f) else navBackground)
+                                        .selectable(selected,role=Role.Tab,onClick={model.page(d.id)}).padding(horizontal=2.dp,vertical=3.dp),
+                                        verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+                                        Icon(d.icon,null,Modifier.size(22.dp),tint=tint)
+                                        Text(d.title,fontSize=11.sp,lineHeight=15.sp,color=tint,maxLines=1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
                     val fontScale=LocalConfiguration.current.fontScale
                     val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
                     destinations.chunked(columns).forEach {row->
@@ -234,7 +258,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
     Button(onClick=onClick,enabled=enabled&&!loading,modifier=(if(LocalConfiguration.current.screenWidthDp>=600) Modifier.widthIn(max=320.dp) else Modifier).then(modifier).semantics {if(loading){stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}}.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
 }
-@Composable private fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
+@Composable internal fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     val short=!tv&&LocalConfiguration.current.screenHeightDp<480
     Column(Modifier.fillMaxWidth().padding(vertical=if(short) 8.dp else 36.dp),verticalArrangement=Arrangement.spacedBy(if(short) 12.dp else 20.dp)) {
         if(!short) Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.surface,RoundedCornerShape(22.dp)),contentAlignment=Alignment.Center) {Icon(Icons.Outlined.SearchOff,null,Modifier.size(36.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
@@ -313,7 +337,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         "continue"->{
                             Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить просмотр")}
                             TvCarousel(inset,14.dp,up=if(hasCategories)tabsFocus else null) {items(continuing,key={it.entry.id}) {e->
-                                Box(Modifier.width(tvUnit(254f))) {LibraryCard(e,progress,model,true,wide=true,
+                                Box(Modifier.width(tvUnit(512f))) {LibraryCard(e,progress,model,true,
                                     restoreFocus=restoreCard=="library:${e.entry.id}",onFocus={lastCard="library:${e.entry.id}";e.metadata?.let {featured=it.id}})}
                             }}
                         }
@@ -385,7 +409,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             }
             val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
             if(continuing.isNotEmpty()) {
-                item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить","") {model.page("history")}}}
+                item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить","Вся история") {model.page("history")}}}
                 items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                         row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,progress,model,false)}}
@@ -459,7 +483,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(uri!=null) key(m.id,uri) {AsyncImage(model=uri,imageLoader=loader,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Crop)}
     }
 }
-@Composable private fun MetadataCard(m:Metadata,c:Config,tv:Boolean,restoreFocus:Boolean=false,onFocus:(()->Unit)?=null,onClick:()->Unit) {
+@Composable internal fun MetadataCard(m:Metadata,c:Config,tv:Boolean,restoreFocus:Boolean=false,onFocus:(()->Unit)?=null,onClick:()->Unit) {
     val requester=remember {FocusRequester()};var focused by remember {mutableStateOf(false)}
     LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
     LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
@@ -472,86 +496,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
-@Composable private fun DetailScreen(s:WatchState,entries:List<LibraryEntry>,progress:List<Progress>,model:WatchModel,tv:Boolean,compact:Boolean=false) {
-    val r=s.selected;val m=s.selectedMetadata
-    if(r==null&&m==null) return
-    val title=m?.title ?: r!!.displayTitle()
-    val id=m?.id ?: r!!.id
-    val linked=entries.filter {m!=null&&it.metadataId==m.id}.map {it.id}.toSet()
-    val saved=progress.filter {it.positionMs>0&&!it.completed&&(it.releaseId==r?.id||it.releaseId in linked)}.maxByOrNull {it.updatedAt}
-    val bookmarked=entries.any {it.id==id&&it.bookmarked}
-    var tab by rememberSaveable {mutableStateOf("О фильме")}
-    val inset=if(tv) tvUnit(40f) else 20.dp
-    val primaryFocus=remember {FocusRequester()}
-    LaunchedEffect(id) {if(tv) {delay(100);primaryFocus.requestFocus()}}
-    var bottomHeight by remember {mutableIntStateOf(0)}
-    val bottomSpace=with(LocalDensity.current) {bottomHeight.toDp()}
-    val hasArt=(m!=null&&s.config.metadataProvider=="tmdb"&&(m.backdrop!=null||m.poster!=null))||r?.id?.startsWith("demo:")==true
-    val choose:()->Unit={if(r==null) model.findReleases() else model.page("releases")}
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().padding(bottom=if(tv||compact) 0.dp else bottomSpace).verticalScroll(rememberScrollState()).padding(bottom=if(tv||compact) 24.dp else 16.dp)) {
-            Box(Modifier.fillMaxWidth().heightIn(min=if(!hasArt) 0.dp else if(tv) tvUnit(420f) else if(compact) 330.dp else 390.dp)) {
-                if(hasArt) {Artwork(m,s.config,Modifier.matchParentSize(),backdrop=true,demo=r?.id?.startsWith("demo:")==true);ArtScrim(Modifier.matchParentSize());if(tv) ArtScrim(Modifier.matchParentSize(),true)}
-                Column(Modifier.fillMaxWidth().heightIn(min=if(!hasArt) 0.dp else if(tv) tvUnit(420f) else if(compact) 330.dp else 390.dp)) {
-                Row(Modifier.fillMaxWidth().padding(inset).testTag("detail-toolbar"),horizontalArrangement=Arrangement.SpaceBetween) {
-                    IconButton(onClick={model.back()},modifier=Modifier.tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(!tv)RemoteCastButton(s,model,hasArt)
-                    IconButton(onClick={model.bookmark()},modifier=Modifier.size(48.dp).testTag("detail-bookmark").tvFocusRing(tv).background(if(hasArt) MaterialTheme.colorScheme.background.copy(alpha=.7f) else MaterialTheme.colorScheme.surface,RoundedCornerShape(24.dp))) {Icon(if(bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,if(bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»",tint=if(bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                if(!compact) Column(Modifier.padding(inset),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text(title,modifier=Modifier.testTag("detail-title"),fontSize=if(tv) 40.sp else if(m!=null) 32.sp else 24.sp,lineHeight=if(tv) 48.sp else if(m!=null) 38.sp else 30.sp,fontWeight=FontWeight.Bold,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=if(hasArt) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface)
-                    Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: "${r!!.source} · ${r.resolution}",color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=14.sp)
-                    if(!tv)Text(m?.overview?.takeIf {it.isNotBlank()} ?: "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=if(hasArt) androidx.compose.ui.graphics.Color(0xFFDCE1DD) else MaterialTheme.colorScheme.onSurfaceVariant)
-                    if(tv) WatchTheme(if(hasArt)"dark" else s.config.theme) {Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",true,Modifier.focusRequester(primaryFocus).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null) model.resume(saved) else choose()}
-                        if(saved!=null) Action("Раздачи",true,Modifier.testTag("detail-sources"),secondary=true,onClick=choose)
-                    }}
-                }
-            }
-            }
-            if(compact) Column(Modifier.padding(horizontal=32.dp,vertical=24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                Text(title,fontSize=28.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold)
-                Text(m?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: r!!.resolution,color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=13.sp)
-                Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null)model.resume(saved) else choose()}
-                    if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources")) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
-                }
-                RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart=saved?.let { progress -> { model.resume(progress,onTv=true) } })
-            }
-            Column((if(tv) Modifier else Modifier.widthIn(max=760.dp)).padding(horizontal=if(compact) 32.dp else inset),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-                WatchTabs(listOf("О фильме","Раздачи","Похожие"),tab,tv) {if(it=="Раздачи") choose() else tab=it}
-                if(tab=="Похожие") {
-                    val related=s.catalog.filter {it.id!=m?.id&&it.kind==m?.kind&&it.animation==m?.animation}
-                    if(related.isEmpty()) Empty("Похожих пока нет","Попробуйте поиск по названию",tv,onClick={model.page("search")})
-                    else {
-                        Text("Из того же раздела",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        val cards:androidx.compose.foundation.lazy.LazyListScope.()->Unit={items(related,key={it.id}) {item->Box(Modifier.width(156.dp)) {MetadataCard(item,s.config,tv) {model.metadata(item)}}}}
-                        if(tv) TvCarousel(content=cards) else LazyRow(horizontalArrangement=Arrangement.spacedBy(16.dp),content=cards)
-                    }
-                } else {
-                if(tv||compact)Text(m?.overview?.takeIf {it.isNotBlank()} ?: if(r?.id?.startsWith("demo:")==true) "Демонстрация MJWatch с локальным тестовым видео. Проверьте выбор раздачи, файлов и управление плеером. История и позиции доступны после подключения сервера MJWatch." else "Описание недоступно. Вы можете перейти к выбору раздачи.",fontSize=16.sp,lineHeight=25.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(m?.kind=="tv"&&s.config.managed) ManagedEpisodes(m,s.config,model,tv)
-                if(r!=null&&m==null) {Text("Исходное название",fontWeight=FontWeight.Bold);Text(r.title,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Свойства дорожек и устройства проверяются при воспроизведении.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                saved?.let {p->Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text("Вы остановились на ${time(p.positionMs)}",fontSize=16.sp,modifier=Modifier.testTag("saved-position"))
-                    if((p.durationMs ?: 0)>0)LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!.toFloat()).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().clearAndSetSemantics {},gapSize=0.dp,drawStopIndicator={})
-                }}
-                }
-            }
-        }
-        if(!tv&&!compact) Column(Modifier.align(Alignment.BottomCenter).widthIn(max=760.dp).fillMaxWidth().onSizeChanged {bottomHeight=it.height}.background(MaterialTheme.colorScheme.background).padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                Action(saved?.let {"Продолжить с ${time(it.positionMs)}"} ?: "Выбрать раздачу",false,Modifier.weight(1f).testTag(if(saved!=null) "detail-resume" else "detail-sources"),icon=Icons.Outlined.PlayArrow,loading=s.busy) {if(saved!=null)model.resume(saved) else choose()}
-                if(saved!=null) IconButton(onClick=choose,modifier=Modifier.testTag("detail-sources")) {Icon(Icons.Outlined.Tune,"Выбрать раздачу")}
-            }
-            RemoteStatus(model,r?.id.orEmpty(),m?.id,onStart=saved?.let { progress -> { model.resume(progress,onTv=true) } })
-        }
-    }
-}
-@Composable private fun ReleasesScreen(s:WatchState,model:WatchModel,tv:Boolean) {
+@Composable internal fun ReleasesScreen(
+    s:WatchState,model:WatchModel,tv:Boolean,
+    detailHeader:(@Composable () -> Unit)?=null,
+    detailInset:Dp=0.dp,
+    sourceStatus:(@Composable () -> Unit)?=null
+) {
     val remote by model.remote.collectAsStateWithLifecycle()
     if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LoadingIndicator("Ищем раздачи…");Action("Отменить",tv,secondary=true) {model.back()}};return}
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
@@ -583,7 +533,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         ReleaseFilterChoices("Язык",Icons.Outlined.Translate,listOf("Любой язык","Русский (название)","Русский не указан"),language,tv,hint="Язык указан по названию раздачи. Проверьте аудиодорожки в плеере."){language=it}
     }
     val header:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        if(!tv&&LocalConfiguration.current.screenWidthDp<840) Heading("Выберите раздачу")
+        if(!tv&&detailHeader==null&&LocalConfiguration.current.screenWidthDp<840) Heading("Выберите раздачу")
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
             val quickQualities=listOf("Все","1080p","2160p","720p",if(tv)"Не указано" else filter).distinct()
             quickQualities.forEach {label->
@@ -605,22 +555,37 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
         Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
-    val scrollingHeader=!tv
+    val scrollingHeader=!tv||detailHeader!=null
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!scrollingHeader) header()
         LazyColumn(Modifier.weight(1f).testTag("release-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
-            if(scrollingHeader) item {header()}
-            items(releases,key={it.id}) {r->ReleaseCard(r,tv,focus=tv&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season)}}
-            if(releases.isEmpty()) item {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}
+            if(detailHeader!=null) item(key="detail-header") {detailHeader()}
+            if(scrollingHeader && sourceStatus==null) item {Box(Modifier.padding(horizontal=detailInset)) {header()}}
+            items(releases,key={it.id}) {r->Box(Modifier.padding(horizontal=detailInset)) {
+                ReleaseCard(r,tv,focus=tv&&detailHeader==null&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season,fromDetailTab=detailHeader!=null)}
+            }}
+            if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
+            else if(releases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}}
         }
         val selected=releases.firstOrNull {it.id==selectedId}
-        if(!tv&&releases.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom=12.dp)) {
+        if(!tv&&releases.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=detailInset).padding(bottom=12.dp)) {
             val gap=8.dp
             val density = LocalDensity.current
             val buttonWidth = if (maxWidth >= 320.dp * density.fontScale.coerceAtLeast(1f)) {
                 with(density) { ((constraints.maxWidth - gap.roundToPx()) / 2).toDp().coerceAtMost(240.dp) }
             } else maxWidth
             val target=remote.target?.takeIf {remote.connected&&remote.profileKey==s.config.profileKey}
+            if (s.episodeDownload || s.episodeTargetId != null) {
+                val download = s.episodeDownload
+                val available = if (download) !s.config.demo else target?.id == s.episodeTargetId && remote.canLaunch
+                Action(if (download) "Скачать" else "Смотреть на ТВ", false, Modifier.fillMaxWidth().testTag("source-continue"),
+                    enabled=selected!=null && available, icon=if (download) Icons.Outlined.FileDownload else Icons.Outlined.Cast) {
+                    val current = model.remote.value
+                    if (selected!=null && (download || current.canLaunch && current.profileKey==s.config.profileKey && current.target?.id==s.episodeTargetId))
+                        model.playRelease(selected,season,onTv=!download,download=download)
+                }
+                return@BoxWithConstraints
+            }
             var chooseDevice by remember(selected?.id,season,target?.id,target?.instance) {mutableStateOf(false)}
             FlowRow(horizontalArrangement=Arrangement.spacedBy(gap),verticalArrangement=Arrangement.spacedBy(gap)) {
                 Box {
@@ -630,25 +595,25 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     Action("Смотреть",false,watchButton,enabled=selected!=null,
                         icon=if(target!=null) Icons.Outlined.ArrowDropDown else Icons.Outlined.PlayArrow) {
                         if(selected!=null) {
-                            if(target==null)model.playRelease(selected,season) else chooseDevice=true
+                            if(target==null)model.playRelease(selected,season,fromDetailTab=detailHeader!=null) else chooseDevice=true
                         }
                     }
                     if(target!=null&&selected!=null) DropdownMenu(expanded=chooseDevice,onDismissRequest={chooseDevice=false}) {
                         DropdownMenuItem(text={Text("На этом устройстве")},leadingIcon={Icon(Icons.Outlined.Devices,null)},
                             modifier=Modifier.heightIn(min=48.dp).testTag("source-continue-local"),onClick={
                                 chooseDevice=false
-                                model.playRelease(selected,season)
+                                model.playRelease(selected,season,fromDetailTab=detailHeader!=null)
                             })
                         DropdownMenuItem(text={Text("На ТВ · ${target.name}")},leadingIcon={Icon(Icons.Outlined.Tv,null)},
                             modifier=Modifier.heightIn(min=48.dp).testTag("source-continue-tv"),enabled=remote.canLaunch,onClick={
                                 chooseDevice=false
                                 val current=model.remote.value.target
-                                if(current?.id==target.id&&current.instance==target.instance)model.playRelease(selected,season,onTv=true)
+                                if(current?.id==target.id&&current.instance==target.instance)model.playRelease(selected,season,onTv=true,fromDetailTab=detailHeader!=null)
                             })
                     }
                 }
                 Action("Скачать",false,Modifier.width(buttonWidth).heightIn(min=52.dp).testTag("source-download"),enabled=selected!=null&&!s.config.demo,secondary=true,icon=Icons.Outlined.FileDownload) {
-                    selected?.let {model.playRelease(it,season,download=true)}
+                    selected?.let {model.playRelease(it,season,download=true,fromDetailTab=detailHeader!=null)}
                 }
             }
         }
@@ -662,7 +627,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var downloadError by remember {mutableStateOf("")}
     val playerLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {model.playerClosed()}
     var showAll by rememberSaveable(s.handle?.hash) { mutableStateOf(false) }
-    var selection by rememberSaveable(s.handle?.hash,s.downloadSelection) { mutableStateOf<Int?>(if(s.downloadSelection) s.handle?.files?.filter {it.video&&!it.sample}?.singleOrNull()?.serverFileId else null) }
     var autoLaunched by remember(s.handle?.hash) {mutableStateOf(false)}
     val scoped by model.scopedLibrary.collectAsStateWithLifecycle()
     val progress=if(scoped.context==s.config.profileKey)scoped.positions else emptyList()
@@ -674,6 +638,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         (showAll||f.video&&!f.sample)&&(season==null||episodeNumber(f.path).season==season)&&
             (episode==null||episodeNumber(f.path).episode==episode)
     })
+    var selection by rememberSaveable(s.handle?.hash,s.downloadSelection,s.releaseSeason,s.releaseEpisode) {
+        mutableStateOf(if(s.downloadSelection) visibleFiles.singleOrNull {it.video&&!it.sample}?.serverFileId else null)
+    }
     fun launch(file:TorrentFile) {
         if(s.downloadSelection||!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
         if(!tv&&s.remotePlayback) {
@@ -762,7 +729,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 
-@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,wide:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={},onFocus:()->Unit={}) {
+@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,showMenu:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={},onFocus:()->Unit={}) {
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
     if(menu) {
@@ -775,36 +742,60 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val metadata=item.metadata ?: cardState.catalog.firstOrNull {it.id==e.metadataId}
     val requester=remember {FocusRequester()}
     LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
-    var focused by remember {mutableStateOf(false)}
-    NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus;if(it.isFocused)onFocus()}.testTag("library-${e.id}"),onLongClick={menu=true},onClick={onOpen();model.restore(e)},outlined=!tv||!wide) {
-        if(wide) Column {
-            if(tv) {
-                Box(Modifier.padding(TvPosterClearance).tvPosterFocus(focused)) {
-                    Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f).clip(RoundedCornerShape(16.dp)),backdrop=true,demo=e.id.startsWith("demo:"))
-                    p?.episodeLabel()?.let {episode->Text(episode,fontSize=11.sp,lineHeight=14.sp,
-                        color=androidx.compose.ui.graphics.Color.White,modifier=Modifier.padding(8.dp)
-                            .background(androidx.compose.ui.graphics.Color(0xDC09101B),RoundedCornerShape(4.dp)).padding(horizontal=6.dp,vertical=4.dp))}
-                }
-                Column(Modifier.padding(horizontal=TvPosterClearance,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    val remaining=p?.durationMs?.takeIf {it>0}?.let {((it-p.positionMs).coerceAtLeast(0)+59_999)/60_000}
-                    Text(p?.let {time(it.positionMs)+(remaining?.let {minutes->" · осталось $minutes мин"} ?: "")} ?: "Нет позиции просмотра",
-                        fontSize=12.sp,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    if(p?.durationMs?.let {it>0}==true) LinearProgressIndicator(progress={(p.positionMs.toFloat()/p.durationMs!!).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp),gapSize=0.dp,drawStopIndicator={})
-                    else Spacer(Modifier.height(3.dp))
-                }
-            } else {
-                Artwork(metadata,config,Modifier.fillMaxWidth().aspectRatio(2.3f),backdrop=true,demo=e.id.startsWith("demo:"))
-                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,maxLines=1,fontWeight=FontWeight.Bold,fontSize=16.sp);if(p!=null) {Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(time(p.positionMs),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}}}
+    val duration=p?.durationMs?.takeIf {it>0}
+    val position=p?.positionMs?.coerceAtLeast(0L)
+    val elapsed=when {
+        position==null -> null
+        duration==null -> time(position)
+        duration<60_000 -> "${position.coerceAtMost(duration)/1000} из ${(duration/1000).coerceAtLeast(1)} сек"
+        else -> "${position.coerceAtMost(duration)/60_000} из ${duration/60_000} мин"
+    }
+    val number=p?.let {episodeNumber(it.path)}
+    val episode=number?.episode?.let {index->listOfNotNull(number.season?.let {"С$it"},"Серия $index").joinToString(" · ")}
+    val subtitle=listOfNotNull(episode,elapsed).joinToString(" · ").ifEmpty {
+        metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source
+    }
+    val colors=MaterialTheme.colorScheme
+    val dark=colors.background.luminance()<.5f
+    val surface=if(dark) androidx.compose.ui.graphics.Color(0xFF1F2732) else colors.surface
+    val secondary=if(dark) androidx.compose.ui.graphics.Color(0xFFB3BDC8) else colors.onSurfaceVariant
+    val track=if(dark) androidx.compose.ui.graphics.Color(0xFF3C4551) else colors.outline.copy(alpha=.32f)
+    val artWidth=if(tv) tvUnit(200f) else 84.dp
+    val minHeight=if(tv) maxOf(tvUnit(160f),artWidth/1.14f) else 96.dp
+    val cardModifier=Modifier.fillMaxWidth().focusRequester(requester)
+        .onFocusChanged {if(it.isFocused)onFocus()}.testTag("library-${e.id}")
+    NativeCard(tv,cardModifier,onLongClick={menu=true},onClick={onOpen();model.restore(e)}) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=minHeight).background(surface),
+            verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.width(artWidth).fillMaxHeight().testTag("library-poster-${e.id}")) {
+                Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,
+                    demo=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null)
             }
-        } else Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.width(96.dp).aspectRatio(2f/3f).clip(RoundedCornerShape(10.dp)).testTag("library-poster-${e.id}")) {Artwork(metadata,config,Modifier.matchParentSize(),demo=e.id.startsWith("demo:"))}
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text(e.title,minLines=2,maxLines=2,fontWeight=FontWeight.Bold,fontSize=16.sp);Text(metadata?.let {listOfNotNull(it.year?.toString(),titleKind(it)).joinToString(" · ")} ?: e.source,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant);if(p!=null) {
-                Text(p.episodeLabel().orEmpty(),maxLines=1,fontSize=13.sp,color=MaterialTheme.colorScheme.primary)
-                Text("${time(p.positionMs)}${p.durationMs?.let {" / ${time(it)}"} ?: ""}",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                p.durationMs?.takeIf {it>0}?.let {LinearProgressIndicator(progress={(p.positionMs.toFloat()/it).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().height(3.dp))}
-            }}
-            if(!tv) IconButton(onClick={menu=true}) {Icon(Icons.Outlined.MoreVert,"Действия с «${e.title}»")} else Icon(Icons.Outlined.PlayCircle,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(32.dp))
+            Column(Modifier.weight(1f).padding(
+                start=if(tv) tvUnit(24f) else 12.dp,end=if(tv) tvUnit(24f) else 12.dp,
+                top=if(tv) tvUnit(20f) else 8.dp,bottom=if(tv) tvUnit(20f) else 8.dp
+            ), verticalArrangement=Arrangement.spacedBy(if(tv) tvUnit(8f) else 4.dp)) {
+                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 18.sp,
+                    lineHeight=if(tv) tvUnit(32f).value.sp else 22.sp,color=colors.onSurface,
+                    maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if(subtitle.isNotEmpty()) Text(subtitle,fontSize=if(tv) tvUnit(18f).value.sp else 14.sp,
+                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=secondary)
+                if (position != null && duration != null) {
+                    val fraction by animateFloatAsState(
+                        (position.toFloat() / duration).coerceIn(0f, 1f), tween(200), label = "history-progress"
+                    )
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.padding(top=if(tv) tvUnit(5f) else 4.dp)
+                            .fillMaxWidth().height(if(tv) tvUnit(5f) else 4.dp),
+                        trackColor = track,gapSize = 0.dp, drawStopIndicator = {}
+                    )
+                }
+            }
+            if(showMenu&&!tv) IconButton(onClick={menu=true}) {Icon(Icons.Outlined.MoreVert,"Действия с «${e.title}»")}
+            else Icon(Icons.Outlined.PlayCircle,null,
+                modifier=Modifier.padding(end=if(tv) tvUnit(24f) else 18.dp).size(if(tv) tvUnit(32f) else 24.dp),
+                tint=colors.primary)
         }
     }
 }
@@ -822,9 +813,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val filtered=entries.filter { e -> when(tab) { "Буду смотреть" -> e.entry.bookmarked; "Продолжить" -> e.entry.openedAt>0&&progress.any { it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0 }; else -> e.entry.openedAt>0 } }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         WatchTabs(if(tv) listOf("Продолжить","Буду смотреть","История") else listOf("Продолжить","Загрузки","Буду смотреть","История"),tab,tv) {if(it=="Загрузки"&&libraryState.page=="history") model.openDownloads() else tab=it}
-        if(tab=="Загрузки"&&!tv) OfflineScreen(model,false) else LazyColumn(contentPadding=PaddingValues(8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        if(tab=="Загрузки"&&!tv) OfflineScreen(model,false) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
-            items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
+            items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,showMenu=tab!="Продолжить",bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
         }
     }
 }
@@ -936,7 +927,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
 }
-private fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
+internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
 @Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean,onExit:()->Unit) {
     var section by rememberSaveable {mutableStateOf("Подключения")}

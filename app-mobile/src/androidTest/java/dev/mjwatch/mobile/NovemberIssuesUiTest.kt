@@ -59,7 +59,7 @@ class NovemberIssuesUiTest {
     }
     @Test fun episodeAndHistoryDeletion() {
         val m=model()
-        compose.onNodeWithText("Сезон 2 · Серия 3").assertIsDisplayed()
+        compose.onNodeWithText("С2 · Серия 3",substring=true).assertIsDisplayed()
         capture("history-episode")
         compose.onNodeWithContentDescription("Действия с «Тест истории»").performClick()
         compose.onNodeWithText("Удалить").assertIsDisplayed()

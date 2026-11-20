@@ -65,8 +65,9 @@ class JacredFlowTest {
     compose.waitUntil(10000) {compose.onAllNodesWithText("Sintel HTTP fixture 720p").fetchSemanticsNodes().isNotEmpty()}
     compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
     compose.onNodeWithText("Раздачи").performClick()
-    compose.onNodeWithTag("release-list").performScrollToNode(hasText("Sintel HTTP fixture 720p"))
-    compose.onNodeWithText("Sintel HTTP fixture 720p").performClick()
+    val source = hasText("Sintel HTTP fixture 720p") and hasClickAction()
+    compose.onNodeWithTag("release-list").performScrollToNode(source)
+    compose.onNode(source and hasAnyAncestor(hasTestTag("release-list"))).performClick()
     compose.onNodeWithTag("source-continue").assertIsDisplayed()
     Assert.assertTrue(paths.any {it.startsWith("/parser/api/v2.0/indexers/all/results?")&&it.contains("Query=Sintel")})
     Assert.assertFalse("No stream preparation without a TV",paths.any {it.startsWith("/ts/stream")||it=="/ts/torrents"})

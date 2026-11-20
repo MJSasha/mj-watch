@@ -87,9 +87,10 @@ class IssueFixesUiTest {
         compose.waitUntil(10000) {model.state.value.page=="detail"}
         Assert.assertNull(model.state.value.selected)
         Assert.assertEquals(item.id,model.state.value.selectedMetadata?.id)
+        compose.onNodeWithText("О сериале").performClick()
         compose.onNodeWithText(item.overview!!).assertExists()
         screenshot("history-film-detail")
-        compose.onNodeWithText("Раздачи").performClick()
+        compose.onNodeWithTag("detail-sources").performClick()
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.results.isNotEmpty()}
         compose.onNodeWithText("Сезон 1").assertExists()
     }

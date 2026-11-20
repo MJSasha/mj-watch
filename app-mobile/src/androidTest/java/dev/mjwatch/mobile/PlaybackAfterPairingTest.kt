@@ -57,7 +57,7 @@ class PlaybackAfterPairingTest {
             }
         } finally {inbox.close()}
         ui.runOnIdle {model.metadata(Metadata("tmdb:movie:777778","Managed fixture",null,null))}
-        ui.onNodeWithText("Раздачи").performClick()
+        ui.onNodeWithTag("detail-sources").performClick()
         ui.waitUntil(15000) {model.state.value.results.isNotEmpty()&&!model.state.value.busy}
         ui.onNodeWithTag("release-list").performScrollToNode(hasText("Managed fixture 720p"))
         ui.onNodeWithText("Managed fixture 720p").performClick()
