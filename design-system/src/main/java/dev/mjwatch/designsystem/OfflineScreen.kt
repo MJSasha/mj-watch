@@ -1,5 +1,7 @@
 package dev.mjwatch.designsystem
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -114,12 +116,7 @@ internal fun OfflineScreen(model: WatchModel, tv: Boolean) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         when (item.state) {
                             OfflineState.READY -> Action("Смотреть", tv, Modifier.testTag("offline-play-${item.id}"), icon = Icons.Outlined.PlayArrow) {
-                                run {
-                                    val file = store.localFile(config, item.id)
-                                        ?: throw IllegalStateException("Файл недоступен. Удалите запись и загрузите видео снова.")
-                                    val episode = PlaybackEpisode(Uri.fromFile(file).toString(), item.path, item.fileId, item.contentKey)
-                                    player.launch(PlaybackActivity.offlineIntent(context, episode, item.title, item.releaseId, !tv))
-                                }
+                                run { player.launch(offlinePlaybackIntent(context, config, item, !tv)) }
                             }
                             OfflineState.QUEUED, OfflineState.DOWNLOADING -> Action("Отменить", tv, secondary = true) {
                                 run { store.cancel(config, item.id) }
@@ -139,4 +136,12 @@ internal fun OfflineScreen(model: WatchModel, tv: Boolean) {
             }
         }
     }
+}
+
+
+internal suspend fun offlinePlaybackIntent(context: Context, config: Config, item: OfflineDownload, mobile: Boolean): Intent {
+    val file = OfflineDownloads.get(context).localFile(config, item.id)
+        ?: error("Файл недоступен. Удалите запись и загрузите видео снова.")
+    val episode = PlaybackEpisode(Uri.fromFile(file).toString(), item.path, item.fileId, item.contentKey)
+    return PlaybackActivity.offlineIntent(context, episode, item.title, item.releaseId, mobile)
 }

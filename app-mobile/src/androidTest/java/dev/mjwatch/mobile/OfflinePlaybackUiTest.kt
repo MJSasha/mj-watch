@@ -162,8 +162,21 @@ class OfflinePlaybackUiTest {
         assertEquals(fileIds.toSet(),downloads.map {it.fileId}.toSet())
         assertTrue(downloads.all {it.state==OfflineState.READY})
         assertEquals(listOf(1,2),downloads.filter {it.title==series.title}.mapNotNull {it.episode}.sorted())
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             awaitTag("app-content")
+            // Open from metadata alone, as if the movie had been selected in the catalogue.
+            val movie = downloads.single { it.fileId == 17 }
+            scenario.onActivity { activity ->
+                ViewModelProvider(activity)[WatchModel::class.java].metadata(
+                    Metadata(requireNotNull(movie.metadataId), movie.title, null, null)
+                )
+            }
+            awaitTag("detail-offline")
+            ui.onNodeWithTag("detail-offline").assertIsDisplayed().performClick()
+            awaitPlaying(movie.fileId, checkNotNull(runBlocking { store.localFile(config, movie.id) }))
+            assertNull(connectivity.activeNetwork)
+            leavePlayer()
+            awaitTag("detail-offline")
             ui.onNode((hasText("Моё") or hasContentDescription("Моё")) and hasClickAction()).performClick()
             ui.onNodeWithText("Загрузки").performClick()
             awaitTag("offline-list")
@@ -180,7 +193,7 @@ class OfflinePlaybackUiTest {
                 awaitPlaying(id,file)
                 assertNull(connectivity.activeNetwork)
                 if(id==17)capture("$viewport-player")
-                device.pressBack()
+                leavePlayer()
                 awaitTag("offline-list")
             }
         }
@@ -214,6 +227,14 @@ class OfflinePlaybackUiTest {
                 secrets.put(expiry,"")
                 runBlocking {Settings(context).save(previous)}
             }
+        }
+    }
+
+    private fun leavePlayer() {
+        instrumentation.runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<PlaybackActivity>().single()
+            activity.onBackPressedDispatcher.onBackPressed()
         }
     }
 

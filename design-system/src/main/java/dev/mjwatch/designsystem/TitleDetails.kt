@@ -1,5 +1,7 @@
 package dev.mjwatch.designsystem
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -31,6 +33,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.mjwatch.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 internal fun detailContentInset(wide:Boolean,width:Dp):Dp =
     if (wide) (width * .05f).coerceIn(24.dp,72.dp) else 20.dp
@@ -94,6 +98,24 @@ private fun DetailContent(
         progress.filter { it.releaseId == release?.id || it.releaseId in linkedIds }
     }
     val saved = titleProgress.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.updatedAt }
+    val offline = if (!tv && series == null) {
+        val context = LocalContext.current
+        key(s.config) {
+            val store = remember(context) { OfflineDownloads.get(context) }
+            val downloads by remember(store, s.config) { store.observe(s.config) }.collectAsState(initial = emptyList())
+            downloads.firstOrNull { item ->
+                item.state == OfflineState.READY && item.episode == null &&
+                    (item.releaseId == release?.id || metadata?.id?.let { it == item.metadataId } == true ||
+                        item.releaseId in linkedIds)
+            }
+        }
+    } else null
+    val offlinePosition = offline?.let { item ->
+        val key = item.contentKey.ifBlank { "${item.releaseId}|${item.path}" }
+        progress.filter {
+            it.key == key && it.positionMs > 0 && !it.completed
+        }.maxByOrNull { it.updatedAt }
+    }
     val bookmarked = entries.any { it.id == id && it.bookmarked }
     val choose: () -> Unit = { if (release == null) model.findReleases() else model.page("releases") }
     val primaryFocus = remember { FocusRequester() }
@@ -103,7 +125,7 @@ private fun DetailContent(
     val header: @Composable () -> Unit = {
         Column {
             DetailHero(
-                s, model, title, series != null, bookmarked, saved, tv, compact, wide, panelWidth, inset, primaryFocus, choose
+                s, model, title, series != null, bookmarked, saved, offline, offlinePosition, tv, compact, wide, panelWidth, inset, primaryFocus, choose
             )
             Column(Modifier.widthIn(max=1200.dp).fillMaxWidth().padding(horizontal=inset).padding(top=if(wide) 24.dp else 20.dp)) {
                 if (!tv) {
@@ -196,8 +218,12 @@ private fun DetailContent(
 @Composable
 private fun DetailHero(
     state: WatchState, model: WatchModel, title: String, series: Boolean, bookmarked: Boolean,
-    saved: Progress?, tv: Boolean, compact: Boolean, wide: Boolean, width: Dp, inset: Dp, focus: FocusRequester, choose: () -> Unit
+    saved: Progress?, offline: OfflineDownload?, offlinePosition: Progress?, tv: Boolean, compact: Boolean, wide: Boolean, width: Dp, inset: Dp, focus: FocusRequester, choose: () -> Unit
 ) {
+    val context = LocalContext.current
+    val player = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
+    val scope = rememberCoroutineScope()
+    var offlineError by remember(state.config, state.selectedMetadata?.id, state.selected?.id) { mutableStateOf("") }
     val m = state.selectedMetadata
     val r = state.selected
     val demoArt = r?.id?.startsWith("demo:") == true
@@ -248,13 +274,39 @@ private fun DetailHero(
                     FlowRow(Modifier.padding(top=5.dp),horizontalArrangement=Arrangement.spacedBy(if(wide) 8.dp else 6.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         val episode = saved?.let { episodeNumber(it.path).episode }
                         val label = when {
+                            offlinePosition != null -> "Продолжить скачанное с ${time(offlinePosition.positionMs)}"
+                            offline != null -> "Смотреть скачанное"
                             saved == null -> "Выбрать раздачу"
                             series && episode != null -> "Продолжить · серия $episode"
                             else -> "Продолжить с ${time(saved.positionMs)}"
                         }
-                        HeroAction(label,Icons.Outlined.PlayArrow,Modifier.focusRequester(focus).testTag(if(saved==null)"detail-sources" else "detail-resume"),
-                            primary=true,wide=wide,loading=state.busy && state.page=="detail") {
-                            if (saved == null) choose() else model.resume(saved)
+                        val primaryTag = when {
+                            offline != null -> "detail-offline"
+                            saved != null -> "detail-resume"
+                            else -> "detail-sources"
+                        }
+                        val primaryModifier = Modifier.focusRequester(focus).testTag(primaryTag)
+                        val loading = offline == null && state.busy && state.page == "detail"
+                        val play = {
+                            if (offline != null) {
+                                offlineError = ""
+                                scope.launch {
+                                    try {
+                                        val intent = offlinePlaybackIntent(context, state.config, offline, mobile = true)
+                                        if (model.state.value.config == state.config) player.launch(intent)
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        offlineError = safeError(e)
+                                    }
+                                }
+                            } else if (saved == null) choose() else model.resume(saved)
+                            Unit
+                        }
+                        if (tv) {
+                            TvActionButton(label, primaryModifier, icon = Icons.Outlined.PlayArrow, loading = loading, onClick = play)
+                        } else {
+                            HeroAction(label, Icons.Outlined.PlayArrow, primaryModifier, primary = true, wide = wide, loading = loading, onClick = play)
                         }
                         val bookmarkLabel = if (bookmarked) "Убрать из «Буду смотреть»" else "В «Буду смотреть»"
                         val bookmarkIcon = if (bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder
@@ -262,6 +314,7 @@ private fun DetailHero(
                             Modifier.testTag("detail-bookmark").semantics {contentDescription=bookmarkLabel},
                             primary=false,wide=wide,onClick=model::bookmark)
                     }
+                    if (offlineError.isNotEmpty()) OperationMessage(offlineError, error = true)
                 }
             }
         }
