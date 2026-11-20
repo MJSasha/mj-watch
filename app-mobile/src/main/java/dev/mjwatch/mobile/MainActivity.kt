@@ -13,6 +13,8 @@ import dev.mjwatch.playback.RemotePlaybackService
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import dev.mjwatch.core.OfflineDownloads
+import kotlinx.coroutines.flow.first
 import dev.mjwatch.designsystem.WatchApp
 import dev.mjwatch.designsystem.WatchModel
 
@@ -44,8 +46,19 @@ class MainActivity:ComponentActivity() {
             })
         }
     }
+    override fun onPostResume() {
+        super.onPostResume()
+        lifecycleScope.launch { OfflineDownloads.get(this@MainActivity).resumePending() }
+    }
+
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
     private fun handleInvitation(value:android.content.Intent,model:WatchModel){
+        if (value.action == OfflineDownloads.OPEN_DOWNLOADS) {
+            lifecycleScope.launch {
+                model.state.first { !it.initializing }
+                model.openDownloads()
+            }
+        }
         if(value.hasExtra("remoteReleaseId"))model.openRemoteContent(value.getStringExtra("remoteReleaseId").orEmpty(),value.getStringExtra("remoteTitle").orEmpty(),value.getStringExtra("remoteMetadataId").orEmpty())
         if(value.action==android.content.Intent.ACTION_VIEW){val raw=value.dataString;if(raw!=null)model.openInvitation(raw)}
     }

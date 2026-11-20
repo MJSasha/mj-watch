@@ -1,8 +1,12 @@
 package dev.mjwatch.core
 
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import androidx.room.Room
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -18,6 +22,8 @@ import java.util.concurrent.TimeUnit
 
 class OfflineDownloads private constructor(private val app: Context) {
     companion object {
+        const val OPEN_DOWNLOADS = "dev.mjwatch.action.OPEN_DOWNLOADS"
+
         @Volatile private var instance: OfflineDownloads? = null
 
         fun get(context: Context): OfflineDownloads = instance ?: synchronized(this) {
@@ -33,15 +39,25 @@ class OfflineDownloads private constructor(private val app: Context) {
     private val drainLock = Mutex()
     private var active: Pair<String, Job>? = null
 
-    fun observe(config: Config): Flow<List<OfflineDownload>> {
-        if (!supported || config.demo || config.managed && config.scope.isBlank()) return flowOf(emptyList())
-        return dao.observe(profile(config)).map { rows -> rows.map { it.item } }.onStart {
-            // After a force-stop or reboot Android may not redeliver our service start.
-            withContext(Dispatchers.IO) {
-                commands.withLock { if (active?.second?.isActive != true && dao.next() != null) startService() }
+    // JobScheduler may still report a finished job until it processes jobFinished.
+    private var finishedJob = false
+
+    fun observe(config: Config): Flow<List<OfflineDownload>> =
+        if (!eligible(config)) flowOf(emptyList())
+        else dao.observe(profile(config)).map { rows -> rows.map { it.item } }
+
+    suspend fun resumePending() = withContext(Dispatchers.IO) {
+        val config = Settings(app).config.first()
+        commands.withLock {
+            if (eligible(config) && active?.second?.isActive != true && dao.next(profile(config)) != null) {
+                schedule()
             }
         }
     }
+
+    private fun eligible(config: Config) = supported && !config.demo &&
+        if (config.managed) config.scope.isNotBlank() && config.managedUrl.isNotBlank()
+        else config.torrServer.isNotBlank()
 
     suspend fun enqueue(
         config: Config, release: Release, handle: TorrentHandle, file: TorrentFile,
@@ -62,7 +78,7 @@ class OfflineDownloads private constructor(private val app: Context) {
             val previous = dao.get(profile, id)
             if (previous?.item?.state == OfflineState.READY && verifiedFile(previous.item) != null) return@withLock
             if (previous?.item?.state in pending) {
-                startService()
+                schedule()
                 return@withLock
             }
             val number = episodeNumber(file.path)
@@ -70,7 +86,7 @@ class OfflineDownloads private constructor(private val app: Context) {
                 file.serverFileId, file.path, if (config.managed) key else "", season ?: number.season,
                 number.episode ?: episode, partial(id).length(), file.size, OfflineState.QUEUED, null)
             dao.put(OfflineRecord(item, profile, source, handle.hash, System.currentTimeMillis()))
-            startService()
+            schedule()
         }
         id
     }
@@ -81,7 +97,7 @@ class OfflineDownloads private constructor(private val app: Context) {
             if (row.item.state !in setOf(OfflineState.FAILED, OfflineState.CANCELLED)) return@withLock
             check(matches(config, row)) { "Восстановите подключение к источнику загрузки" }
             dao.update(id, OfflineState.QUEUED, partial(id).length())
-            startService()
+            schedule()
         }
     }
 
@@ -138,31 +154,46 @@ class OfflineDownloads private constructor(private val app: Context) {
         active?.takeIf { it.first == id }?.second?.cancelAndJoin()
     }
 
-    private suspend fun startService() {
+    private fun schedule() {
         try {
-            app.startForegroundService(Intent(app, OfflineDownloadService::class.java))
-        } catch (e: IllegalStateException) {
-            dao.interrupt("Откройте приложение и повторите загрузку")
+            if (Build.VERSION.SDK_INT >= 34) {
+                val scheduler = app.getSystemService(JobScheduler::class.java)
+                val id = OfflineDownloadJob.ID
+                if (!finishedJob && scheduler.getPendingJob(id) != null) return
+                val job = JobInfo.Builder(id, ComponentName(app, OfflineDownloadJob::class.java))
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .setUserInitiated(true)
+                    .build()
+                if (scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS) finishedJob = false
+            } else {
+                app.startForegroundService(Intent(app, OfflineDownloadService::class.java))
+            }
+        } catch (_: IllegalStateException) {
+            // Keep the queue and partial files if the device temporarily disallows a start.
         }
     }
 
-    internal suspend fun interruptAll(message: String) = commands.withLock {
-        active?.second?.cancelAndJoin()
-        dao.interrupt(message)
-    }
-
-    internal suspend fun drain(notify: (OfflineDownload) -> Unit) = withContext(Dispatchers.IO) {
-        drainLock.withLock {
-            while (supported) {
-                val task = commands.withLock {
-                    val row = dao.next() ?: return@withLock null
-                    launch { download(row, notify) }.also { active = row.item.id to it }
-                } ?: break
-                task.join()
-                commands.withLock { if (active?.second === task) active = null }
+    internal suspend fun drain(onJobFinished: (suspend () -> Unit)? = null, notify: (OfflineDownload) -> Unit) =
+        withContext(Dispatchers.IO) {
+            drainLock.withLock {
+                while (true) {
+                    val task = commands.withLock {
+                        val config = Settings(app).config.first()
+                        val row = if (eligible(config)) dao.next(profile(config)) else null
+                        if (row == null) {
+                            if (onJobFinished != null) {
+                                finishedJob = true
+                                onJobFinished()
+                            }
+                            return@withLock null
+                        }
+                        launch { download(row, notify) }.also { active = row.item.id to it }
+                    } ?: break
+                    task.join()
+                    commands.withLock { if (active?.second === task) active = null }
+                }
             }
         }
-    }
 
     private suspend fun download(row: OfflineRecord, notify: (OfflineDownload) -> Unit) {
         val item = row.item
@@ -182,9 +213,14 @@ class OfflineDownloads private constructor(private val app: Context) {
                         throw OfflineProblem("Подключение изменилось во время загрузки")
                     }
                     try {
-                        fetch(config, row, part) { bytes ->
-                            dao.update(item.id, OfflineState.DOWNLOADING, bytes)
-                            notify(item.copy(bytesDownloaded = bytes, state = OfflineState.DOWNLOADING))
+                        retryOfflineTransfer(onRetry = {
+                            notify(item.copy(bytesDownloaded = part.length(), state = OfflineState.DOWNLOADING,
+                                error = "Восстанавливаем соединение"))
+                        }) {
+                            fetch(config, row, part) { bytes ->
+                                dao.update(item.id, OfflineState.DOWNLOADING, bytes)
+                                notify(item.copy(bytesDownloaded = bytes, state = OfflineState.DOWNLOADING, error = null))
+                            }
                         }
                     } finally { monitor.cancel() }
                 }
@@ -192,6 +228,9 @@ class OfflineDownloads private constructor(private val app: Context) {
             }
             dao.update(item.id, OfflineState.READY, item.totalBytes)
         } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                dao.update(item.id, OfflineState.QUEUED, part.length())
+            }
             throw e
         } catch (e: Exception) {
             val message = when (e) {

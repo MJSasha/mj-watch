@@ -3,6 +3,8 @@ package dev.mjwatch.core
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
@@ -39,17 +41,23 @@ class OfflineTransferTest {
             val part = temporary.newFile()
             val client = OkHttpClient()
             val request = Request.Builder().url(server.url("/stream")).build()
-            server.enqueue(MockResponse().setBody(Buffer().write(bytes))
-                .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
-            assertTrue(runCatching { transferOfflineFile(client, request, part, bytes.size.toLong()) {} }.isFailure)
-            val offset = part.length().toInt()
-            assertTrue(offset in 1 until bytes.size)
-            server.enqueue(MockResponse().setResponseCode(206)
-                .setHeader("Content-Range", "bytes $offset-${bytes.lastIndex}/${bytes.size}")
-                .setBody(Buffer().write(bytes, offset, bytes.size - offset)))
-            transferOfflineFile(client, request, part, bytes.size.toLong()) {}
-            server.takeRequest()
-            assertEquals("bytes=$offset-", server.takeRequest().getHeader("Range"))
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val offset = request.getHeader("Range")?.removePrefix("bytes=")?.removeSuffix("-")?.toInt()
+                    return if (offset == null) MockResponse().setBody(Buffer().write(bytes))
+                        .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+                    else MockResponse().setResponseCode(206)
+                        .setHeader("Content-Range", "bytes $offset-${bytes.lastIndex}/${bytes.size}")
+                        .setBody(Buffer().write(bytes, offset, bytes.size - offset))
+                }
+            }
+            var interruptedAt = 0L
+            retryOfflineTransfer(onRetry = { interruptedAt = part.length() }) {
+                transferOfflineFile(client, request, part, bytes.size.toLong()) {}
+            }
+            assertTrue(interruptedAt in 1 until bytes.size)
+            assertNull(server.takeRequest().getHeader("Range"))
+            assertEquals("bytes=$interruptedAt-", server.takeRequest().getHeader("Range"))
             assertArrayEquals(bytes, part.readBytes())
         }
     }

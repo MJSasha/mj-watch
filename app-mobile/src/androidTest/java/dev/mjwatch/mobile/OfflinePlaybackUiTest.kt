@@ -1,6 +1,9 @@
 @file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
 
+import android.app.Notification
+import android.app.NotificationManager
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Uri
 import androidx.compose.ui.test.*
@@ -59,6 +62,9 @@ class OfflinePlaybackUiTest {
     @Before fun isolatedEmulatorOnly() {
         assumeTrue("Requires a disposable emulator and the two-phase ADB procedure",
             InstrumentationRegistry.getArguments().getString("isolatedOffline")=="true")
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     @Test fun downloadMovieAndIndividualEpisodes() {
@@ -88,7 +94,7 @@ class OfflinePlaybackUiTest {
                             if(request.method=="GET")streamed.add(id)
                             MockResponse().setHeader("Content-Type","video/mp4")
                                 .setBody(Buffer().write(payload)).apply {
-                                    if(id==31)throttleBody(128*1024,250,TimeUnit.MILLISECONDS)
+                                    if(id==31)throttleBody(128*1024,1200,TimeUnit.MILLISECONDS)
                                 }
                         }
                         else -> MockResponse().setResponseCode(404)
@@ -137,6 +143,25 @@ class OfflinePlaybackUiTest {
                             }}
                         }}
                         capture("$viewport-downloading")
+                        assertTrue(device.pressHome())
+                        ui.waitUntil(5000) {
+                            var background = false
+                            instrumentation.runOnMainSync {
+                                background = ActivityLifecycleMonitorRegistry.getInstance()
+                                    .getActivitiesInStage(Stage.RESUMED).none { it is MainActivity }
+                            }
+                            background
+                        }
+                        val manager = context.getSystemService(NotificationManager::class.java)
+                        val ongoing = manager.activeNotifications.single {
+                            it.notification.channelId == "offline-downloads"
+                        }.notification
+                        assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains("Серия 2"))
+                        assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("%"))
+                        if (android.os.Build.VERSION.SDK_INT >= 36) {
+                            assertEquals("android.app.Notification\$ProgressStyle", ongoing.extras.getString(Notification.EXTRA_TEMPLATE))
+                        }
+                        if (device.openNotification()) capture("$viewport-download-notification")
                     }
                     val item=runBlocking {withTimeout(30000) {
                         store.observe(config).first {list -> list.any {it.fileId==id&&it.state in setOf(OfflineState.READY,OfflineState.FAILED)}}
@@ -162,8 +187,9 @@ class OfflinePlaybackUiTest {
         assertEquals(fileIds.toSet(),downloads.map {it.fileId}.toSet())
         assertTrue(downloads.all {it.state==OfflineState.READY})
         assertEquals(listOf(1,2),downloads.filter {it.title==series.title}.mapNotNull {it.episode}.sorted())
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            awaitTag("app-content")
+        val openDownloads = Intent(context, MainActivity::class.java).setAction(OfflineDownloads.OPEN_DOWNLOADS)
+        ActivityScenario.launch<MainActivity>(openDownloads).use { scenario ->
+            awaitTag("offline-list")
             // Open from metadata alone, as if the movie had been selected in the catalogue.
             val movie = downloads.single { it.fileId == 17 }
             scenario.onActivity { activity ->

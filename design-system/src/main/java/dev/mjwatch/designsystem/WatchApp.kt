@@ -625,6 +625,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var downloadError by remember {mutableStateOf("")}
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val playerLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {model.playerClosed()}
     var showAll by rememberSaveable(s.handle?.hash) { mutableStateOf(false) }
     var autoLaunched by remember(s.handle?.hash) {mutableStateOf(false)}
@@ -685,6 +686,15 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(!tv&&s.downloadSelection) Action("Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),enabled=!s.config.demo,icon=Icons.Outlined.FileDownload) {
                 scope.launch {try {
                     OfflineDownloads.get(context).enqueue(s.config,s.selected!!,s.handle!!,file,s.selectedMetadata,episodeNumber(file.path).season,episodeNumber(file.path).episode)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        val permission = android.Manifest.permission.POST_NOTIFICATIONS
+                        val prefs = context.getSharedPreferences("offline-notifications", 0)
+                        if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                            !prefs.getBoolean("requested", false)) {
+                            prefs.edit().putBoolean("requested", true).apply()
+                            notificationPermission.launch(permission)
+                        }
+                    }
                     model.openDownloads()
                 } catch(e:kotlinx.coroutines.CancellationException) {throw e} catch(e:Exception) {downloadError=safeError(e)}}
             }
