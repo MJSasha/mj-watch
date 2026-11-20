@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.2
+
+- Prefer the downloaded copy from a movie detail page and resume its saved position.
+- Restore standard D-pad focus styling on the primary action in Android TV title details.
+
 ## 0.11.1
 
 - Expose the next playable episode to Google TV media controls, including when a season is started from a phone.
