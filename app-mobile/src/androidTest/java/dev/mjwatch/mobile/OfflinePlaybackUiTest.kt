@@ -258,7 +258,7 @@ class OfflinePlaybackUiTest {
     }
 
     private fun awaitTag(tag:String) = ui.waitUntil(15000) {
-        ui.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+        ui.onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
     }
 
     private fun capture(name:String) {
