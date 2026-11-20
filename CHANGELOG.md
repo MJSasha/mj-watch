@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1
+
+- Expose the next playable episode to Google TV media controls, including when a season is started from a phone.
+
 ## 0.11.0
 
 - Show artwork, episode and watch progress together on continue-watching cards on phones, tablets and Android TV.

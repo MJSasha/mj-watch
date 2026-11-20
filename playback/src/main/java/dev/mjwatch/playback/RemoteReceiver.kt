@@ -1,10 +1,12 @@
 package dev.mjwatch.playback
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import dev.mjwatch.core.*
 import kotlinx.coroutines.*
+import okhttp3.HttpUrl
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 
@@ -52,19 +54,16 @@ object RemoteReceiver {
                             if(command.getString("action")=="load") {
                                 try {
                                     val handle=command.getString("handle")
-                                    val response=withContext(Dispatchers.IO){api.authorized("playback/$handle")}
-                                    val torrent=response.getJSONObject("torrent");val rows=torrent.getJSONArray("file_stats")
-                                    val files=(0 until rows.length()).map {rows.getJSONObject(it)}
-                                    val file=files.single {it.getInt("id")==command.getInt("fileId")}
-                                    check(TorrentFile(file.getInt("id"),file.getString("path"),file.optLong("length")).video)
-                                    val contentId=response.getString("hash")+":"+file.getInt("id")
+                                    val playback = withContext(Dispatchers.IO) {
+                                        remotePlaybackIntent(app, api.base, api.authorized("playback/$handle"), command)
+                                    }
+                                    val contentId = playback.getStringExtra("remoteContentId")
                                     val current=PlaybackActivity.remoteVideo() ?: failure ?: RemoteVideo()
                                     if(current.contentId!=contentId||!current.active) {
                                         check(current.session==command.optString("session")){"Session changed"}
                                         check(android.os.SystemClock.elapsedRealtime()<expiresAt){"Expired command"}
                                         val activity=foreground?.get() ?: error("Receiver left foreground")
-                                        val uri=api.base.newBuilder().addPathSegments("api/v1/playback/$handle/stream").addQueryParameter("file",file.getInt("id").toString()).build().toString()
-                                        activity.startActivity(Intent(activity,PlaybackActivity::class.java).putExtra("uri",uri).putExtra("torrentHandle",handle).putExtra("remoteSession",id).putExtra("remotePosition",command.optLong("position")).putExtra("remoteContentId",contentId).putExtra("title",command.getString("title")).putExtra("metadataId",command.optString("metadataId")).putExtra("releaseId",command.optString("releaseId")).putExtra("path",file.getString("path")).putExtra("fileId",file.getInt("id")).putExtra("mobile",false).putExtra("contentKey",contentKey(response.getString("hash"),file.getString("path"),file.optLong("length"))))
+                                        activity.startActivity(playback)
                                         // Wait until the new Activity owns the session; never report old video as the new one.
                                         withTimeout(5000){while(PlaybackActivity.remoteVideo()?.session!=id){delay(50)}}
                                     }
@@ -82,4 +81,45 @@ object RemoteReceiver {
         }
     }
     fun attach(activity:Activity){foreground=WeakReference(activity)}
+}
+
+/** The TV derives every playable URL and progress key from its own authorized handle response. */
+internal fun remotePlaybackIntent(context: Context, base: HttpUrl, response: JSONObject, command: JSONObject): Intent {
+    val handle = command.getString("handle")
+    val hash = response.getString("hash")
+    val rows = response.getJSONObject("torrent").getJSONArray("file_stats")
+    val files = (0 until rows.length()).map { index ->
+        val file = rows.getJSONObject(index)
+        TorrentFile(file.getInt("id"), file.getString("path"), file.optLong("length"))
+    }
+    val selected = files.single { it.serverFileId == command.getInt("fileId") }
+    require(selected.video)
+
+    val endpoint = base.newBuilder().addPathSegments("api/v1/playback").addPathSegment(handle).addPathSegment("stream").build()
+    fun episode(file: TorrentFile) = PlaybackEpisode(
+        endpoint.newBuilder().addQueryParameter("file", file.serverFileId.toString()).build().toString(),
+        file.path, file.serverFileId, contentKey(hash, file.path, file.size)
+    )
+    val current = episode(selected)
+    val queue = if (!selected.sample && episodeNumber(selected.path).episode != null) {
+        val videos = sortedVideoFiles(files.filter { it.video && !it.sample })
+        videos.groupBy { episodeNumber(it.path) }.filterKeys { it.episode != null }.values.map { versions ->
+            episode(versions.firstOrNull { it == selected } ?: versions.first())
+        }
+    } else emptyList()
+
+    return Intent(context, PlaybackActivity::class.java)
+        .putExtra("torrentHandle", handle)
+        .putExtra("remoteSession", command.getString("id"))
+        .putExtra("remotePosition", command.optLong("position"))
+        .putExtra("remoteContentId", "$hash:${current.fileId}")
+        .putExtra("title", command.getString("title"))
+        .putExtra("metadataId", command.optString("metadataId"))
+        .putExtra("releaseId", command.optString("releaseId"))
+        .putExtra("uri", current.uri)
+        .putExtra("path", current.path)
+        .putExtra("fileId", current.fileId)
+        .putExtra("contentKey", current.contentKey)
+        .putExtra("episodes", PlaybackEpisode.encode(queue))
+        .putExtra("mobile", false)
 }

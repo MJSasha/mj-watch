@@ -29,6 +29,7 @@ import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
+import com.google.common.util.concurrent.Futures
 import androidx.room.Room
 import dev.mjwatch.core.*
 import kotlinx.coroutines.*
@@ -99,6 +100,7 @@ class PlaybackActivity : ComponentActivity() {
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
     private var session: MediaSession?=null
+    private var tvSessionPlayer:TvSessionPlayer?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val saveMutex=kotlinx.coroutines.sync.Mutex()
     private val handler=Handler(Looper.getMainLooper())
@@ -195,7 +197,9 @@ class PlaybackActivity : ComponentActivity() {
             player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE,preferences.getInt("max-video-height",Int.MAX_VALUE)).build()
             player.setPlaybackSpeed(savedInstanceState?.getFloat("speed",preferences.getFloat("speed",1f)) ?: preferences.getFloat("speed",1f))
             view.resizeMode=savedInstanceState?.getInt("resize-mode") ?: preferences.getInt("resize-mode",androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
-            view.player=player; session=MediaSession.Builder(this@PlaybackActivity,player).setCallback(object:MediaSession.Callback {
+            view.player=player
+            if(!intent.getBooleanExtra("mobile",true)) tvSessionPlayer=TvSessionPlayer(player)
+            session=MediaSession.Builder(this@PlaybackActivity,tvSessionPlayer ?: player).setCallback(object:MediaSession.Callback {
                 override fun onMediaButtonEvent(session:MediaSession,controllerInfo:MediaSession.ControllerInfo,intent:android.content.Intent):Boolean {
                     @Suppress("DEPRECATION") val event=intent.getParcelableExtra<KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT) ?: return false
                     return handleMediaKey(event)
@@ -248,6 +252,25 @@ class PlaybackActivity : ComponentActivity() {
     private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri)
         .apply {if(path.substringAfterLast('.').equals("mkv",ignoreCase=true))setMimeType(MimeTypes.VIDEO_MATROSKA)}.setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
         .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
+    /** ExoPlayer owns one stream at a time. The session also exposes the activity's episode queue. */
+    private inner class TvSessionPlayer(player:Player):ForwardingSimpleBasePlayer(player) {
+        override fun getState():State {
+            val state=super.getState()
+            val commands=state.availableCommands.buildUpon()
+            if(episodeIndex>=0 && episodeIndex<episodes.lastIndex) {
+                commands.add(Player.COMMAND_SEEK_TO_NEXT).add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            }
+            return state.buildUpon().setAvailableCommands(commands.build()).build()
+        }
+        override fun handleSeek(mediaItemIndex:Int,positionMs:Long,seekCommand:Int):com.google.common.util.concurrent.ListenableFuture<*> {
+            if(seekCommand==Player.COMMAND_SEEK_TO_NEXT || seekCommand==Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM) {
+                switchEpisode(episodeIndex+1)
+                return Futures.immediateVoidFuture()
+            }
+            return super.handleSeek(mediaItemIndex,positionMs,seekCommand)
+        }
+        fun episodeChanged()=invalidateState()
+    }
     private fun switchEpisode(index:Int) {
         val episode=episodes.getOrNull(index) ?: return
         val config=playbackConfig ?: return
@@ -259,6 +282,7 @@ class PlaybackActivity : ComponentActivity() {
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
+        tvSessionPlayer?.episodeChanged()
         remoteContentId=remoteContentId.substringBeforeLast(':',"")+":"+fileId
         playbackSession=java.util.UUID.randomUUID().toString()
         intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)
