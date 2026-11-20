@@ -41,7 +41,11 @@ data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val hi
   entities.forEach {e->if(pending.none {it.kind==e.kind&&it.entityKey==e.entityKey}) put(e)}
   put(cursor)
  }
- @Transaction suspend fun acknowledged(pending:OutboxEntry,entity:SyncEntity) {acknowledge(pending.id);put(entity)}
+ @Transaction suspend fun acknowledged(event:OutboxEntry,server:SyncEntity) {
+  acknowledge(event.id)
+  val newest=pending(server.scope).lastOrNull {it.kind==server.kind && it.entityKey==server.entityKey}
+  put(if(newest==null) server else server.copy(json=newest.json,deleted=newest.operation=="delete"))
+ }
 }
 /** The private CA is scoped to the managed origin; other integrations keep system trust. */
 fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpClient {

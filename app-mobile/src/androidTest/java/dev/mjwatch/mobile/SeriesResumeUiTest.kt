@@ -11,6 +11,9 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
+import android.net.Uri
+import android.view.KeyEvent
+import dev.mjwatch.playback.PlaybackEpisode
 import dev.mjwatch.playback.PlaybackActivity
 import kotlinx.coroutines.runBlocking
 import org.junit.*
@@ -53,6 +56,76 @@ class SeriesResumeUiTest {
         compose.waitUntil(10000) {!model.state.value.busy&&model.state.value.message.isNotBlank()}
         compose.waitUntil(5000) {runCatching {compose.onNodeWithText("Сохранённая раздача недоступна. Выберите другую.").assertIsDisplayed();true}.getOrDefault(false)}
         compose.onNodeWithTag("detail-sources").assertIsDisplayed()
+    }
+    @Test fun completedEpisodeSurvivesBackOnPhone()=completeEpisode(mobile=true)
+    @Test fun completedEpisodeSurvivesNextAndImmediateBackOnTv()=completeEpisode(mobile=false)
+
+    @Test fun earlierServerAckKeepsCompletedLocalEpisode()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val db=Room.databaseBuilder(context,WatchDatabase::class.java,"watch.db")
+            .addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
+        try {
+            val dao=db.syncDao()
+            val engine=SyncEngine(ManagedApi(config,SecretStore(context)),dao)
+            engine.enqueue("progress",saved.key,saved.syncJson(),playSession="play",sequence=1)
+            val completed=saved.copy(positionMs=12000,completed=true)
+            engine.enqueue("progress",saved.key,completed.syncJson(),playSession="play",sequence=2)
+            val first=dao.pending(config.scope).first {it.entityKey==saved.key}
+            val server=SyncEntity(config.scope,"progress",saved.key,saved.syncJson().toString(),2)
+            dao.acknowledged(first,server)
+            Assert.assertEquals(completed,dao.entity(config.scope,"progress",saved.key)?.progress())
+        } finally {db.close()}
+    }
+
+    private fun completeEpisode(mobile:Boolean) {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val context=instrumentation.targetContext
+        val clip=context.cacheDir.resolve("completion-test.mp4")
+        context.assets.open("demo.mp4").use {input->clip.outputStream().use {input.copyTo(it)}}
+        val episodes=files.map {PlaybackEpisode(Uri.fromFile(clip).toString(),it.path,it.serverFileId,contentKey(hash,it.path,it.size))}
+        val initial=episodes.first()
+        lateinit var model:WatchModel
+        compose.runOnIdle {
+            val activity=compose.activity
+            model=ViewModelProvider(activity)[WatchModel::class.java]
+            activity.startActivity(PlaybackActivity.offlineIntent(activity,initial,metadata.title,release.id,mobile,episodes))
+        }
+        var playback:PlaybackActivity?=null
+        compose.waitUntil(15000) {
+            instrumentation.runOnMainSync {playback=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<PlaybackActivity>().firstOrNull {it.firstFrameSeen}}
+            playback!=null
+        }
+        val activity=playback!!
+        val session=PlaybackActivity::class.java.getDeclaredField("playbackSession").apply {isAccessible=true}.get(activity)
+        // Hold the writer until destruction to exercise quick exits even on fast devices.
+        runBlocking {SyncEngine.mutex.lock()}
+        try {
+            instrumentation.runOnMainSync {
+                val player=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}.get(activity) as Player
+                Assert.assertTrue(player.duration>0)
+                player.seekTo(player.duration)
+                if(!mobile) {
+                    activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_MEDIA_NEXT))
+                    Assert.assertEquals(episodes[1].path,activity.intent.getStringExtra("path"))
+                }
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+            compose.waitUntil(10000) {activity.isDestroyed}
+        } finally {SyncEngine.mutex.unlock()}
+        compose.waitUntil(10000) {
+            val library=model.scopedLibrary.value
+            val entry=library.titles.firstOrNull {release.id in it.releaseIds}
+            val progress=entry?.progress(library.positions)
+            progress?.key==initial.contentKey && progress.completed
+        }
+        val db=Room.databaseBuilder(context,WatchDatabase::class.java,"watch.db")
+            .addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
+        try {
+            val writes=runBlocking {db.syncDao().pending(config.scope)}.filter {it.entityKey==initial.contentKey}
+            Assert.assertTrue(writes.isNotEmpty())
+            Assert.assertTrue(writes.all {it.playSession==session})
+        } finally {db.close();clip.delete()}
     }
     private fun resumeSeries(withoutLocalLink:Boolean) {
         lateinit var model:WatchModel
