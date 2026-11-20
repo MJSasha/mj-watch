@@ -74,7 +74,30 @@ class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=nu
   val url=base.newBuilder().addPathSegments("api/v1/"+path.substringBefore('?')).apply {path.substringAfter('?',"").takeIf {it.isNotEmpty()}?.let {encodedQuery(it)}}.build()
   val builder=Request.Builder().url(url);if(revision!=null) builder.header("If-Match",revision);headers.forEach {builder.header(it.key,it.value)}
   builder.method(method,if(method in setOf("GET","HEAD")) null else (body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()))
-  return try {JSONObject(String(client.bytes(builder.build(),4L*1024*1024))).also {response->if(path=="me"){require(response.optInt("apiVersion",1)==1&&response.optInt("minClientApiVersion",1)<=1){"Обновите приложение для этой версии сервера"};if(config.scope.isNotBlank())require(response.getString("serverId")==config.serverId&&response.getString("userId")==config.userId){"Аккаунт изменился. Выполните вход заново."}}}} catch(e:HttpFailure) {throw e}
+  return try {JSONObject(String(client.bytes(builder.build(),4L*1024*1024))).also {response->if(path=="me"){require(response.optInt("apiVersion",1)==1&&response.optInt("minClientApiVersion",1)<=1){"Обновите приложение для этой версии сервера"};if(config.scope.isNotBlank())require(response.getString("serverId")==config.serverId&&response.getString("userId")==config.userId){"Аккаунт изменился. Выполните вход заново."}}}} catch(e:HttpFailure) {
+   throw serverMove(config,e) ?: e
+  }
+ }
+ suspend fun followMove(move:ServerMove,settings:Settings):Boolean {
+  val next=config.copy(managedUrl=move.baseUrl)
+  val probe=ManagedApi(next.copy(userId=""),secrets,move.ca)
+  move.verify(probe.request("server/identity"))
+  return refreshMutex.withLock {
+   settings.moveServer(config,move.baseUrl) {
+    val oldKey="${base.origin()}:${config.scope}"
+    val newKey="${probe.base.origin()}:${config.scope}"
+    secrets.putAll(mapOf(
+     "ca:${probe.base.origin()}" to move.ca,
+     "refresh:$newKey" to secrets.get("refresh:$oldKey"),
+     "access:$newKey" to secrets.get("access:$oldKey"),
+     "expires:$newKey" to secrets.get("expires:$oldKey"),
+     downloadSourceKey(probe.base,config.scope) to secrets.get(downloadSourceKey(base,config.scope)).ifBlank {base.toString()},
+     "ssh:${config.scope}" to "",
+     "sshPassword:${config.scope}" to "",
+     "serverUpdate:${config.scope}" to "",
+    ),removePrefix="maintenance:${config.scope}:")
+   }
+  }
  }
  suspend fun downloadBackup(id:String,password:String,out:java.io.OutputStream) {
   require(id.matches(Regex("[A-Za-z0-9_-]+\\.mjwb")));authorized("me")

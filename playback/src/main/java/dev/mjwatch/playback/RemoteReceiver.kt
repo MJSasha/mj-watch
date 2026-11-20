@@ -14,7 +14,7 @@ import java.lang.ref.WeakReference
 object RemoteReceiver {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var job:Job?=null
-    private var profile=""
+    private var connection:Pair<String,String>?=null
     private var registered=false
     private var foreground:WeakReference<Activity>?=null
     fun start(app:Application,config:Config) {
@@ -30,8 +30,9 @@ object RemoteReceiver {
                 override fun onActivityDestroyed(a:Activity){}
             })
         }
-        if(profile==config.profileKey&&job?.isActive==true)return
-        profile=config.profileKey;job?.cancel()
+        val requested=config.profileKey to config.managedUrl
+        if(connection==requested&&job?.isActive==true)return
+        connection=requested;job?.cancel()
         if(!config.historyEnabled)return
         job=scope.launch {
             val api=ManagedApi(config,SecretStore(app))

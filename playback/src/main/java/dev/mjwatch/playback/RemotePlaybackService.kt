@@ -73,8 +73,8 @@ class RemotePlaybackService:Service() {
                 val connected=withContext(Dispatchers.IO){client.authorized("remote/$id/connect","POST")}
                 if(epoch!=generation)return@launch
                 mutable.value=RemotePlaybackState(target=RemoteTarget.parse(connected),connected=true,profileKey=config.profileKey,observedAt=System.nanoTime())
-                // A scope switch invalidates the route before any further commands can leave the phone.
-                launch {Settings(applicationContext).config.collect {if(it.profileKey!=config.profileKey){disconnect(applicationContext)}}}
+                // A connection switch invalidates the receiver lease.
+                launch {Settings(applicationContext).config.collect {if(it.profileKey!=config.profileKey||it.managedUrl!=config.managedUrl){disconnect(applicationContext)}}}
                 while(isActive&&epoch==generation) {
                     publish();delay(1000)
                     val target=state.value.target ?: break

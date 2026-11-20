@@ -268,6 +268,7 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
 }
 fun safeError(e: Throwable): String = when(e) {
     is HttpFailure -> when(runCatching {JSONObject(e.responseBody ?: "{}").optString("code")}.getOrDefault("")) {
+        "migration_in_progress"->"Идёт перенос сервера. Приложение повторит подключение."
         "provider_disabled"->"Каталог выключен владельцем. Поиск раздач и просмотр доступны."
         "credential_missing"->"Владелец ещё не настроил TMDB"
         "credential_rejected","provider_credential_rejected"->"TMDB отклонил ключ. Прежний ключ не заменён."

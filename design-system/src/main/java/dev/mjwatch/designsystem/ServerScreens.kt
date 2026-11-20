@@ -46,7 +46,7 @@ import java.util.UUID
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
  val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
- LaunchedEffect(page,s.config.scope){if(load!=null&&s.config.historyEnabled) {
+ LaunchedEffect(page,s.config.scope,s.config.managedUrl){if(load!=null&&s.config.historyEnabled) {
   do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
  }}
  val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(screenScroll).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -208,16 +208,21 @@ import java.util.UUID
      Text("Проверим доступ, сохраним резервную копию и установим выбранную версию.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
      Action("Обновить сервер",tv,Modifier.fillMaxWidth()){model.page("server-update")}
     }
-    SettingsDisclosure("Другие операции","Перезапуск, очистка кэша, пароль и восстановление",Icons.Outlined.Build,tv){SshPanel(s,model,tv,false)}
+    if(managed.me?.optString("role")=="admin")SettingsCard("Перенос сервера",Icons.Outlined.CloudSync,tv){
+     Text("Аккаунты, история и вход на устройствах сохранятся.",style=MaterialTheme.typography.bodyMedium)
+     Action("Подготовить перенос",tv,Modifier.fillMaxWidth(),secondary=true){model.page("server-migration")}
+    }
+    SettingsDisclosure("Другие операции","Перезапуск, очистка кэша, пароль и восстановление",Icons.Outlined.Build,tv){key(s.config.managedUrl){SshPanel(s,model,tv,false)}}
    }
-   "server-update"->ServerUpdateScreen(s,model,tv)
+   "server-update"->key(s.config.managedUrl){ServerUpdateScreen(s,model,tv)}
+   "server-migration"->ServerMigrationScreen(s.config.managedUrl,managed,controller,tv)
 
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{
     var limitsDirty by remember{mutableStateOf(false)};var torrDirty by remember{mutableStateOf(false)};var limitsRevision by remember{mutableIntStateOf(0)}
     Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold)
     PlaybackLimitsPanel(s,model,tv,onDirty={limitsDirty=it;dirty=it||torrDirty},onSaved={limitsRevision++})
-    SshPanel(s,model,tv,false,settings=true,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})
+    key(s.config.managedUrl){SshPanel(s,model,tv,false,settings=true,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})}
    }
   }
   if(page!="managed-login"&&managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})

@@ -69,12 +69,13 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     private fun update(block:(WatchState)->WatchState) { mutable.update(block) }
     init {viewModelScope.launch {
         if(!settings.legacyHistoryHandled.first()){val records=dao.library().first().count {it.openedAt>0}+dao.progress().first().size;update {it.copy(legacyHistoryRecords=records)}}
-        var first=true;var provider:String?=null
+        var first=true;var catalogSource:Triple<String,String,String>?=null
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
             val changed=state.value.config.profileKey!=c.profileKey
             if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="",openDownloadsRequested=false)}}
             update {it.copy(initializing=false,config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first&&it.page!="invitation-register") if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
-            if(provider!="${c.profileKey}:${c.metadataProvider}") {provider="${c.profileKey}:${c.metadataProvider}";refreshCatalog()}
+            val source=Triple(c.profileKey,c.metadataProvider,c.managedUrl)
+            if(catalogSource!=source) {catalogSource=source;refreshCatalog()}
             first=false
         }
     }}
@@ -110,7 +111,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             playerClosed()
             return
         }
-        val target=when {s.page=="server-update"->"server-maintenance";s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-pairing")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
+        val target=when {s.page in setOf("server-update","server-migration")->"server-maintenance";s.page in setOf("server-user-invite","server-user-devices")->"server-user";s.page in setOf("server-user","server-user-create")->"server-users";s.page in setOf("managed-devices","managed-pairing")->"managed-account";s.page.startsWith("settings-")||s.page in setOf("connection-choice","managed-login","managed-account","server-overview","server-install")->"settings";s.page.startsWith("server-")->"server-overview";s.page=="connections" -> "settings";s.page in setOf("files","preparing") -> "releases";s.page=="releases" -> "detail";s.page=="detail" -> s.originPage;else -> "home"}
         update {it.copy(page=target,message="",openDownloadsRequested=false)}
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
@@ -356,7 +357,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                     secrets.put("torrUser:${c.torrServer}",user);secrets.put("torrPassword:${c.torrServer}",password)
                 }
             }
-            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination(target);settings.save(c); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page=target,busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
+            android.util.Log.i("MJWatch", "Credentials saved"); cachedRepositories=null;settings.destination(target);settings.save(c,preserveManagedAddress=true); android.util.Log.i("MJWatch", "Configuration saved"); draftConfig=null; draftKey=""; draftUser=""; draftPassword=""; draftMetadata=""; update { it.copy(page=target,busy=false,message="Настройки сохранены · подключения можно проверить отдельно") }
         } catch(e:Exception) { update { it.copy(busy=false,message=safeError(e)) } } }
     }
     override fun onCleared() { db.close(); super.onCleared() }
