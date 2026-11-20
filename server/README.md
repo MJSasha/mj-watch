@@ -84,3 +84,20 @@ On the next health check, matching `health-<timestamp>.bootstrap` receipts are r
 ## Device cleanup (0.1.6)
 
 Deleting an individual device removes its database record and cascades sessions, receiver state, profiles and installation mapping. Previously revoked devices remain removable. Repeated sign-ins from one app installation are deduplicated by an opaque persisted UUID within the same account; equal names alone are never merged. Legacy devices without an installation identity can be removed explicitly. The client sends the new profile field only after `me.deviceInstallationIdentity=true`, preserving 0.1.5 compatibility.
+
+## Move an installation to another server (0.1.9)
+
+An owner can move a managed installation and keep each device's account, password, access and refresh tokens, server and history epochs, sync cursor, mutation receipts, invitations, settings and encrypted credentials. The move includes the SQLite database, its encryption key, TorrServer's persistent torrent library/settings and the encrypted backup directory. Downloaded torrent pieces are a disposable cache. The new host uses its own HTTPS identity, service accounts, loopback password and API port. Its firewall must allow the peer port in the transferred TorrServer settings.
+
+1. Install a migration-capable client on phones, tablets and TVs before moving. Update the source to server **0.1.9** and install the same supply on a fresh destination with its final hostname, a distinct private CA, and sufficient disk space for staging and the installed copy. The source must be able to reach the destination's advertised HTTPS address. Both hosts must use the managed installer's standard paths.
+2. On your workstation configure two OpenSSH aliases for root access using keys or an agent. Verify both host keys independently and record them in `known_hosts`. The tool uses batch SSH and strict host key verification. Keep the old hostname, address and leaf certificate renewal available for returning devices.
+3. Extract `migrate.py` **and** `migration_host.py` from the top level of the signed server supply ZIP into one directory. Alternatively run `server/migrate.py` from this repository with `server/packaging/migration_host.py` alongside the checkout. From the extracted directory run:
+
+   ```sh
+   python3 migrate.py mjwatch-old mjwatch-new
+   ```
+
+   If installation already created the new host's initial owner account and device, add `--replace-bootstrap` to explicitly replace that bootstrap. Target validation rejects additional users, devices, watching history, configured application settings, backups and torrents. The destination's previous files are retained under `/var/lib/mjwatch-install/migration/original`. SSH credentials stay on the workstation. Transfer streams over the two SSH connections.
+4. During cutover current streams end, both source services stop, and the old HTTPS endpoint answers `503 migration_in_progress`. The script snapshots committed SQLite data, checks the received database, starts the destination and verifies its HTTPS identity, database and TorrServer health. Only then does the old endpoint announce the new origin and private CA with `409 server_moved`. Clients verify the new TLS hostname, CA, migration ID, server ID and epoch before reusing credentials. Existing token expiry and revocation dates still apply. Owner SSH management on the new host needs its own verified SSH access.
+
+Rerun the same command after a disconnect. Before destination installation begins, `python3 migrate.py mjwatch-old mjwatch-new --abort` cancels the reservation and reopens the original. Once installation starts, resume forward to protect writes on the destination. The old host remains a read-only HTTPS announcement service after completion. Its source data stays on disk. A returning device must still be able to reach each intermediate address if there have been multiple moves. Ordinary backup restore remains a separate recovery operation that revokes sessions.

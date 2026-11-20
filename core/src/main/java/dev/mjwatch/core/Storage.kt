@@ -76,7 +76,28 @@ class Settings(private val context: Context) {
     val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()
     suspend fun destination(value:String) {require(value in setOf("home","search","library","history","settings"));context.configStore.edit {it[stringPreferencesKey("destination")]=value}}
     val config = context.configStore.data.map { decodeConfig(it[stringPreferencesKey("json")] ?: "{}") }.distinctUntilChanged()
-    suspend fun save(config: Config) { context.configStore.edit { it[stringPreferencesKey("json")] = encodeConfig(config) } }
+    suspend fun save(config:Config,preserveManagedAddress:Boolean=false) {
+        context.configStore.edit { prefs->
+            val key=stringPreferencesKey("json")
+            val current=if(preserveManagedAddress)decodeConfig(prefs[key] ?: "{}") else null
+            prefs[key]=encodeConfig(if(current!=null&&config.historyEnabled&&current.scope==config.scope)
+                config.copy(managedUrl=current.managedUrl) else config)
+        }
+    }
+    suspend fun moveServer(source:Config,baseUrl:String,saveCredentials:()->Unit):Boolean {
+        var moved=false
+        context.configStore.edit { prefs->
+            val key=stringPreferencesKey("json")
+            val current=decodeConfig(prefs[key] ?: "{}")
+            if(current.scope==source.scope&&current.managedUrl==source.managedUrl) {
+                val updated=encodeConfig(current.copy(managedUrl=baseUrl))
+                saveCredentials()
+                prefs[key]=updated
+                moved=true
+            }
+        }
+        return moved
+    }
 }
 fun encodeConfig(c: Config,includeAccount:Boolean=true): String {
     require(c.releaseApi in setOf("auto","torznab","jacred")) {"Неизвестный API поиска"}
@@ -132,9 +153,16 @@ class SecretStore(context: Context) {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
     }
-    fun put(name: String, value: String) {
-        val c=Cipher.getInstance("AES/GCM/NoPadding"); c.init(Cipher.ENCRYPT_MODE, key())
-        check(prefs.edit().putString(name, Base64.encodeToString(c.iv + c.doFinal(value.toByteArray()), Base64.NO_WRAP)).commit()) {"Не удалось сохранить секрет"}
+    fun put(name: String, value: String) = putAll(mapOf(name to value))
+    internal fun putAll(values:Map<String,String>,removePrefix:String?=null) {
+        val editor=prefs.edit()
+        if(removePrefix!=null)prefs.all.keys.filter {it.startsWith(removePrefix)}.forEach {editor.remove(it)}
+        val secret=key()
+        for((name,value) in values) {
+            val c=Cipher.getInstance("AES/GCM/NoPadding"); c.init(Cipher.ENCRYPT_MODE,secret)
+            editor.putString(name,Base64.encodeToString(c.iv+c.doFinal(value.toByteArray()),Base64.NO_WRAP))
+        }
+        check(editor.commit()) {"Не удалось сохранить секрет"}
     }
     fun get(name: String): String = runCatching {prefs.getString(name, null)?.let {
         val bytes=Base64.decode(it, Base64.NO_WRAP); val c=Cipher.getInstance("AES/GCM/NoPadding")

@@ -40,7 +40,7 @@ import org.json.JSONObject
     var confirm by remember(s.page) {mutableStateOf<Pair<String,()->Unit>?>(null)}
     var logout by remember {mutableStateOf(false)}
     var keepData by remember {mutableStateOf(true)}
-    LaunchedEffect(s.page,s.config.scope) {if(s.page=="managed-devices"){snapshotFlow {controller.state.value.busy}.first {!it};controller.load("devices")}}
+    LaunchedEffect(s.page,s.config.scope,s.config.managedUrl) {if(s.page=="managed-devices"){snapshotFlow {controller.state.value.busy}.first {!it};controller.load("devices")}}
     confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
     if(logout)AlertDialog(onDismissRequest={logout=false},title={Text("Выйти из аккаунта?")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text("Изменений, ещё не отправленных на сервер: ${managed.pending.size}.")
@@ -115,6 +115,7 @@ import org.json.JSONObject
                             IconButton(enabled=!managed.busy,onClick={controller.syncNow()},modifier=Modifier.size(48.dp).tvFocusRing(tv)){Icon(Icons.Outlined.Sync,"Синхронизировать")}
                         }
                         Text(s.config.managedUrl,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        ServerMoveStatusMessage(managed.moveStatus,tv,managed.busy,controller::syncNow)
                     }
                 }
                 SettingsGroup(tv) {

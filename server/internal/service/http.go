@@ -16,15 +16,27 @@ import (
 )
 
 type Config struct {
-	Database     string `json:"database"`
-	Listen       string `json:"listen"`
-	Certificate  string `json:"certificate"`
-	PrivateKey   string `json:"privateKey"`
-	TorrURL      string `json:"torrUrl"`
-	TorrUser     string `json:"torrUser"`
-	TorrPassword string `json:"torrPassword"`
-	SecretKey    string `json:"secretKey"`
-	BackupDir    string `json:"backupDir"`
+	PriorMigrationID string      `json:"priorMigrationId,omitempty"`
+	Database         string      `json:"database"`
+	Listen           string      `json:"listen"`
+	Certificate      string      `json:"certificate"`
+	PrivateKey       string      `json:"privateKey"`
+	TorrURL          string      `json:"torrUrl"`
+	TorrUser         string      `json:"torrUser"`
+	TorrPassword     string      `json:"torrPassword"`
+	SecretKey        string      `json:"secretKey"`
+	BackupDir        string      `json:"backupDir"`
+	Relocation       *Relocation `json:"relocation,omitempty"`
+}
+
+// A root-installed fence. A pending move admits no API operations, including refresh.
+type Relocation struct {
+	Code        string `json:"code"`
+	ServerID    string `json:"serverId"`
+	ServerEpoch string `json:"serverEpoch"`
+	MigrationID string `json:"migrationId"`
+	BaseURL     string `json:"baseUrl"`
+	CA          string `json:"ca"`
 }
 type identity struct {
 	User, Device, Session, Role string
@@ -32,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.8"
+var Version = "0.1.9"
 
 type Server struct {
 	maxStreams         int
@@ -120,6 +132,31 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if move := s.Config.Relocation; move != nil {
+		if move.Code == "server_moved" {
+			// A device can return after two moves. It first proves this retired
+			// intermediate origin, then receives the next move on its API call.
+			if path == "server/identity" && r.Method == http.MethodGet && s.Config.PriorMigrationID != "" {
+				respond(w, http.StatusOK, map[string]string{"serverId": move.ServerID, "serverEpoch": move.ServerEpoch, "migrationId": s.Config.PriorMigrationID})
+				return
+			}
+			respond(w, http.StatusConflict, move)
+		} else {
+			w.Header().Set("Retry-After", "15")
+			fail(w, http.StatusServiceUnavailable, "migration_in_progress")
+		}
+		return
+	}
+	if path == "server/identity" && r.Method == http.MethodGet {
+		var id, epoch, migration string
+		err := s.DB.QueryRow(`SELECT (SELECT value FROM settings WHERE key='server_id'), (SELECT value FROM settings WHERE key='server_epoch'), COALESCE((SELECT value FROM settings WHERE key='migration_id'),'')`).Scan(&id, &epoch, &migration)
+		if err != nil {
+			fail(w, http.StatusServiceUnavailable, "database_unavailable")
+			return
+		}
+		respond(w, http.StatusOK, map[string]string{"serverId": id, "serverEpoch": epoch, "migrationId": migration})
+		return
+	}
 	if strings.HasPrefix(path, "playback/") && strings.HasSuffix(path, "/stream") {
 		http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	} else {

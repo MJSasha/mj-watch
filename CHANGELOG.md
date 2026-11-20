@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0
+
+- Move a managed server to a fresh host over SSH while preserving user sessions, history, and settings.
+- Phones, tablets, and Android TV switch to the verified new address automatically.
+
 ## 0.11.3
 
 - Continue offline downloads in the background and resume partial files after temporary connection failures.

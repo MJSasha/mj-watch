@@ -12,6 +12,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
@@ -34,6 +35,7 @@ class OfflineDownloads private constructor(private val app: Context) {
     private val supported get() = !app.packageName.endsWith(".tv") &&
         (app.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) != Configuration.UI_MODE_TYPE_TELEVISION
     private val dao by lazy { Room.databaseBuilder(app, OfflineDatabase::class.java, "offline.db").build().downloads() }
+    private val secrets=SecretStore(app)
     private val directory get() = File(app.noBackupFilesDir, "offline-media")
     private val commands = Mutex()
     private val drainLock = Mutex()
@@ -142,7 +144,10 @@ class OfflineDownloads private constructor(private val app: Context) {
     }
 
     private val pending = setOf(OfflineState.QUEUED, OfflineState.DOWNLOADING)
-    private fun source(config: Config) = endpoint(if (config.managed) config.managedUrl else config.torrServer).toString()
+    private fun source(config: Config):String {
+        val url=endpoint(if(config.managed)config.managedUrl else config.torrServer)
+        return if(config.managed)secrets.get(downloadSourceKey(url,config.scope)).ifBlank {url.toString()} else url.toString()
+    }
     private fun profile(config: Config) = if (config.managed) "${config.profileKey}@${source(config)}" else config.profileKey
     private fun matches(config: Config, row: OfflineRecord) = !config.demo &&
         runCatching { profile(config) == row.profile && source(config) == row.source &&
@@ -195,6 +200,8 @@ class OfflineDownloads private constructor(private val app: Context) {
             }
         }
 
+    private class DownloadServerChanged:IOException()
+
     private suspend fun download(row: OfflineRecord, notify: (OfflineDownload) -> Unit) {
         val item = row.item
         val part = partial(item.id)
@@ -209,7 +216,8 @@ class OfflineDownloads private constructor(private val app: Context) {
                 if (!matches(config, row)) throw OfflineProblem("Изменилось подключение. Восстановите источник и повторите загрузку")
                 coroutineScope {
                     val monitor = launch {
-                        configs.first { !matches(it, row) }
+                        val updated=configs.first { !matches(it,row)||it.managedUrl!=config.managedUrl }
+                        if(config.managed&&matches(updated,row))throw DownloadServerChanged()
                         throw OfflineProblem("Подключение изменилось во время загрузки")
                     }
                     try {
@@ -217,9 +225,15 @@ class OfflineDownloads private constructor(private val app: Context) {
                             notify(item.copy(bytesDownloaded = part.length(), state = OfflineState.DOWNLOADING,
                                 error = "Восстанавливаем соединение"))
                         }) {
-                            fetch(config, row, part) { bytes ->
-                                dao.update(item.id, OfflineState.DOWNLOADING, bytes)
-                                notify(item.copy(bytesDownloaded = bytes, state = OfflineState.DOWNLOADING, error = null))
+                            try {
+                                fetch(config, row, part) { bytes ->
+                                    dao.update(item.id, OfflineState.DOWNLOADING, bytes)
+                                    notify(item.copy(bytesDownloaded = bytes, state = OfflineState.DOWNLOADING, error = null))
+                                }
+                            } catch(e:ServerMove) {
+                                // The config observer cancels this attempt as soon as sync verifies the new origin.
+                                delay(35_000)
+                                throw OfflineProblem("Сервер переехал. После синхронизации повторите загрузку")
                             }
                         }
                     } finally { monitor.cancel() }
@@ -227,6 +241,8 @@ class OfflineDownloads private constructor(private val app: Context) {
                 Files.move(part.toPath(), media(item).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             }
             dao.update(item.id, OfflineState.READY, item.totalBytes)
+        } catch (_:DownloadServerChanged) {
+            dao.update(item.id,OfflineState.QUEUED,part.length())
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 dao.update(item.id, OfflineState.QUEUED, part.length())
@@ -294,6 +310,9 @@ class OfflineDownloads private constructor(private val app: Context) {
         }
     }
 }
+
+// Keep existing download IDs and source isolation after a verified managed-server move.
+internal fun downloadSourceKey(url:HttpUrl,scope:String)="download-source:$url:$scope"
 
 /** A re-added torrent may assign different file IDs. Only resume the same torrent and file. */
 internal suspend fun reopenOfflineFile(

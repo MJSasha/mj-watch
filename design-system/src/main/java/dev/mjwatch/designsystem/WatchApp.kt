@@ -94,7 +94,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val remoteState by model.remote.collectAsStateWithLifecycle()
     if(!tv)RemoteReplacementDialog(model)
     val receiverActivity=androidx.activity.compose.LocalActivity.current
-    LaunchedEffect(tv,state.config.profileKey) {if(tv&&receiverActivity!=null){dev.mjwatch.playback.RemoteReceiver.attach(receiverActivity);dev.mjwatch.playback.RemoteReceiver.start(receiverActivity.application,state.config)}}
+    LaunchedEffect(tv,state.config.profileKey,state.config.managedUrl) {if(tv&&receiverActivity!=null){dev.mjwatch.playback.RemoteReceiver.attach(receiverActivity);dev.mjwatch.playback.RemoteReceiver.start(receiverActivity.application,state.config)}}
     AutomaticUpdates(model.updates)
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
     val snackbar=remember {SnackbarHostState()}
@@ -215,7 +215,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
-                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update"->ServerScreen(state,model,tv,registerBack={editorBack=it})
+                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})

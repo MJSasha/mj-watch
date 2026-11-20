@@ -4,13 +4,17 @@ import dev.mjwatch.core.*
 import dev.mjwatch.playback.PlaybackActivity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import kotlinx.coroutines.channels.Channel
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 
-data class ManagedState(val statusCheckedAt:Long=0,val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0)
+enum class ServerMoveStatus { CHECKING, RETRY, CONNECTED }
+
+data class ManagedState(val statusCheckedAt:Long=0,val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0,val moveStatus:ServerMoveStatus?=null)
 class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val config:()->Config) {
  private val mutable=MutableStateFlow(ManagedState());val state=mutable.asStateFlow()
  val users=UsersController(scope,secrets,config)
@@ -18,7 +22,11 @@ class ManagedController(private val context:android.content.Context,private val 
  fun storePreferences(c:Config){val prefs=context.getSharedPreferences("playback-preferences",0);val row=JSONObject().put("metadataProvider",if(c.managed)"none" else c.metadataProvider).put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null));context.getSharedPreferences("profile-playback-preferences",0).edit().putString(if(c.managed)c.scope else "direct",row.toString()).apply()}
  private suspend fun restorePreferences(c:Config){val server=if(c.historyEnabled)db.syncDao().entity(c.scope,"preferences","profile")?.takeUnless{it.deleted}?.json else null;val stored=context.getSharedPreferences("profile-playback-preferences",0).getString(if(c.managed)c.scope else "direct",null);if(!c.managed&&server==null&&stored==null)return;val value=JSONObject(server ?: stored ?: "{}");context.getSharedPreferences("playback-preferences",0).edit().putString("quality",value.optString("quality","Все")).putString("audio-language",value.optString("audioLanguage").takeIf{it.isNotBlank()&&it!="null"}).putString("subtitle-language",value.optString("subtitleLanguage").takeIf{it.isNotBlank()&&it!="null"&&it!="off"}).putBoolean("subtitles-off",value.optString("subtitleLanguage","off")=="off").apply()}
  private var syncJob:Job?=null;private var observer:Job?=null
- init {scope.launch {var previous:Config?=null;settings.config.collectLatest {c->if(previous?.scope!=c.scope||previous?.connectionMode!=c.connectionMode){previous?.let{storePreferences(it)};restorePreferences(c)};if(previous?.scope!=c.scope||previous?.managedUrl!=c.managedUrl)qr.cancelPhone();previous=c;users.reset(c.scope);syncJob?.cancel();observer?.cancel();mutable.value=ManagedState(scope=c.scope);if(c.historyEnabled) {
+ init {scope.launch {var previous:Config?=null;settings.config.collectLatest {c->if(previous?.scope!=c.scope||previous?.connectionMode!=c.connectionMode){previous?.let{storePreferences(it)};restorePreferences(c)};if(previous?.scope!=c.scope||previous?.managedUrl!=c.managedUrl)qr.cancelPhone();val moved=previous?.scope==c.scope&&previous?.managedUrl!=c.managedUrl
+   previous=c;users.reset(c.scope);syncJob?.cancel();observer?.cancel()
+   val old=mutable.value
+   mutable.value=ManagedState(scope=c.scope,me=old.me.takeIf {moved},moveStatus=old.moveStatus.takeIf {moved})
+   if(c.historyEnabled) {
    observer=launch {db.syncDao().observePending(c.scope).collect {rows->if(config().scope==c.scope)mutable.update {it.copy(pending=rows)}}}
    syncJob=launch {
     val wake=Channel<Unit>(Channel.CONFLATED)
@@ -72,7 +80,30 @@ class ManagedController(private val context:android.content.Context,private val 
  fun direct(deleteHistory:Boolean)=run {check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед сменой режима"};val c=config();if(c.managed){syncJob?.cancel();val origin=endpoint(c.managedUrl).origin();runCatching {api(c).authorized("auth/logout","POST")};secrets.put("access:$origin:${c.scope}","");secrets.put("refresh:$origin:${c.scope}","")};if(deleteHistory)db.dao().clearLegacyHistory();settings.handleLegacyHistory();val provider=if(c.managed)JSONObject(context.getSharedPreferences("profile-playback-preferences",0).getString("direct","{}") ?: "{}").optString("metadataProvider","none") else c.metadataProvider;settings.save(c.copy(connectionMode="direct",serverId="",userId="",metadataProvider=provider));mutable.value=ManagedState()}
  suspend fun record(c:Config,kind:String,key:String,json:JSONObject,operation:String="put") {if(!c.historyEnabled||config().scope!=c.scope)return;try {SyncEngine(api(c),db.syncDao()).enqueue(kind,key,json,operation)}catch(e:Exception){mutable.update {it.copy(message=safeError(e))}}}
  private fun installationId():String {val prefs=context.getSharedPreferences("device-installation",0);return prefs.getString("id",null) ?: java.util.UUID.randomUUID().toString().also {prefs.edit().putString("id",it).commit()}}
- private suspend fun sync(c:Config):Boolean {try {val api=api(c);val me=api.authorized("me");runCatching {api.authorized("devices/self/profile","PUT",JSONObject().apply {if(me.optBoolean("deviceInstallationIdentity"))put("installationId",installationId())}.put("type",if(context.packageName.endsWith(".tv"))"tv" else if(context.resources.configuration.smallestScreenWidthDp>=600)"tablet" else "phone"))};SyncEngine(api,db.syncDao()).sync(me);if(config().scope!=c.scope)return false;restorePreferences(c);mutable.update {it.copy(me=me,syncedAt=System.currentTimeMillis(),syncMessage=if(it.pending.any {p->p.conflict.isNotBlank()}) "Есть конфликт" else if(it.pending.isEmpty()) "Синхронизировано" else "Сохранено на устройстве")};return true}catch(e:CancellationException){throw e}catch(e:Exception){if(config().scope==c.scope)mutable.update {it.copy(syncMessage=safeError(e))};return false}}
+ private val syncMutex=Mutex()
+ private suspend fun sync(c:Config):Boolean=syncMutex.withLock {
+  if(!c.historyEnabled||settings.config.first().let {it.scope!=c.scope||it.managedUrl!=c.managedUrl})return@withLock false
+  try {
+   val api=api(c)
+   val me=api.authorized("me")
+   runCatching {api.authorized("devices/self/profile","PUT",JSONObject().apply {if(me.optBoolean("deviceInstallationIdentity"))put("installationId",installationId())}.put("type",if(context.packageName.endsWith(".tv"))"tv" else if(context.resources.configuration.smallestScreenWidthDp>=600)"tablet" else "phone"))}
+   SyncEngine(api,db.syncDao()).sync(me)
+   if(settings.config.first().let {it.scope!=c.scope||it.managedUrl!=c.managedUrl})return@withLock false
+   restorePreferences(c)
+   mutable.update {it.copy(me=me,syncedAt=System.currentTimeMillis(),syncMessage=if(it.pending.any {p->p.conflict.isNotBlank()}) "Есть конфликт" else if(it.pending.isEmpty()) "Синхронизировано" else "Сохранено на устройстве",moveStatus=if(it.moveStatus==ServerMoveStatus.CHECKING)ServerMoveStatus.CONNECTED else it.moveStatus)}
+   true
+  } catch(e:ServerMove) {
+   mutable.update {it.copy(moveStatus=ServerMoveStatus.CHECKING)}
+   try {api(c).followMove(e,settings)}
+   catch(cancelled:CancellationException){throw cancelled}
+   catch(_:Exception){mutable.update {it.copy(moveStatus=ServerMoveStatus.RETRY)}}
+   false
+  } catch(e:CancellationException){throw e}
+  catch(e:Exception){
+   if(mutable.value.scope==c.scope)mutable.update {it.copy(syncMessage=safeError(e))}
+   false
+  }
+ }
  fun downloadBackup(id:String,password:String,out:java.io.OutputStream)=run {out.use {api().downloadBackup(id,password,it)};mutable.update {it.copy(message="Зашифрованный архив скачан")}}
  fun syncNow()=run {sync(config())}
  fun resolve(p:OutboxEntry,useLocal:Boolean)=run {SyncEngine(api(),db.syncDao()).resolve(p,useLocal);sync(config())}

@@ -12,8 +12,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -53,6 +55,13 @@ func run() error {
 	}
 	if command != "serve" && os.Geteuid() != 0 {
 		return fmt.Errorf("root_required")
+	}
+	if c.Relocation != nil {
+		if command != "serve" {
+			return fmt.Errorf("migration_fenced")
+		}
+		// Never open the retired database or start background maintenance.
+		return listen(c, &service.Server{Config: c})
 	}
 	if command == "torr-operation" {
 		var input struct{ OperationID string }
@@ -244,7 +253,11 @@ func run() error {
 	}
 	s := service.New(db, c)
 	go s.Maintain(context.Background())
-	server := http.Server{Addr: c.Listen, Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(os.Stderr, "event=http_server ", log.LstdFlags)}
+	return listen(c, s)
+}
+
+func listen(c service.Config, handler http.Handler) error {
+	server := http.Server{Addr: c.Listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32768, ErrorLog: log.New(os.Stderr, "event=http_server ", log.LstdFlags)}
 	server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 		cert, e := loadServerCertificate(c.Certificate, c.PrivateKey)
 		for attempt := 0; e != nil && attempt < 3; attempt++ {
@@ -254,7 +267,22 @@ func run() error {
 		return cert, e
 	}}
 	log.Printf("event=server_start version=%s", service.Version)
-	return server.ListenAndServeTLS("", "")
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- server.ListenAndServeTLS("", "") }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		// Finish bounded API writes (especially token rotations) before quiescing SQLite.
+		drain, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		if err := server.Shutdown(drain); err != nil {
+			return server.Close() // A long playback stream can outlive the drain deadline.
+		}
+		return nil
+	}
 }
 
 func configuredTorrControl(c service.Config) (control.TorrControl, error) {
