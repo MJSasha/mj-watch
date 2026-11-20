@@ -210,6 +210,28 @@ def receive(folder, move, stream):
             db.execute("INSERT OR REPLACE INTO settings VALUES ('migration_id',?)", (move['migrationId'],))
 
 
+def mount_id(directory):
+    # st_dev cannot distinguish two bind mounts of the same filesystem.
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for line in Path('/proc/self/fdinfo', str(fd)).read_text().splitlines():
+            if line.startswith('mnt_id:'):
+                return (os.fstat(fd).st_dev, int(line.split()[1]))
+        raise ValueError('Cannot verify destination mount layout')
+    finally:
+        os.close(fd)
+
+
+def check_destination_mounts(config):
+    original = STAGE / 'original'
+    staging = original if original.exists() else STAGE if STAGE.exists() else ROOT
+    destination_mount = mount_id(staging)
+    for path in (Path(config['database']).parent, TORR, Path(config['backupDir'])):
+        if (path.resolve(strict=True) != path or mount_id(path) != destination_mount or
+                mount_id(path.parent) != destination_mount or os.path.ismount(path)):
+            raise ValueError('Destination data directory must be movable on the staging mount: ' + str(path))
+
+
 def preserve(path, backup):
     # A crash between any two renames may leave the destination vacant.
     # The untouched destination is saved exactly once across retries.
@@ -276,6 +298,7 @@ def worker(action, args):
             return {}
         if fenced or local['baseUrl'] != move['baseUrl'] or local['ca'] != move['ca']:
             raise ValueError('Destination identity mismatch')
+        check_destination_mounts(config)
         with db_open(dbpath) as db:
             if identity(db)['serverId'] == move['serverId'] or not fresh(db, args.get('replaceBootstrap', False)):
                 raise ValueError('Destination contains existing user state. A fresh installation is required.')
@@ -362,6 +385,8 @@ def worker(action, args):
         return {}
     if action != 'activate' or phase not in ('received', 'installing', 'installed', 'active'):
         raise ValueError('Unexpected migration phase')
+    if phase == 'received':
+        check_destination_mounts(config)
     if phase in ('received', 'installing'):
         if not fenced:
             config['relocation'] = dict(move, code='migration_in_progress')

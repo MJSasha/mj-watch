@@ -110,7 +110,7 @@ import org.json.JSONObject
                             Icon(if(managed.syncedAt>0)Icons.Outlined.CloudDone else Icons.Outlined.CloudSync,null,tint=if(managed.syncedAt>0)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                             Column(Modifier.weight(1f)) {
                                 Text("Синхронизация",style=MaterialTheme.typography.titleMedium)
-                                Text(managed.syncMessage.ifBlank {"Проверяем синхронизацию"},style=MaterialTheme.typography.bodySmall,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+                                if(managed.moveStatus!=ServerMoveStatus.CHECKING&&managed.moveStatus!=ServerMoveStatus.RETRY)Text(managed.syncMessage.ifBlank {"Проверяем синхронизацию"},style=MaterialTheme.typography.bodySmall,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
                             }
                             IconButton(enabled=!managed.busy,onClick={controller.syncNow()},modifier=Modifier.size(48.dp).tvFocusRing(tv)){Icon(Icons.Outlined.Sync,"Синхронизировать")}
                         }

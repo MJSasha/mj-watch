@@ -90,17 +90,19 @@ class ManagedController(private val context:android.content.Context,private val 
    SyncEngine(api,db.syncDao()).sync(me)
    if(settings.config.first().let {it.scope!=c.scope||it.managedUrl!=c.managedUrl})return@withLock false
    restorePreferences(c)
-   mutable.update {it.copy(me=me,syncedAt=System.currentTimeMillis(),syncMessage=if(it.pending.any {p->p.conflict.isNotBlank()}) "Есть конфликт" else if(it.pending.isEmpty()) "Синхронизировано" else "Сохранено на устройстве",moveStatus=if(it.moveStatus==ServerMoveStatus.CHECKING)ServerMoveStatus.CONNECTED else it.moveStatus)}
+   mutable.update {it.copy(me=me,syncedAt=System.currentTimeMillis(),syncMessage=if(it.pending.any {p->p.conflict.isNotBlank()}) "Есть конфликт" else if(it.pending.isEmpty()) "Синхронизировано" else "Сохранено на устройстве",moveStatus=it.moveStatus?.let {ServerMoveStatus.CONNECTED})}
    true
   } catch(e:ServerMove) {
-   mutable.update {it.copy(moveStatus=ServerMoveStatus.CHECKING)}
+   mutable.update {it.copy(moveStatus=ServerMoveStatus.CHECKING,syncedAt=0,syncMessage="")}
    try {api(c).followMove(e,settings)}
    catch(cancelled:CancellationException){throw cancelled}
    catch(_:Exception){mutable.update {it.copy(moveStatus=ServerMoveStatus.RETRY)}}
    false
   } catch(e:CancellationException){throw e}
   catch(e:Exception){
-   if(mutable.value.scope==c.scope)mutable.update {it.copy(syncMessage=safeError(e))}
+   if(mutable.value.scope==c.scope)mutable.update {
+    it.copy(syncMessage=safeError(e),moveStatus=if(it.moveStatus==ServerMoveStatus.CHECKING)ServerMoveStatus.RETRY else it.moveStatus)
+   }
    false
   }
  }
