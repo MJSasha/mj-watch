@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.3
+
+- Continue offline downloads in the background and resume partial files after temporary connection failures.
+- Show download progress, speed and an estimated time in the notification. Android 16 uses the native progress style.
+
 ## 0.11.2
 
 - Prefer the downloaded copy from a movie detail page and resume its saved position.
