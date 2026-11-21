@@ -15,6 +15,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Rational
 import android.view.KeyEvent
+import android.view.SurfaceView
+import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
@@ -112,6 +114,7 @@ class PlaybackActivity : ComponentActivity() {
     private var bufferTargetBytes=4*1048576
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
+    private lateinit var frozenFrame: VideoFreezeFrame
     private var session: MediaSession?=null
     private var tvSessionPlayer:TvSessionPlayer?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -156,6 +159,11 @@ class PlaybackActivity : ComponentActivity() {
         val backdrop=VideoBackdrop(this)
         root.addView(backdrop,FrameLayout.LayoutParams(-1,-1))
         view=PlayerView(this).apply {setBackgroundColor(android.graphics.Color.TRANSPARENT);setShutterBackgroundColor(android.graphics.Color.BLACK);setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false); setShowFastForwardButton(true); setShowRewindButton(true); controllerShowTimeoutMs=if((getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) 0 else 4000 }
+        val surface = view.videoSurfaceView as SurfaceView
+        val content = surface.parent as FrameLayout
+        val shutter = content.findViewById<View>(androidx.media3.ui.R.id.exo_shutter)
+        frozenFrame = VideoFreezeFrame(this)
+        content.addView(frozenFrame, content.indexOfChild(shutter) + 1, FrameLayout.LayoutParams(-1, -1))
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
@@ -165,6 +173,12 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
         scope.launch {while(isActive) {delay(1000);if(!released&&firstFrame&&lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))backdrop.sample(view.videoSurfaceView)}}
+        scope.launch {
+            while (isActive) {
+                delay(250)
+                if (!released && firstFrame && player.isPlaying) frozenFrame.sample(surface)
+            }
+        }
         androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() = handlePlaybackBack() })
         startupJob=scope.launch {
@@ -250,10 +264,20 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onEvents(player:Player,events:Player.Events) {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
-                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; if(startupProgress!=null) startupProgress=1f; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null }
+                override fun onRenderedFirstFrame() {
+                    firstFrame=true; firstFrameSeen=true; if(startupProgress!=null) startupProgress=1f; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null
+                    frozenFrame.showLiveVideo()
+                    surface.postOnAnimation { if (!released && firstFrame) frozenFrame.sample(surface) }
+                }
                 override fun onPlaybackStateChanged(state: Int) {
-                    if(state==Player.STATE_BUFFERING) { status=bufferingStatus(firstFrame); startedAt=System.currentTimeMillis() }
-                    if(state==Player.STATE_READY&&firstFrame) status=null
+                    if(state==Player.STATE_BUFFERING) {
+                        if (firstFrame) frozenFrame.hold()
+                        status=bufferingStatus(firstFrame); startedAt=System.currentTimeMillis()
+                    }
+                    if(state==Player.STATE_READY&&firstFrame) {
+                        frozenFrame.onReady()
+                        status=null
+                    }
                     if(state==Player.STATE_ENDED) { save(true); status=PlaybackStatus("Просмотр завершён") }
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -262,6 +286,7 @@ class PlaybackActivity : ComponentActivity() {
                 }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,newPosition: Player.PositionInfo,reason:Int) { save() }
                 override fun onPlayerError(error: PlaybackException) {
+                    if (firstFrame) frozenFrame.hold(waitForFirstFrame = true)
                     save()
                     if(!offline&&streamLimitScope(error)!=null){showPlaybackFailure(error);return}
                     if(!released&&decoderFallback.recover(this@PlaybackActivity,player,error)) {
@@ -281,7 +306,7 @@ class PlaybackActivity : ComponentActivity() {
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();player.stop();status=if(offline) localFailureStatus(retry=true) else PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
+                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();if(firstFrame)frozenFrame.hold(waitForFirstFrame=true);player.stop();status=if(offline) localFailureStatus(retry=true) else PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
                     else if(!offline&&elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
                 }
             }
@@ -433,6 +458,7 @@ class PlaybackActivity : ComponentActivity() {
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
         startupProgress=null;torrentStats=null
+        frozenFrame.clear()
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey

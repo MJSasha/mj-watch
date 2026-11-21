@@ -77,7 +77,7 @@ class BufferingUiTest {
                     return MockResponse().setBody("""{"hash":"$hash","file_stats":[{"id":7,"path":"movie.mp4","length":${data.size}}]}""")
                 }
                 calls.incrementAndGet()
-                if(mode.get()==-1)return MockResponse().setResponseCode(403)
+                if(mode.get()==-1)return MockResponse().setResponseCode(403).setHeadersDelay(3,TimeUnit.SECONDS)
                 if(mode.getAndUpdate {if(it>0)it-1 else it}>0)return MockResponse().setResponseCode(503)
                 val start=request.getHeader("Range")?.substringAfter("bytes=")?.substringBefore('-')?.toIntOrNull() ?: 0
                 return MockResponse().setResponseCode(if(start>0)206 else 200).setHeader("Content-Type","video/mp4")
@@ -94,17 +94,26 @@ class BufferingUiTest {
         val same=activity!!
         Assert.assertEquals("Exact file is reselected with its current server ID",7,same.intent.getIntExtra("fileId",-1))
         lateinit var player:androidx.media3.common.Player
+        lateinit var frozenFrame:android.widget.ImageView
         i.runOnMainSync {
             val field=PlaybackActivity::class.java.getDeclaredField("player").apply {isAccessible=true}
             player=field.get(same) as androidx.media3.common.Player
+            val frameField=PlaybackActivity::class.java.getDeclaredField("frozenFrame").apply {isAccessible=true}
+            frozenFrame=frameField.get(same) as android.widget.ImageView
+        }
+        compose.waitUntil(5000){var playing=false;i.runOnMainSync {playing=player.currentPosition>=500};playing}
+        i.runOnMainSync {
             player.pause();mode.set(-1)
             player.setMediaItem(androidx.media3.common.MediaItem.fromUri(server.url("/movie.mp4").toString()),2000)
             player.prepare()
         }
+        compose.onNodeWithTag("playback-buffering").assertExists()
+        i.runOnMainSync {Assert.assertTrue("The last decoded frame remains visible during buffering",frozenFrame.isShown&&frozenFrame.drawable!=null)}
         compose.waitUntil(15000){compose.onAllNodesWithText("Повторить").fetchSemanticsNodes().isNotEmpty()}
+        i.runOnMainSync {Assert.assertTrue("The last decoded frame remains visible after a stream failure",frozenFrame.isShown&&frozenFrame.drawable!=null)}
         mode.set(0)
         compose.onNodeWithText("Повторить").performClick()
-        compose.waitUntil(20000){var ready=false;i.runOnMainSync {ready=player.playbackState==androidx.media3.common.Player.STATE_READY};ready}
+        compose.waitUntil(20000){var ready=false;i.runOnMainSync {ready=player.playbackState==androidx.media3.common.Player.STATE_READY&&!frozenFrame.isShown};ready}
         i.runOnMainSync {
             Assert.assertFalse("Retry preserves pause",player.playWhenReady)
             Assert.assertTrue("Retry preserves position",player.currentPosition>=1900)
