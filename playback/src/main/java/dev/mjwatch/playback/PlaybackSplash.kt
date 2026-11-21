@@ -106,13 +106,14 @@ private fun SplashContent(
         val logoHeight = if (short) 84.dp else 150.dp
         val reveal = progress.takeIf { status.loading }
         val progressFill = Modifier.titleProgress(status.loading,reveal)
-        Column(
+        Box(
             Modifier.fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .padding(bottom = if (short) 14.dp else 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
         ) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.align(Alignment.Center).fillMaxWidth().padding(bottom = if (short) 40.dp else 56.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Box(
                     Modifier.widthIn(max = 720.dp).fillMaxWidth(0.83f)
                         .heightIn(max = if (short) 101.dp else 164.dp),
@@ -148,7 +149,9 @@ private fun SplashContent(
                     )
                 }
             }
-            PlaybackStatusOverlay(status,onRetry,onCancel,focusAction=tv,active=active,metrics=metrics,progress=reveal)
+            PlaybackStatusOverlay(status,onRetry,onCancel,
+                modifier=Modifier.align(Alignment.BottomCenter).padding(bottom = if (short) 14.dp else 24.dp),
+                focusAction=tv,active=active,metrics=metrics,progress=reveal)
         }
     }
 }
