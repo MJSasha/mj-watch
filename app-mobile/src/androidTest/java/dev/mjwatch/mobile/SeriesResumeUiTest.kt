@@ -96,6 +96,9 @@ class SeriesResumeUiTest {
                 .filterIsInstance<PlaybackActivity>().firstOrNull {it.firstFrameSeen}}
             playback!=null
         }
+        if (!mobile) compose.waitUntil(10000) {
+            compose.onAllNodesWithTag("player-prompt").fetchSemanticsNodes().isNotEmpty()
+        }
         val activity=playback!!
         val session=PlaybackActivity::class.java.getDeclaredField("playbackSession").apply {isAccessible=true}.get(activity)
         // Hold the writer until destruction to exercise quick exits even on fast devices.
@@ -145,6 +148,7 @@ class SeriesResumeUiTest {
         if(withoutLocalLink)model.secrets.put("release:${config.scope}:${release.id}","")
         compose.onNodeWithText(metadata.title).performClick()
         compose.waitUntil(10000) {model.state.value.page=="detail"}
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("detail-resume").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("detail-resume").performClick()
         val i=InstrumentationRegistry.getInstrumentation()
         var player:PlaybackActivity?=null

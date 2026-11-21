@@ -147,7 +147,7 @@ class PlaybackActivity : ComponentActivity() {
         setContentView(root)
         scope.launch {while(isActive) {delay(1000);if(!released&&firstFrame&&lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))backdrop.sample(view.videoSurfaceView)}}
         androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
-        onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() { if(panel!=null) { panel?.dismiss() } else if(!intent.getBooleanExtra("mobile",true)&&tvBackHandler!=null) tvBackHandler?.invoke() else exitPlayback() } })
+        onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() = handlePlaybackBack() })
         scope.launch {
             val config=Settings(applicationContext).config.first();playbackConfig=config
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
@@ -428,6 +428,17 @@ class PlaybackActivity : ComponentActivity() {
         }
         dialog.listView.selector=android.graphics.drawable.InsetDrawable(focus,(2*density).toInt())
     }
+    private fun handlePlaybackBack() {
+        panel?.let { it.dismiss(); return }
+        val handleTvBack = tvBackHandler
+        // The activity updates the status before the TV controls can recompose for the new episode.
+        if (!intent.getBooleanExtra("mobile", true) && status?.compact != false && handleTvBack != null) {
+            handleTvBack()
+        } else {
+            exitPlayback()
+        }
+    }
+
     private fun exitPlayback() {save();finish()}
     private fun videoSettings() {
         if(!::player.isInitialized||released)return
@@ -502,7 +513,7 @@ class PlaybackActivity : ComponentActivity() {
         if(handleMediaKey(event))return true
         if(!intent.getBooleanExtra("mobile",true)&&event.keyCode==KeyEvent.KEYCODE_BACK) {
             if(event.action==KeyEvent.ACTION_UP&&!event.isCanceled) {
-                if(panel!=null)panel?.dismiss() else tvBackHandler?.invoke() ?: exitPlayback()
+                handlePlaybackBack()
             }
             return true
         }
