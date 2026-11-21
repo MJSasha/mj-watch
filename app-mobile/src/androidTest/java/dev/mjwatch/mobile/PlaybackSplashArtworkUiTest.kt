@@ -51,15 +51,12 @@ class PlaybackSplashArtworkUiTest {
         val logoBytes=java.io.ByteArrayOutputStream().apply {logo.compress(android.graphics.Bitmap.CompressFormat.PNG,100,this)}.toByteArray()
         logo.recycle()
         val hash="0123456789012345678901234567890123456789"
-        val statRequests=java.util.concurrent.atomic.AtomicInteger()
         server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse = when(request.path) {
                 "/backdrop.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(backdrop))
                 "/logo.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(logoBytes))
-                "/torrents" -> {
-                    val speed = if(statRequests.getAndIncrement()%2==0) 7_125_000 else 7_250_000
-                    MockResponse().setHeader("Content-Type","application/json").setBody("""{"hash":"$hash","download_speed":$speed,"active_peers":12,"total_peers":446,"connected_seeders":12}""")
-                }
+                "/torrents" -> MockResponse().setHeader("Content-Type","application/json")
+                    .setBody("""{"hash":"$hash","download_speed":7125000,"active_peers":12,"total_peers":446,"connected_seeders":12}""")
                 "/movie.mp4" -> MockResponse().setHeadersDelay(7,TimeUnit.SECONDS).setHeader("Content-Type","video/mp4").setBody(okio.Buffer().write(video))
                 else -> MockResponse().setResponseCode(404)
             }
