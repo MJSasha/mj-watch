@@ -1,10 +1,12 @@
 package dev.mjwatch.core
 
 import kotlinx.coroutines.CancellationException
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
-/** TMDB API v3. Receives only title queries; no release URLs or tracker credentials. */
+/** TMDB API v3. Requests use catalog queries and TMDB title or person IDs. */
 class TmdbAdapter(private val token:String,private val client:OkHttpClient):MetadataAdapter {
     private suspend fun request(path:String,query:String?=null,section:CatalogSection?=null,kind:String?=null):List<Metadata> {
         val url=endpoint("https://api.themoviedb.org").child("3/$path").newBuilder().addQueryParameter("language","ru-RU")
@@ -17,8 +19,25 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
                     if(section==CatalogSection.ANIME)addQueryParameter("with_original_language","ja")
                 }
             }.build()
-        return parse(String(client.bytes(Request.Builder().url(url).header("Authorization","Bearer $token").build())),kind)
+        return parse(fetch(url),kind)
     }
+    private suspend fun fetch(url: HttpUrl): String =
+        String(client.bytes(Request.Builder().url(url).header("Authorization", "Bearer $token").build()))
+
+    private suspend fun credits(path: String): JSONObject {
+        val url = endpoint("https://api.themoviedb.org").child("3/$path").newBuilder()
+            .addQueryParameter("language", "ru-RU").build()
+        return JSONObject(fetch(url))
+    }
+
+    override suspend fun cast(id: String): List<CastMember> =
+        parseCast(credits(titleCreditsPath(id))) { path ->
+            path.takeIf(tmdbProfilePath::matches)?.let { "https://image.tmdb.org/t/p/w500$it" }
+        }
+
+    override suspend fun actorFilmography(personId: Long): List<Metadata> =
+        parseItems(filmographyResults(credits(personCreditsPath(personId))))
+
     override suspend fun search(query:String)=request("search/multi",query)
     override suspend fun home()=request("trending/all/week")
     override suspend fun browse(section:CatalogSection):List<Metadata> = when(section) {
@@ -34,13 +53,18 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
         val (_,kind,number)=id.split(':')
         val url=endpoint("https://api.themoviedb.org").child("3/$kind/$number").newBuilder().addQueryParameter("language","ru-RU")
             .apply {if(artwork) addQueryParameter("append_to_response","images").addQueryParameter("include_image_language","ru,en,null")}.build()
-        val item=JSONObject(String(client.bytes(Request.Builder().url(url).header("Authorization","Bearer $token").build()))).put("media_type",kind)
-        return parse(JSONObject().put("results",org.json.JSONArray().put(item)).toString()).singleOrNull()
+        val item=JSONObject(fetch(url)).put("media_type",kind)
+        return parseItems(JSONArray().put(item)).singleOrNull()
     }
     companion object {
         fun parse(raw:String,defaultKind:String?=null):List<Metadata> {
-            val results=JSONObject(raw).getJSONArray("results");require(results.length()<=500)
-            return (0 until results.length()).mapNotNull {i -> val item=results.getJSONObject(i);val kind=item.optString("media_type").ifBlank {defaultKind.orEmpty()}
+            val results = JSONObject(raw).getJSONArray("results")
+            require(results.length() <= 500)
+            return parseItems(results, defaultKind)
+        }
+
+        private fun parseItems(results: JSONArray, defaultKind: String? = null): List<Metadata> =
+            (0 until results.length()).mapNotNull {i -> val item=results.getJSONObject(i);val kind=item.optString("media_type").ifBlank {defaultKind.orEmpty()}
                 if(kind !in setOf("movie","tv")) null else {
                     fun image(key:String)=item.optString(key).takeIf {it.startsWith('/')&&it.length<1024}?.let {"https://image.tmdb.org/t/p/${if(key=="backdrop_path") "w1280" else "w500"}$it"}
                     val genreIds=item.optJSONArray("genre_ids")
@@ -51,7 +75,6 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
                         })
                 }
             }
-        }
     }
 }
 private val tmdbLogoPath=Regex("/[A-Za-z0-9_-]{1,128}\\.(png|webp|jpg|svg)")
@@ -98,6 +121,8 @@ class MetadataRepository(private val adapter:MetadataAdapter,private val dao:Wat
             cached?.let { metadataFromJson(it.json) }
         }
     }
+    suspend fun cast(id: String) = adapter.cast(id)
+    suspend fun actorFilmography(personId: Long) = adapter.actorFilmography(personId)
     suspend fun search(query:String)=load("${if(namespace.isBlank()) "" else "$namespace:"}search:$query") {adapter.search(query)}
     suspend fun home(force:Boolean=false,section:CatalogSection=CatalogSection.FOR_YOU)=load("${if(namespace.isBlank()) "" else "$namespace:"}home${if(section==CatalogSection.FOR_YOU)"" else ":${section.key}"}",force) {adapter.browse(section)}
     private suspend fun load(query:String,force:Boolean=false,request:suspend ()->List<Metadata>):MetadataResult {

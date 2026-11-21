@@ -222,6 +222,7 @@ func (s *Server) adminTMDB(w http.ResponseWriter, r *http.Request, path string, 
 
 var imagePath = regexp.MustCompile(`^metadata/images/(w92|w154|w185|w342|w500|w780|w1280|original)/([A-Za-z0-9_-]{1,128}\.(jpg|png|webp))$`)
 var detailPath = regexp.MustCompile(`^metadata/(movie|tv)/[1-9][0-9]{0,9}(/seasons/[0-9]{1,3}(/episodes/[0-9]{1,4})?)?$`)
+var creditsPath = regexp.MustCompile(`^metadata/((movie|tv)/[1-9][0-9]{0,9}/credits|person/[1-9][0-9]{0,9}/combined_credits)$`)
 
 func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i identity) {
 	if !s.limit("tmdb:"+i.User, 60, time.Minute) || !s.limit("tmdb:global", 240, time.Minute) {
@@ -260,6 +261,8 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 				return
 			}
 			q.Set("category", category)
+		case creditsPath.MatchString(path):
+			api = strings.TrimPrefix(path, "metadata/")
 		case detailPath.MatchString(path):
 			api = strings.ReplaceAll(strings.ReplaceAll(strings.TrimPrefix(path, "metadata/"), "/seasons/", "/season/"), "/episodes/", "/episode/")
 			withLogos = strings.Count(api, "/") == 1 && r.URL.Query().Get("artwork") == "logos"
@@ -411,5 +414,5 @@ var _ = strconv.Itoa
 
 func (s *Server) publicTMDB() map[string]any {
 	v := s.tmdbPublic()
-	return map[string]any{"enabled": v.Enabled, "available": v.Enabled && v.CredentialConfigured, "language": v.Language, "operations": []string{"search", "details", "seasons", "episodes", "images"}}
+	return map[string]any{"enabled": v.Enabled, "available": v.Enabled && v.CredentialConfigured, "language": v.Language, "operations": []string{"search", "details", "seasons", "episodes", "images", "credits", "filmography"}}
 }

@@ -37,6 +37,49 @@ class CatalogTest {
             }
         }
     }
+    @Test fun titleCastAndActorCreditsUseTmdbRoutes() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += request
+            val body = when (request.url.encodedPath) {
+                "/3/movie/42/credits", "/3/tv/42/credits" -> """
+                    {"cast":[
+                      {"id":7,"name":"Actor","character":"Hero","profile_path":"/actor.jpg"},
+                      {"id":8,"name":null,"original_name":"Guest","character":null,"profile_path":"/../unexpected.jpg"},
+                      {"id":7,"name":"Actor","character":"Another role"}
+                    ]}
+                """.trimIndent()
+                "/3/person/7/combined_credits" -> """
+                    {"cast":[
+                      {"id":42,"media_type":"movie","title":"Film","poster_path":"/film.jpg","release_date":"2020-01-01"},
+                      {"id":42,"media_type":"movie","title":"Film"},
+                      {"id":42,"media_type":"tv","name":"Series","first_air_date":"2021-01-01"},
+                      {"id":16,"media_type":"movie","title":"Adult title","adult":true}
+                    ],"crew":[{"id":13,"media_type":"movie","title":"Crew title"}]}
+                """.trimIndent()
+                else -> error("Unexpected path ${request.url.encodedPath}")
+            }
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200)
+                .message("OK").body(body.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val adapter = TmdbAdapter("test-secret", client)
+        val cast = adapter.cast("tmdb:movie:42")
+        assertEquals(listOf(
+            CastMember(7, "Actor", "Hero", "https://image.tmdb.org/t/p/w500/actor.jpg"),
+            CastMember(8, "Guest", "", null)
+        ), cast)
+        assertEquals(cast, adapter.cast("tmdb:tv:42"))
+        val filmography = adapter.actorFilmography(cast.first().id)
+        assertEquals(listOf("tmdb:movie:42", "tmdb:tv:42"), filmography.map(Metadata::id))
+        assertEquals(listOf(2020, 2021), filmography.map(Metadata::year))
+        assertEquals("https://image.tmdb.org/t/p/w500/film.jpg", filmography.first().poster)
+        assertEquals(3, requests.size)
+        assertTrue(requests.all {
+            it.header("Authorization") == "Bearer test-secret" && it.url.queryParameter("language") == "ru-RU"
+        })
+    }
+
     @Test fun categoryCachesDoNotOverwriteEachOtherAndWorkOffline()=runBlocking {
         val context=org.robolectric.RuntimeEnvironment.getApplication()
         val db=androidx.room.Room.inMemoryDatabaseBuilder(context,WatchDatabase::class.java).allowMainThreadQueries().build()

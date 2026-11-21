@@ -32,7 +32,16 @@ interface StreamGateway {
     suspend fun status(hash: String): TorrentHandle
     fun stream(handle: TorrentHandle, file: TorrentFile): StreamRequest
 }
-interface MetadataAdapter { suspend fun search(query: String): List<Metadata>; suspend fun home():List<Metadata> = emptyList(); suspend fun browse(section:CatalogSection):List<Metadata> = home().filter(section::matches); suspend fun details(id:String):Metadata?=null; suspend fun artworkDetails(id:String):Metadata?=details(id) }
+interface MetadataAdapter {
+    suspend fun search(query: String): List<Metadata>
+    suspend fun home(): List<Metadata> = emptyList()
+    suspend fun browse(section: CatalogSection): List<Metadata> = home().filter(section::matches)
+    suspend fun details(id: String): Metadata? = null
+    suspend fun artworkDetails(id: String): Metadata? = details(id)
+    suspend fun cast(id: String): List<CastMember> = emptyList()
+    suspend fun actorFilmography(personId: Long): List<Metadata> = emptyList()
+}
+data class CastMember(val id: Long, val name: String, val character: String, val profile: String?)
 data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null, val genre:String?=null, val runtimeMinutes:Int?=null, val logo:String?=null)
 object NoMetadata : MetadataAdapter { override suspend fun search(query: String) = emptyList<Metadata>() }
 object DemoReleases : ReleaseRepository {

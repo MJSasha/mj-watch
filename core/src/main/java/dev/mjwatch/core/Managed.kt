@@ -135,13 +135,22 @@ class ManagedGateway(private val api:ManagedApi,private val releases:TorznabRepo
  override fun stream(handle:TorrentHandle,file:TorrentFile)=StreamRequest(api.base.child("api/v1/playback/${handle.hash}/stream").newBuilder().addQueryParameter("file",file.serverFileId.toString()).build().toString())
 }
 class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
- private fun parse(j:JSONObject):List<Metadata> {val a=j.optJSONArray("results") ?: JSONArray();return (0 until a.length()).mapNotNull {index->val v=a.getJSONObject(index);val kind=v.optString("media_type");if(kind !in setOf("movie","tv")) null else {
+ private fun parse(j: JSONObject): List<Metadata> = parseItems(j.optJSONArray("results") ?: JSONArray())
+ private fun parseItems(a:JSONArray):List<Metadata> {return (0 until a.length()).mapNotNull {index->val v=a.getJSONObject(index);val kind=v.optString("media_type");if(kind !in setOf("movie","tv")) null else {
   fun image(k:String)=v.optString(k).takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/api/v1/").let {p->"api/v1/$p"}).toString()}
   val genres=v.optJSONArray("genre_ids") ?: JSONArray()
   Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"),v.primaryGenre(),v.runtimeMinutes(),tmdbLogo(v) { file ->
       file.takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/")).toString()}
   })
  }}}
+ override suspend fun cast(id: String): List<CastMember> =
+  parseCast(api.authorized("metadata/${titleCreditsPath(id)}")) { path ->
+   val prefix = "/api/v1/metadata/images/w500"
+   path.takeIf { it.startsWith("$prefix/") && tmdbProfilePath.matches(it.removePrefix(prefix)) }
+    ?.let { api.base.child(it).toString() }
+  }
+ override suspend fun actorFilmography(personId: Long): List<Metadata> =
+  parseItems(filmographyResults(api.authorized("metadata/${personCreditsPath(personId)}")))
  override suspend fun search(query:String)=parse(api.authorized("metadata/search?query="+java.net.URLEncoder.encode(query,"UTF-8")))
  override suspend fun home()=parse(api.authorized("metadata/home"))
  override suspend fun browse(section:CatalogSection):List<Metadata> {

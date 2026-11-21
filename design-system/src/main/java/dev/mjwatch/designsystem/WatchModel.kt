@@ -132,6 +132,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         return (r to if(c.managed) ManagedGateway(ManagedApi(c,secrets),r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
     private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
+    internal suspend fun cast(id: String, config: Config): List<CastMember> =
+        withContext(Dispatchers.IO) { metadataRepository(config).cast(id) }
+
+    internal suspend fun actorFilmography(id: Long, config: Config): List<Metadata> =
+        withContext(Dispatchers.IO) { metadataRepository(config).actorFilmography(id) }
+
     suspend fun loadTitleFacts(item: Metadata, config: Config) {
         if (config.demo || config.metadataProvider != "tmdb" || !item.id.matches(Regex("tmdb:(movie|tv):[0-9]+"))) return
         val detail = withContext(Dispatchers.IO) { metadataRepository(config).titleFacts(item.id,withArtwork=true) } ?: return
