@@ -1,6 +1,9 @@
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package dev.mjwatch.designsystem
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +27,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
@@ -34,9 +38,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import dev.mjwatch.core.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// Only the active screen handles input and runs effects during navigation.
+@Composable internal fun Modifier.softEntrance(contentKey: Any, offset: Dp = 8.dp): Modifier {
+    val progress = remember(contentKey) { Animatable(0f) }
+    LaunchedEffect(progress) { progress.animateTo(1f, tween(240)) }
+    return graphicsLayer {
+        alpha = .7f + .3f * progress.value
+        translationY = offset.toPx() * (1f - progress.value)
+    }
+}
 
 /** Bound a task pane, never the application window or a list/detail split. */
 @Composable internal fun BoundedPane(bounded:Boolean,maxWidth:Dp=640.dp,content:@Composable ()->Unit) {
@@ -119,7 +134,11 @@ import kotlinx.coroutines.launch
         else {
             Icon(Icons.Outlined.Movie,null,Modifier.align(Alignment.Center).size(40.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             val uri=if(config.metadataProvider=="tmdb") if(backdrop) metadata?.backdrop ?: metadata?.poster else metadata?.poster else null
-            if(uri!=null) AsyncImage(model=uri,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
+            if(uri!=null) {
+                val context=LocalContext.current
+                val request=remember(context,uri) {ImageRequest.Builder(context).data(uri).crossfade(220).build()}
+                AsyncImage(model=request,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
+            }
         }
     }
 }
@@ -134,9 +153,10 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(if(tv) 16.dp else 20.dp)) {
         labels.forEach {label->
             val active=selected==label
+            val indicator by animateColorAsState(if(active) MaterialTheme.colorScheme.primary else Color.Transparent,tween(160),label="Tab indicator")
             Column(Modifier.width(IntrinsicSize.Max).heightIn(min=48.dp).then(if(active&&selectedFocus!=null)Modifier.focusRequester(selectedFocus) else Modifier).selectableTab(active,tv) {onSelect(label)},horizontalAlignment=Alignment.CenterHorizontally) {
                 Text(label,color=if(active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,fontSize=if(tv) 18.sp else 14.sp,lineHeight=if(tv) 24.sp else 20.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(vertical=12.dp))
-                Box(Modifier.height(3.dp).widthIn(min=32.dp).fillMaxWidth().background(if(active) MaterialTheme.colorScheme.primary else Color.Transparent))
+                Box(Modifier.height(3.dp).widthIn(min=32.dp).fillMaxWidth().background(indicator))
             }
         }
     }
@@ -149,15 +169,16 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
 @Composable internal fun Modifier.tvFocusRing(tv:Boolean,shape:Shape=RoundedCornerShape(24.dp)):Modifier {
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
+    val ringAlpha=animateFloatAsState(if(focused) 1f else 0f,tween(130),label="Focus ring")
     val color=MaterialTheme.colorScheme.primary
     val inside=LocalTvNavigation.current
     return this.onFocusChanged {focused=it.isFocused}.drawWithContent {
         drawContent()
-        if(focused) {
+        if(ringAlpha.value>0f) {
             // TV rows can fill a clipped viewport; keep their stroke inside it.
             val offset=(if(inside) (-1).dp else 4.dp).toPx()
             val outline=shape.createOutline(Size((size.width+offset*2).coerceAtLeast(0f),(size.height+offset*2).coerceAtLeast(0f)),layoutDirection,this)
-            translate(-offset,-offset) {drawOutline(outline,color,style=Stroke(2.dp.toPx()))}
+            translate(-offset,-offset) {drawOutline(outline,color.copy(alpha=ringAlpha.value),style=Stroke(2.dp.toPx()))}
         }
     }
 }

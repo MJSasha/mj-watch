@@ -1,6 +1,11 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class,androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package dev.mjwatch.playback
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.alpha
@@ -69,50 +74,54 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 })
             })
-            if(visible) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
-                if(ready)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
+                Box(Modifier.fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
+                Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodeLabel.ifBlank {"MJWatch"},maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-tracks").focusRequester(tracksFocus).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
-                if(ready)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
-                    Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").focusRequester(timelineFocus).focusProperties {if(!mobile){up=tracksFocus;down=playFocus}}.onPreviewKeyEvent {event->
-                        if(mobile||event.key !in listOf(Key.DirectionUp,Key.DirectionDown,Key.DirectionLeft,Key.DirectionRight))false else {
-                            if(event.type==KeyEventType.KeyDown)touch {
-                                when(event.key) {
-                                    Key.DirectionUp->tracksFocus.requestFocus()
-                                    Key.DirectionDown->playFocus.requestFocus()
-                                    Key.DirectionLeft->player()?.seekTo((position-10_000).coerceAtLeast(0))
-                                    Key.DirectionRight->player()?.seekTo((position+10_000).coerceAtMost(duration))
+            }
+            PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
+                Box(contentAlignment=Alignment.BottomCenter) {
+                    Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
+                    Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
+                        Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").focusRequester(timelineFocus).focusProperties {if(!mobile){up=tracksFocus;down=playFocus}}.onPreviewKeyEvent {event->
+                            if(mobile||event.key !in listOf(Key.DirectionUp,Key.DirectionDown,Key.DirectionLeft,Key.DirectionRight))false else {
+                                if(event.type==KeyEventType.KeyDown)touch {
+                                    when(event.key) {
+                                        Key.DirectionUp->tracksFocus.requestFocus()
+                                        Key.DirectionDown->playFocus.requestFocus()
+                                        Key.DirectionLeft->player()?.seekTo((position-10_000).coerceAtLeast(0))
+                                        Key.DirectionRight->player()?.seekTo((position+10_000).coerceAtMost(duration))
+                                    }
                                 }
+                                true
                             }
-                            true
+                        }.playerFocus(),thumb={},track={Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
+                            val y=size.height/2
+                            val x=size.width*(position.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
+                            drawLine(Color(0xFF78818A),androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
+                            drawLine(PlayerLime,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(x,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
+                            drawCircle(PlayerLime,3.5.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
+                        })})
+                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
-                    }.playerFocus(),thumb={},track={Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
-                        val y=size.height/2
-                        val x=size.width*(position.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
-                        drawLine(Color(0xFF78818A),androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
-                        drawLine(PlayerLime,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(x,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
-                        drawCircle(PlayerLime,3.5.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
-                    })})
-                        Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
-                    }
-                    FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                        FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                        if(episodeCount>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.size(48.dp).testTag("player-previous-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex-1)}}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
-                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekBack()}}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
-                        IconButton(onClick={touch {player()?.let {if(it.isPlaying) it.pause() else it.play()}}},modifier=Modifier.size(56.dp).testTag("player-play").focusRequester(playFocus).focusProperties {if(!mobile)up=timelineFocus}.playerFocus()) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
-                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekForward()}}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
-                        if(episodeCount>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodeCount-1,modifier=Modifier.size(48.dp).testTag("player-next-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex+1)}}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
-                        }
-                        FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
-                        IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onFit)}) {Icon(Icons.Outlined.Fullscreen,"Масштаб")}
-                        if(mobile) IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onPip)}) {Icon(Icons.Outlined.PictureInPictureAlt,"PiP")}
+                        FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                            FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                            if(episodeCount>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.size(48.dp).testTag("player-previous-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex-1)}}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
+                            IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekBack()}}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                            IconButton(onClick={touch {player()?.let {if(it.isPlaying) it.pause() else it.play()}}},modifier=Modifier.size(56.dp).testTag("player-play").focusRequester(playFocus).focusProperties {if(!mobile)up=timelineFocus}.playerFocus()) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
+                            IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {player()?.seekForward()}}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                            if(episodeCount>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodeCount-1,modifier=Modifier.size(48.dp).testTag("player-next-episode").focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch {onEpisode(episodeIndex+1)}}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
+                            }
+                            FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                            IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
+                            IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onFit)}) {Icon(Icons.Outlined.Fullscreen,"Масштаб")}
+                            if(mobile) IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)up=timelineFocus}.playerFocus(),onClick={touch(onPip)}) {Icon(Icons.Outlined.PictureInPictureAlt,"PiP")}
+                            }
                         }
                     }
                 }
@@ -128,6 +137,25 @@ internal val PlayerLime=Color(0xFFC7FF68)
         }
     }
 }
+}
+
+@Composable
+internal fun PlayerChrome(visible: Boolean, modifier: Modifier, content: @Composable () -> Unit) {
+    // Let the TV return focus to the video as the controls fade out.
+    val exiting = if (visible) Modifier else Modifier
+        .focusProperties { canFocus = false }
+        .clearAndSetSemantics { hideFromAccessibility() }
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            }
+        }
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier.then(exiting),
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(160)),
+    ) { content() }
 }
 
 internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)

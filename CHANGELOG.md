@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+- Animate screen navigation, bottom navigation, artwork, and list changes on phones, tablets, and Android TV.
+- Keep the title screen and its selected tab in place while the mobile release sheet is open.
+- Fade player controls and their backgrounds in and out while preserving touch and D-pad behavior.
+
 ## 0.12.0
 
 - Move a managed server to a fresh host over SSH while preserving user sessions, history, and settings.
