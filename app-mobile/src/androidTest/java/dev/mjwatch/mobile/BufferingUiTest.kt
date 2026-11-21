@@ -2,7 +2,7 @@ package dev.mjwatch.mobile
 
 import android.content.Intent
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -30,8 +30,11 @@ class BufferingUiTest {
         val c=InstrumentationRegistry.getInstrumentation().targetContext
         c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
         Settings(c).handleLegacyHistory();Settings(c).save(Config(torrServer=server.url("/").toString(),localHttp=true));Settings(c).destination("home")
-    };override fun after(){server.shutdown()}}
-    @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
+    };override fun after(){
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {PlaybackActivity.stopActivePlayback()}
+        server.shutdown()
+    }}
+    @get:Rule(order=1) val compose=createEmptyComposeRule()
     @Test fun startupSplashAndRetryRendersARealFirstFrame() {
         val i=InstrumentationRegistry.getInstrumentation();val context=i.targetContext
         server.enqueue(MockResponse().setHeadersDelay(8,TimeUnit.SECONDS).setBody("not a video"))

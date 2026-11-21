@@ -22,6 +22,8 @@ import androidx.activity.OnBackPressedCallback
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -37,6 +39,7 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicLong
 
 private const val INITIAL_BUFFER_MS = 1500
 
@@ -126,6 +129,8 @@ class PlaybackActivity : ComponentActivity() {
     private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(bufferingStatus(false))
     private var artwork by androidx.compose.runtime.mutableStateOf<PlaybackArtwork?>(null)
     private var artworkJob: Job? = null
+    private val networkBytes = AtomicLong()
+    private var streamBytesPerSecond by androidx.compose.runtime.mutableStateOf<Double?>(null)
     private var torrentStats by androidx.compose.runtime.mutableStateOf<TorrentPlaybackStats?>(null)
     private var startupProgress by androidx.compose.runtime.mutableStateOf<Float?>(null)
 
@@ -151,7 +156,8 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,stats=torrentStats,progress=startupProgress)
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
+                torrentStats,streamBytesPerSecond,intent.getIntExtra("trackerSeeders",-1).takeIf {it>=0}),progress=startupProgress)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -182,7 +188,7 @@ class PlaybackActivity : ComponentActivity() {
                 if(!uri.startsWith("asset:")&&auth.isNotBlank())headers["Authorization"]=auth
                 val client=if(config.managed)managedClient(config,SecretStore(applicationContext))
                     else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))
-                val http=OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
+                val http=OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers).setTransferListener(streamTransferListener)
                 dataSource=DefaultDataSource.Factory(this@PlaybackActivity,http)
             }
             if(!offline) { loadArtwork(config); trackLoading(config) }
@@ -282,12 +288,21 @@ class PlaybackActivity : ComponentActivity() {
         }
         fun episodeChanged()=invalidateState()
     }
+    private val streamTransferListener = object : TransferListener {
+        override fun onTransferInitializing(source:DataSource,dataSpec:DataSpec,isNetwork:Boolean) = Unit
+        override fun onTransferStart(source:DataSource,dataSpec:DataSpec,isNetwork:Boolean) = Unit
+        override fun onTransferEnd(source:DataSource,dataSpec:DataSpec,isNetwork:Boolean) = Unit
+        override fun onBytesTransferred(source:DataSource,dataSpec:DataSpec,isNetwork:Boolean,bytesTransferred:Int) {
+            if(isNetwork) networkBytes.addAndGet(bytesTransferred.toLong())
+        }
+    }
+
     private fun trackLoading(config: Config) {
         scope.launch {
             snapshotFlow { status?.loading == true && !firstFrameSeen }.collectLatest { loading ->
                 if (!loading) return@collectLatest
                 while (isActive) {
-                    if (::player.isInitialized && player.playbackState == Player.STATE_BUFFERING && player.duration > 0) {
+                    if (::player.isInitialized && player.playbackState == Player.STATE_BUFFERING && player.totalBufferedDuration > 0) {
                         // This is the player's start buffer in playout time, independent of TorrServer's cache.
                         val target = INITIAL_BUFFER_MS * player.playbackParameters.speed
                         startupProgress = (player.totalBufferedDuration / target).coerceIn(0f, .99f)
@@ -297,6 +312,28 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
         if (intent.getStringExtra("torrentHandle").isNullOrBlank()) return
+        scope.launch {
+            snapshotFlow { status?.loading == true }.collectLatest { loading ->
+                if (!loading) return@collectLatest
+                var previousBytes = networkBytes.get()
+                var previousTime = android.os.SystemClock.elapsedRealtime()
+                try {
+                    while (isActive) {
+                        delay(500)
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        val bytes = networkBytes.get()
+                        val count = bytes - previousBytes
+                        if (count > 0 || streamBytesPerSecond != null) {
+                            streamBytesPerSecond = count * 1000.0 / (now - previousTime).coerceAtLeast(1)
+                        }
+                        previousBytes = bytes
+                        previousTime = now
+                    }
+                } finally {
+                    streamBytesPerSecond = null
+                }
+            }
+        }
         scope.launch {
             val source = try {
                 withContext(Dispatchers.IO) { TorrentPlaybackStatsSource(config, SecretStore(applicationContext)) }
@@ -312,7 +349,7 @@ class PlaybackActivity : ComponentActivity() {
                         val handle = intent.getStringExtra("torrentHandle") ?: break
                         val index = fileId
                         val stats = try {
-                            withTimeoutOrNull(2_000) { withContext(Dispatchers.IO) { source.read(handle, index) } }
+                            withTimeoutOrNull(4_000) { withContext(Dispatchers.IO) { source.read(handle, index) } }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
@@ -330,7 +367,8 @@ class PlaybackActivity : ComponentActivity() {
 
     private fun loadArtwork(config: Config) {
         if (config.metadataProvider != "tmdb") return
-        val metadataId = intent.getStringExtra("artMetadataId")
+        val metadataId = (intent.getStringExtra("artMetadataId") ?: intent.getStringExtra("metadataId"))
+            ?.takeIf { it.matches(Regex("tmdb:(movie|tv):[0-9]+")) }
         val backdrop = intent.getStringExtra("artBackdrop")
         val poster = intent.getStringExtra("artPoster")
         val logo = intent.getStringExtra("artLogo")

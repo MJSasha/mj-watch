@@ -2,7 +2,7 @@ package dev.mjwatch.mobile
 
 import android.content.Intent
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.test.platform.app.InstrumentationRegistry
@@ -24,10 +24,10 @@ class MobilePlayerDesignTest {
             Settings(context).handleLegacyHistory();Settings(context).save(Config(demo=true));Settings(context).destination("home")
         }
     }
-    @get:Rule(order=1) val ui=createAndroidComposeRule<MainActivity>()
+    @get:Rule(order=1) val ui=createEmptyComposeRule()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
     private var activity:PlaybackActivity?=null
-    @After fun closePlayer() {instrumentation.runOnMainSync {activity?.finish()}}
+    @After fun closePlayer() {instrumentation.runOnMainSync {PlaybackActivity.stopActivePlayback()}}
 
     @Test fun nativePhoneChromeKeepsTouchActionsAndPlaybackWithoutActionLabels() {
         val queue=(1..2).map {PlaybackEpisode("asset:///demo.mp4","Серия $it.mp4",it)}

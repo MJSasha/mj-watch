@@ -2,7 +2,7 @@ package dev.mjwatch.mobile
 
 import android.content.Intent
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import dev.mjwatch.core.*
@@ -23,7 +23,7 @@ class StreamLimitUiTest {
   context.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
   Settings(context).save(Config(demo=false,connectionMode="direct",torrServer=server.url("/").toString(),localHttp=true));Settings(context).destination("home")
  }}
- @get:Rule(order=1)val ui=createAndroidComposeRule<MainActivity>()
+ @get:Rule(order=1)val ui=createEmptyComposeRule()
  @After fun close(){InstrumentationRegistry.getInstrumentation().runOnMainSync{PlaybackActivity.stopActivePlayback()};server.shutdown()}
  @Test fun capacityErrorMakesOneRequestAndOffersAnExplicitRetry(){
   val i=InstrumentationRegistry.getInstrumentation()

@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,14 +21,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.TorrentPlaybackStats
 import kotlin.math.roundToInt
+
+internal data class PlaybackLoadingMetrics(
+    val torrent:TorrentPlaybackStats?,
+    val streamBytesPerSecond:Double?,
+    val trackerSeeders:Int?,
+)
 
 internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false,val backLabel:String="К раздаче")
 
@@ -63,7 +66,7 @@ internal fun PlaybackStatusOverlay(
     modifier: Modifier = Modifier,
     focusAction: Boolean = false,
     active: Boolean = true,
-    stats: TorrentPlaybackStats? = null,
+    metrics: PlaybackLoadingMetrics? = null,
     progress: Float? = null,
 ) {
     val focus = remember { FocusRequester() }
@@ -80,26 +83,23 @@ internal fun PlaybackStatusOverlay(
     val tag = if (status.compact) "playback-buffering" else "playback-status"
     BoxWithConstraints(modifier.padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
         val available = maxWidth / LocalDensity.current.fontScale
-        val metrics = status.loading && status.message.isBlank()
-        val labels = buildList {
-            val peers = stats?.activePeers
-            val total = stats?.totalPeers
-            if (metrics && peers != null && available >= 305.dp) add((if (total == null) "$peers пир." else "$peers / $total") to false)
-            if (metrics) {
-                stats?.downloadBytesPerSecond?.let { add("${(it * 8.0 / 1_000_000).roundToInt()} Мбит/с" to false) }
-                progress?.let { add("${(it * 100f).roundToInt()}%" to true) }
-                if (available >= 235.dp) stats?.connectedSeeders?.let { add("Сиды $it" to false) }
-            }
-            if (isEmpty() || status.compact || !metrics) add(0, status.title to true)
-            if (status.loading && status.message.isNotBlank() && available >= 570.dp) add(status.message to false)
+        val torrent = metrics?.torrent
+        val metricsAvailable = status.loading && metrics != null
+        val showStatus = !metricsAvailable || status.compact || status.message.isNotBlank()
+        val serverSpeed = torrent?.downloadBytesPerSecond
+        val streamSpeed = metrics?.streamBytesPerSecond
+        val speed = when {
+            serverSpeed != null -> "${mbitPerSecond(serverSpeed)} Мбит/с"
+            streamSpeed != null -> "Поток ${mbitPerSecond(streamSpeed)} Мбит/с"
+            else -> "— Мбит/с"
         }
-        val line = buildAnnotatedString {
-            labels.forEachIndexed { index, (label, emphasis) ->
-                if (index > 0) withStyle(SpanStyle(color = muted)) { append("  ·  ") }
-                withStyle(SpanStyle(color = if (emphasis) foreground else muted,
-                    fontWeight = if (emphasis) FontWeight.SemiBold else FontWeight.Normal)) { append(label) }
-            }
+        val seeders = when {
+            torrent?.connectedSeeders != null -> "Сиды ${torrent.connectedSeeders}"
+            metrics?.trackerSeeders != null -> "Сиды ${metrics.trackerSeeders} (трекер)"
+            else -> "Сиды —"
         }
+        val peers = torrent?.activePeers
+        val totalPeers = torrent?.totalPeers
         FlowRow(
             Modifier.widthIn(max = 760.dp).testTag(tag).background(Color(0xDE202020), CircleShape)
                 .padding(horizontal = if (status.loading) 16.dp else 10.dp, vertical = if (status.loading) 9.dp else 1.dp),
@@ -107,20 +107,41 @@ internal fun PlaybackStatusOverlay(
             verticalArrangement = Arrangement.Center,
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier.heightIn(min = if (status.loading) 18.dp else 36.dp).semantics {
-                    if (stats == null && progress == null) liveRegion = LiveRegionMode.Polite
-                    else stateDescription = status.title
-                    if (status.loading && status.message.isNotBlank() && available < 570.dp) contentDescription = status.message
-                },
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(if (status.loading) Icons.Outlined.FileDownload else Icons.Outlined.ErrorOutline,
-                    contentDescription = null, modifier = Modifier.size(17.dp), tint = muted)
-                if (status.loading) {
-                    Text(line, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                } else {
+            if (status.loading) {
+                Row(
+                    Modifier.heightIn(min = 18.dp).semantics {
+                        if (!metricsAvailable && progress == null) liveRegion = LiveRegionMode.Polite
+                        else stateDescription = status.title
+                    },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (showStatus) Text(status.title, color = foreground, style = MaterialTheme.typography.bodyMedium)
+                    val bar = Modifier.width(34.dp).height(3.dp).testTag("playback-start-progress")
+                    if (progress == null) LinearProgressIndicator(bar, color = foreground, trackColor = Color.DarkGray)
+                    else {
+                        LinearProgressIndicator(progress = {progress}, modifier = bar, color = foreground, trackColor = Color.DarkGray)
+                        Text("${(progress * 100f).roundToInt()}%", color = foreground,
+                            fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (metricsAvailable) {
+                    Text(speed, color = foreground, style = MaterialTheme.typography.bodyMedium)
+                    Text(seeders, color = muted, style = MaterialTheme.typography.bodyMedium)
+                    if (peers != null && totalPeers != null && available >= 405.dp) {
+                        Text("$peers / $totalPeers", color = muted, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (status.message.isNotBlank() && available >= 570.dp) {
+                    Text(status.message, color = muted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                }
+            } else {
+                Row(
+                    Modifier.heightIn(min = 36.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(17.dp), tint = muted)
                     Column {
                         Text(status.title, color = foreground, style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -138,4 +159,10 @@ internal fun PlaybackStatusOverlay(
             }
         }
     }
+}
+
+private fun mbitPerSecond(bytesPerSecond:Double):String {
+    val mbit = bytesPerSecond * 8.0 / 1_000_000
+    return if (mbit >= 10 || mbit == 0.0) mbit.roundToInt().toString()
+    else String.format(java.util.Locale.forLanguageTag("ru"), "%.1f", mbit)
 }
