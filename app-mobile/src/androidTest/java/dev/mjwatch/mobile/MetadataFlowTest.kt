@@ -74,8 +74,9 @@ class MetadataFlowTest {
     compose.runOnIdle {
         model.open(release, metadata = Metadata(release.id, "Тестовый сериал", null, null, kind = "tv"))
     }
-    compose.waitUntil(10000) { compose.onAllNodesWithTag("season-selector").fetchSemanticsNodes().isNotEmpty() }
     val grid = compose.onNodeWithTag("detail-episode-grid")
+    grid.performScrollToNode(hasTestTag("season-selector"))
+    compose.onNodeWithTag("season-selector").assertIsDisplayed()
     grid.performScrollToNode(hasTestTag("episode-1"))
     val banner = compose.onNodeWithTag("episode-banner-1", useUnmergedTree = true).getUnclippedBoundsInRoot()
     val badge = compose.onNodeWithContentDescription("Серия 1", useUnmergedTree = true).getUnclippedBoundsInRoot()
