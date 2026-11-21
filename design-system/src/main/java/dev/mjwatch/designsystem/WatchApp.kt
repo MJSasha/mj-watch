@@ -6,6 +6,15 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -37,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
@@ -135,46 +145,74 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
             val rail=tv||(width>=600&&LocalConfiguration.current.screenHeightDp>=480&&!imeVisible)
             val railItems=if(rail) listOf(destinations[0],destinations[1],Destination("history","История",Icons.Outlined.History),destinations[2],destinations[3]) else destinations
-            val top=state.page in (destinations.map {it.id}+"history")
-            val cinematic=state.page in setOf("home","detail")
+            val releaseSheet=!tv&&width<840&&state.page=="releases"
+            val page=if(releaseSheet) "detail" else state.page
+            val top=page in (destinations.map {it.id}+"history")
+            val cinematic=page in setOf("home","detail")
+            val releaseSelection=state.query+":${state.releaseSeason}:${state.releaseEpisode}"
+            val releaseKey="releases"+releaseSelection
+            val screenKey=page+when(page) {
+                "detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty()
+                "releases"->releaseSelection
+                "files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}"
+                "library","history"->if(tv) "" else state.config.profileKey
+                else->""
+            }
             val railFocus=remember {FocusRequester()};var railFocused by remember {mutableStateOf(false)}
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            val detailNav=state.page=="detail" && !rail && width<600 && LocalConfiguration.current.screenHeightDp>=480 &&
+            val detailNav=page=="detail" && !rail && width<600 && LocalConfiguration.current.screenHeightDp>=480 &&
                 (LocalConfiguration.current.fontScale<1.5f || LocalConfiguration.current.screenHeightDp>=740)
-            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={if(!rail&&(top||detailNav)&&state.configured&&!imeVisible) {
-                if(detailNav) {
-                    val navBackground=if(colors.background.luminance()<.5f) androidx.compose.ui.graphics.Color(0xff0c1015) else colors.background
-                    Column(Modifier.background(navBackground).windowInsetsPadding(WindowInsets.navigationBars)) {
-                        HorizontalDivider(color=colors.onSurface.copy(alpha=.12f))
-                        val columns=if(LocalConfiguration.current.fontScale>=1.5f&&width<512) 2 else destinations.size
-                        destinations.chunked(columns).forEach { row ->
-                            Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                                row.forEach {d->
-                                    val selected=d.id==state.originPage || d.id=="library"&&state.originPage=="history"
-                                    val tint=if(selected)colors.primary else colors.onSurfaceVariant
-                                    Column(Modifier.weight(1f).heightIn(min=52.dp).clip(RoundedCornerShape(12.dp))
-                                        .background(if(selected) colors.primary.copy(alpha=.10f) else navBackground)
-                                        .selectable(selected,role=Role.Tab,onClick={model.page(d.id)}).padding(horizontal=2.dp,vertical=3.dp),
-                                        verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-                                        Icon(d.icon,null,Modifier.size(22.dp),tint=tint)
-                                        Text(d.title,fontSize=11.sp,lineHeight=15.sp,color=tint,maxLines=1)
+            val showBottomBar=!rail&&(top||detailNav)&&state.configured
+            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
+                if(!imeVisible) Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))) {
+                    AnimatedVisibility(
+                        visible=showBottomBar,
+                        enter=fadeIn(tween(180))+expandVertically(tween(240)),
+                        exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
+                    ) {
+                        AnimatedContent(
+                            targetState=detailNav,
+                            transitionSpec={fadeIn(tween(170)) togetherWith fadeOut(tween(130))},
+                            label="Bottom navigation",
+                        ) {compact->
+                            val active=showBottomBar&&compact==detailNav
+                            val semantics=if(active) Modifier else Modifier.clearAndSetSemantics { hideFromAccessibility() }
+                            if(compact) {
+                                val navBackground=if(colors.background.luminance()<.5f) androidx.compose.ui.graphics.Color(0xff0c1015) else colors.background
+                                Column(semantics.background(navBackground).windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))) {
+                                    HorizontalDivider(color=colors.onSurface.copy(alpha=.12f))
+                                    val columns=if(LocalConfiguration.current.fontScale>=1.5f&&width<512) 2 else destinations.size
+                                    destinations.chunked(columns).forEach { row ->
+                                        Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                            row.forEach {d->
+                                                val selected=d.id==state.originPage || d.id=="library"&&state.originPage=="history"
+                                                val tint=if(selected)colors.primary else colors.onSurfaceVariant
+                                                Column(Modifier.weight(1f).heightIn(min=52.dp).clip(RoundedCornerShape(12.dp))
+                                                    .background(if(selected) colors.primary.copy(alpha=.10f) else navBackground)
+                                                    .selectable(selected,enabled=active,role=Role.Tab,onClick={model.page(d.id)}).padding(horizontal=2.dp,vertical=3.dp),
+                                                    verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+                                                    Icon(d.icon,null,Modifier.size(22.dp),tint=tint)
+                                                    Text(d.title,fontSize=11.sp,lineHeight=15.sp,color=tint,maxLines=1)
+                                                }
+                                            }
+                                        }
+                                        }
+                                }
+                            } else Column(semantics.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))) {
+                                val fontScale=LocalConfiguration.current.fontScale
+                                val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
+                                destinations.chunked(columns).forEach {row->
+                                    NavigationBar(Modifier.fillMaxWidth().height(if(fontScale>=1.5f) 88.dp else 74.dp),containerColor=colors.surface,tonalElevation=0.dp,windowInsets=WindowInsets(0)) {
+                                        row.forEach {d->NavigationBarItem(selected=state.page==d.id,enabled=active,onClick={model.page(d.id)},colors=NavigationBarItemDefaults.colors(selectedIconColor=colors.primary,selectedTextColor=colors.onSurface,unselectedIconColor=colors.onSurfaceVariant,unselectedTextColor=colors.onSurfaceVariant,indicatorColor=colors.primaryContainer),icon={Icon(d.icon,null,Modifier.size(24.dp))},label={Text(d.title,fontSize=11.sp,maxLines=1,softWrap=false)})}
                                     }
                                 }
                             }
                         }
                     }
-                } else Column(Modifier.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
-                    val fontScale=LocalConfiguration.current.fontScale
-                    val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
-                    destinations.chunked(columns).forEach {row->
-                    NavigationBar(Modifier.fillMaxWidth().height(if(fontScale>=1.5f) 88.dp else 74.dp),containerColor=colors.surface,tonalElevation=0.dp,windowInsets=WindowInsets(0)) {
-                        row.forEach {d->NavigationBarItem(selected=state.page==d.id,onClick={model.page(d.id)},colors=NavigationBarItemDefaults.colors(selectedIconColor=colors.primary,selectedTextColor=colors.onSurface,unselectedIconColor=colors.onSurfaceVariant,unselectedTextColor=colors.onSurfaceVariant,indicatorColor=colors.primaryContainer),icon={Icon(d.icon,null,Modifier.size(24.dp))},label={Text(d.title,fontSize=11.sp,maxLines=1,softWrap=false)})}
-                    }
-                    }
                 }
-            }}) {padding->
+            }) {padding->
                 Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                     if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
@@ -188,28 +226,32 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(if(tv) Modifier.size(width=tvUnit(96f),height=72.dp) else Modifier.size(48.dp)).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
                         }
                     }
-                    Column(Modifier.weight(1f).fillMaxHeight().imePadding()) {
-                        if(!(tv&&(cinematic||state.page=="search"))&&state.page!="detail"&&!(state.page=="releases"&&!tv&&width<840)&&!(tv&&state.page=="settings"&&!state.configured)) {
+                    Column(Modifier.weight(1f).fillMaxHeight().imePadding().clipToBounds().softEntrance(screenKey)) {
+                        if(!(tv&&(cinematic||page=="search"))&&page!="detail"&&!(tv&&page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                                val title=when(state.page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
-                                if(state.page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-                                if(state.page=="home") HomeServerButton(state,model,tv)
-                                else if(state.config.demo&&state.page!="settings"&&state.page!="connections"&&!state.page.startsWith("settings-")) Badge("ДЕМО",accent=true)
+                                val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
+                                if(page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
+                                if(page=="home") HomeServerButton(state,model,tv)
+                                else if(state.config.demo&&page!="settings"&&page!="connections"&&!page.startsWith("settings-")) Badge("ДЕМО",accent=true)
                             }
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
-                        val edge=state.page in setOf("home","detail")||state.page=="releases"&&!tv||state.page=="settings"&&!state.configured&&!tv
+                        val edge=page in setOf("home","detail")||page=="releases"&&!tv||page=="settings"&&!state.configured&&!tv
                         val screenFocus=remember {FocusRequester()}
-                        LaunchedEffect(state.page,tv) {
-                            if(tv&&state.page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
+                        LaunchedEffect(page,tv) {
+                            if(tv&&page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
                         }
-                        Box(Modifier.weight(1f).fillMaxWidth().focusRequester(screenFocus).focusGroup().then(if(edge) Modifier else Modifier.padding(horizontal=inset))) {
-                            val bounded=if(tv) state.page=="settings-search"||state.page=="settings-server"&&!state.config.managed
-                                else state.page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(state.page=="settings-server"&&state.config.managed)
-                            BoundedPane(bounded,maxWidth=if(tv) tvUnit(720f) else if(state.page=="releases"||state.page=="files") 840.dp else 640.dp) {
-                            saved.SaveableStateProvider(state.page+when(state.page) {"detail"->state.selectedMetadata?.id ?: state.selected?.id.orEmpty();"releases"->state.query+":${state.releaseSeason}:${state.releaseEpisode}";"files"->state.selected?.id.orEmpty()+state.config.torrServer+":${state.releaseSeason}:${state.releaseEpisode}";"library","history"->if(tv) "" else state.config.profileKey;else->""}) {
-                                when(state.page) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth().focusRequester(screenFocus).focusGroup()
+                                .then(if(edge) Modifier else Modifier.padding(horizontal=inset))
+                                .then(if(releaseSheet) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier),
+                        ) {
+                            val bounded=if(tv) page=="settings-search"||page=="settings-server"&&!state.config.managed
+                                else page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(page=="settings-server"&&state.config.managed)
+                            BoundedPane(bounded,maxWidth=if(tv) tvUnit(720f) else if(page=="releases"||page=="files") 840.dp else 640.dp) {
+                            saved.SaveableStateProvider(screenKey) {
+                                when(page) {
                                     "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,titles,progress,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
@@ -227,17 +269,24 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                         Column(Modifier.weight(1f).fillMaxHeight().padding(24.dp)) {Heading("Поиск");Spacer(Modifier.height(16.dp));SearchScreen(state,model,false,searchScroll)}
                                         VerticalDivider()
                                         Box(Modifier.weight(1f).fillMaxHeight().background(colors.surface)) {DetailScreen(state,library,progress,model,false,compact=true)}
-                                    } else DetailScreen(state,library,progress,model,tv)
-                                    "releases"->if(!tv&&width<840) {
-                                        Box(Modifier.clearAndSetSemantics {}) {DetailScreen(state,library,progress,model,false)}
-                                        ModalBottomSheet(onDismissRequest={model.back()},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),containerColor=colors.surface,dragHandle={BottomSheetDefaults.DragHandle()}) {
-                                            Box(Modifier.fillMaxWidth().fillMaxHeight(if(LocalConfiguration.current.fontScale>=1.5f) 1f else .88f).navigationBarsPadding().padding(horizontal=20.dp)) {ReleasesScreen(state,model,false)}
-                                        }
-                                    } else ReleasesScreen(state,model,tv)
+                                    } else DetailScreen(state.copy(page=page),library,progress,model,tv)
+                                    "releases"->ReleasesScreen(state,model,tv)
                                     "files"->FilesScreen(state,model,tv)
                                     "preparing"->PreparingScreen(state,model,tv)
                                 }
                             }
+                            }
+                        }
+                        if(releaseSheet) saved.SaveableStateProvider(releaseKey) {
+                            ModalBottomSheet(
+                                onDismissRequest={model.back()},
+                                sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
+                                containerColor=colors.surface,
+                                dragHandle={BottomSheetDefaults.DragHandle()},
+                            ) {
+                                Box(Modifier.fillMaxWidth().fillMaxHeight(if(LocalConfiguration.current.fontScale>=1.5f) 1f else .88f).navigationBarsPadding().padding(horizontal=20.dp)) {
+                                    ReleasesScreen(state,model,false)
+                                }
                             }
                         }
                     }
@@ -318,7 +367,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     WatchTheme(if(hero!=null||s.config.demo) "dark" else s.config.theme) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             if(hero!=null||s.config.demo) {
-                Artwork(hero,s.config,Modifier.fillMaxSize(),backdrop=true,demo=hero==null&&s.config.demo)
+                Crossfade(targetState=hero,animationSpec=tween(220),label="Featured backdrop") {featuredTitle->
+                    Artwork(featuredTitle,s.config,Modifier.fillMaxSize(),backdrop=true,demo=featuredTitle==null&&s.config.demo)
+                }
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha=.5f)))
                 ArtScrim(Modifier.fillMaxSize(),true);ArtScrim(Modifier.fillMaxSize())
             }
@@ -384,7 +435,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
-                    Column(Modifier.padding(horizontal=inset),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(horizontal=inset).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
                         if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=if(LocalConfiguration.current.screenHeightDp<480) 240.dp else 374.dp).clip(RoundedCornerShape(24.dp))) {
                             Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.matchParentSize())
@@ -457,19 +508,29 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) focusResultsOnReady=true}),modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation().focusRequester(fieldFocus).testTag("search-field"),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
-    if(s.busy) LoadingIndicator("Поиск…")
-    if(s.metadata.isNotEmpty()) WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
+    AnimatedVisibility(
+        visible=s.busy,
+        enter=fadeIn(tween(150))+expandVertically(tween(200),expandFrom=Alignment.Top),
+        exit=fadeOut(tween(100))+shrinkVertically(tween(180),shrinkTowards=Alignment.Top),
+    ) {LoadingIndicator("Поиск…")}
+    if(s.metadata.isNotEmpty()) Box(Modifier.softEntrance("search-tabs",offset=0.dp)) {
+        WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
+    }
     LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {Empty(if(s.message.startsWith("Ничего")) "Ничего не найдено" else "Поиск недоступен",s.message.ifBlank {"Попробуйте другое название или проверьте подключение поиска."},tv,"Изменить запрос") {model.search("");fieldFocus.requestFocus();keyboard?.show()}}
         else if(s.message.isNotEmpty()&&s.metadata.isEmpty()) item {Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(s.metadata.isNotEmpty()) item {SectionTitle("Результаты поиска");if(s.metadataCached) Text("Данные из кеша")}
-        if(resultTab=="Каталог") items(s.metadata.chunked(posterColumns),key={it.joinToString {m->m.id}}) {row -> Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        if(resultTab=="Каталог") items(s.metadata.chunked(posterColumns),key={it.joinToString {m->m.id}}) {row -> Row(Modifier.animateItem(placementSpec=tween(220)),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
             repeat(posterColumns-row.size) {Spacer(Modifier.weight(1f))}
         }}
-        if(s.metadata.isEmpty()||resultTab=="Раздачи") items(s.results,key={it.id}) { r -> ReleaseCard(r,tv,s.focusKey==r.id) { keyboard?.hide(); model.open(r) } }
+        if(s.metadata.isEmpty()||resultTab=="Раздачи") items(s.results,key={it.id}) {r->
+            Box(Modifier.animateItem(placementSpec=tween(220))) {
+                ReleaseCard(r,tv,s.focusKey==r.id) {keyboard?.hide();model.open(r)}
+            }
+        }
         if(s.more&&!s.busy) item {Action("Загрузить ещё",tv) {model.loadMore()} }
     }
 }
@@ -556,12 +617,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
     val scrollingHeader=!tv||detailHeader!=null
-    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    val entrance=if(detailHeader==null) Modifier.softEntrance("releases-loaded",offset=4.dp) else Modifier
+    Column(entrance,verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!scrollingHeader) header()
         LazyColumn(Modifier.weight(1f).testTag("release-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
             if(detailHeader!=null) item(key="detail-header") {detailHeader()}
             if(scrollingHeader && sourceStatus==null) item {Box(Modifier.padding(horizontal=detailInset)) {header()}}
-            items(releases,key={it.id}) {r->Box(Modifier.padding(horizontal=detailInset)) {
+            items(releases,key={it.id}) {r->Box(Modifier.animateItem(placementSpec=tween(220)).padding(horizontal=detailInset)) {
                 ReleaseCard(r,tv,focus=tv&&detailHeader==null&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season,fromDetailTab=detailHeader!=null)}
             }}
             if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
@@ -731,7 +793,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             LazyColumn(Modifier.weight(1f).testTag("file-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
                 if(!tv)item {header()}
                 if(visibleFiles.isEmpty())item {Empty("Нет файлов для выбранного сезона или серии","Попробуйте другой сезон или покажите все серии.",tv,"Показать все серии"){season=null;episode=null;selection=null}}
-                items(visibleFiles,key={it.serverFileId}) {f->FileCard(f,tv,selection==f.serverFileId,progress=progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==f.path},focus=tv&&f.serverFileId==(selection ?: visibleFiles.firstOrNull {it.video&&!it.sample}?.serverFileId)) {if(f.video) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}}}
+                items(visibleFiles,key={it.serverFileId}) {f->
+                    Box(Modifier.animateItem(placementSpec=tween(220))) {
+                        FileCard(f,tv,selection==f.serverFileId,progress=progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==f.path},focus=tv&&f.serverFileId==(selection ?: visibleFiles.firstOrNull {it.video&&!it.sample}?.serverFileId)) {if(f.video) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}}
+                    }
+                }
             }
             if(!tv&&file!=null) controls()
         }

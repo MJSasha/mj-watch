@@ -192,16 +192,18 @@ import kotlinx.coroutines.delay
                 true
             } else false
         }.then(controlFocus(rootFocus)).focusable()) {
-            if(visible) {
-                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
+            PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
+                Box(Modifier.fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-back").then(controlFocus(backFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodes.getOrNull(episodeIndex)?.path ?: "MJWatch",maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
                     IconButton(modifier=Modifier.size(48.dp).then(controlFocus(topTracksFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal),onClick={interact();openPanel(topTracksFocus,onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
-                if(ready) {
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
-                    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
+            }
+            PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
+                Box(contentAlignment=Alignment.BottomCenter) {
+                    Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
+                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Text(playerTime(shown),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))

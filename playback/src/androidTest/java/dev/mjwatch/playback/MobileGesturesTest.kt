@@ -1,5 +1,9 @@
 package dev.mjwatch.playback
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
@@ -49,6 +53,35 @@ class MobileGesturesTest {
         val file=java.io.File(context.getExternalFilesDir(null),"tv-polish/mobile-timeline.png")
         file.parentFile!!.mkdirs()
         file.outputStream().use {compose.onNodeWithTag("mobile-timeline-preview").captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+    }
+
+    @Test fun controlsFadeThroughAnIntermediateFrameInBothDirections() {
+        compose.setContent {
+            Box(Modifier.size(80.dp).background(Color.Black).testTag("chrome")) {
+                PlayerChrome(shown, Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().background(Color.White))
+                }
+            }
+        }
+        val chrome = compose.onNodeWithTag("chrome")
+        fun brightness(): Float {
+            val pixels = chrome.captureToImage().toPixelMap()
+            return pixels[pixels.width / 2, pixels.height / 2].red
+        }
+
+        assertEquals(1f, brightness(), .01f)
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { shown = false }
+        compose.mainClock.advanceTimeBy(80)
+        assertTrue(brightness() in 0.05f..0.95f)
+        compose.mainClock.advanceTimeBy(240)
+        assertEquals(0f, brightness(), .01f)
+
+        compose.runOnIdle { shown = true }
+        compose.mainClock.advanceTimeBy(100)
+        assertTrue(brightness() in 0.05f..0.95f)
+        compose.mainClock.advanceTimeBy(240)
+        assertEquals(1f, brightness(), .01f)
     }
 
     @Test fun doubleTapSeeksWithVisibleAndHiddenControlsAndClampsToVideo() {

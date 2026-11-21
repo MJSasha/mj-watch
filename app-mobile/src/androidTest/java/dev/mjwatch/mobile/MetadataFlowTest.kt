@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
 import kotlinx.coroutines.runBlocking
@@ -21,6 +22,24 @@ class MetadataFlowTest {
     Settings(c).save(Config(demo=true,metadataProvider="tmdb"));Settings(c).destination("home")
  }}
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
+ @Test fun dismissingSourcesKeepsTheSameDetailScreenAndTab() {
+    lateinit var model: WatchModel
+    compose.runOnIdle { model=ViewModelProvider(compose.activity)[WatchModel::class.java] }
+    compose.waitUntil(10000) { model.state.value.configured }
+    compose.runOnIdle { model.metadata(item) }
+    compose.onNodeWithText("Похожие").performClick().assertIsSelected()
+    val detailNode=compose.onNodeWithTag("detail-title").fetchSemanticsNode().id
+
+    compose.runOnIdle { model.findReleases() }
+    compose.waitUntil(10000) { !model.state.value.busy&&model.state.value.results.isNotEmpty() }
+    compose.onNodeWithTag("release-list").assertIsDisplayed()
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+    compose.waitUntil(5000) { model.state.value.page=="detail" }
+
+    compose.onNodeWithText("Похожие").assertIsSelected()
+    Assert.assertEquals(detailNode,compose.onNodeWithTag("detail-title").fetchSemanticsNode().id)
+ }
+
  @Test fun cachedMetadataDetailBookmarksAndReleaseAssociation() {
     lateinit var model:WatchModel
     compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
