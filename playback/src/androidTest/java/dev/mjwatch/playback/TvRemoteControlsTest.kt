@@ -251,10 +251,11 @@ class TvRemoteControlsTest {
         start(true);focus("player-tracks")
         compose.runOnIdle {status=bufferingStatus(firstFrame=true,elapsedMs=30_000)}
         compose.mainClock.advanceTimeBy(500)
-        compose.onNodeWithTag("playback-buffering").assertDoesNotExist()
+        compose.onNodeWithTag("playback-buffering").assertIsDisplayed()
         compose.onNodeWithText("Отменить").assertDoesNotExist()
+        compose.onNodeWithTag("player-tracks").assertIsFocused()
         captureBuffering("tv-prolonged-buffering-focus")
-        key(Key.DirectionCenter);assertEquals(1,exits)
+        pressBack();assertEquals(1,exits)
     }
 
     @Test fun mobileUsesTheSameCompactBufferingFeedback() {
