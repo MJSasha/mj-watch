@@ -84,7 +84,11 @@ private fun DetailContent(
     }
     val showEpisodes = series != null && (s.config.managed || s.config.metadataProvider == "tmdb" || series.id == "demo:series")
     val about = if (series == null) "О фильме" else "О сериале"
-    val tabs = listOfNotNull("Серии".takeIf { showEpisodes }, about, "Раздачи", "Похожие")
+    val castTitle = metadata?.takeIf {
+        !s.config.demo && s.config.metadataProvider == "tmdb" &&
+            (it.id.startsWith("tmdb:movie:") || it.id.startsWith("tmdb:tv:"))
+    }
+    val tabs = listOfNotNull("Серии".takeIf { showEpisodes }, about, "Раздачи", "Актёры".takeIf { castTitle != null }, "Похожие")
     var selectedTab by rememberSaveable(id) { mutableStateOf(tabs.first()) }
     val tab = selectedTab.takeIf { it in tabs } ?: tabs.first()
     LaunchedEffect(id,s.config) { metadata?.let { model.loadTitleFacts(it,s.config) } }
@@ -135,6 +139,7 @@ private fun DetailContent(
                     when (label) {
                         "Раздачи" -> if (saved == null) "detail-tab-releases" else "detail-sources"
                         "Серии" -> "detail-tab-episodes"
+                        "Актёры" -> "detail-tab-cast"
                         "Похожие" -> "detail-tab-related"
                         else -> "detail-tab-about"
                     }
@@ -164,6 +169,7 @@ private fun DetailContent(
             when {
                 tab == "Серии" && series != null -> ManagedEpisodes(series,s.config,model,tv,titleProgress,header=header)
                 tab == "Раздачи" -> DetailSources(s,model,tv,inset,header)
+                tab == "Актёры" && castTitle != null -> TitleCast(castTitle,s.config,model,tv,inset,header)
                 else -> LazyColumn(
                     Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom=24.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
