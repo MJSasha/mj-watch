@@ -6,11 +6,6 @@ on:
   pull_request:
     paths-ignore: ["docs/**", "design/**", "STATUS.md", "README.md"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Verify prepared assets without publishing
-        type: boolean
-        default: true
 permissions:
   contents: read
 concurrency:
@@ -109,7 +104,7 @@ jobs:
             core/build/reports/androidTests/
             build/reports/profile/
   prepare-release:
-    if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -149,7 +144,7 @@ jobs:
           overwrite: true
   publish-release:
     needs: [server, build, runtime, prepare-release]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -164,11 +159,10 @@ jobs:
       - name: Verify and publish prepared assets
         env:
           GH_TOKEN: ${{ github.token }}
-          MJWATCH_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: scripts/publish_release.sh
   verify-dry-run:
     needs: [server, build, runtime, prepare-release]
-    if: github.ref != 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.dry_run
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
