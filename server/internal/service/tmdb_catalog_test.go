@@ -76,3 +76,47 @@ func TestCatalogCategoriesAreBoundedTypedAndCachedSeparately(t *testing.T) {
 		t.Fatal("unbounded category", code)
 	}
 }
+
+func TestTitleLogoDetailsUseScopedImagePathsAndSeparateCache(t *testing.T) {
+	s, owner := fixture(t)
+	s.Config.SecretKey = filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(s.Config.SecretKey, bytes.Repeat([]byte("k"), 32), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := s.sealCredential("catalog-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.DB.Exec("INSERT INTO settings VALUES('tmdb_credential',?)", sealed)
+	s.DB.Exec("INSERT INTO settings VALUES('tmdb',?)", `{"enabled":true,"language":"ru-RU","cacheMiB":1}`)
+	calls := 0
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		q := r.URL.Query()
+		body := `{"id":42}`
+		if q.Get("append_to_response") != "" {
+			if r.URL.Path != "/3/movie/42" || q.Get("append_to_response") != "images" || q.Get("include_image_language") != "ru,en,null" || q.Get("artwork") != "" {
+				t.Fatalf("unexpected upstream request %s", r.URL)
+			}
+			body = `{"id":42,"backdrop_path":"/scene.jpg","images":{"logos":[{"iso_639_1":"ru","file_path":"/russian.svg"},{"iso_639_1":"en","file_path":"/../invalid.png"}]}}`
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	code, plain := call(t, s, owner, "GET", "metadata/movie/42", nil)
+	if code != 200 || plain["images"] != nil {
+		t.Fatal(code, plain)
+	}
+	for range 2 {
+		code, details := call(t, s, owner, "GET", "metadata/movie/42?artwork=logos", nil)
+		if code != 200 || details["backdrop_path"] != "/api/v1/metadata/images/w1280/scene.jpg" {
+			t.Fatal(code, details)
+		}
+		logos := details["images"].(map[string]any)["logos"].([]any)
+		if logos[0].(map[string]any)["file_path"] != "/api/v1/metadata/images/w500/russian.png" || logos[1].(map[string]any)["file_path"] != nil {
+			t.Fatal(logos)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("got %d TMDB requests, want 2", calls)
+	}
+}

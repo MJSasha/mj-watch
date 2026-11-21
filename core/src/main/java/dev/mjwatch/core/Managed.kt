@@ -138,7 +138,9 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
  private fun parse(j:JSONObject):List<Metadata> {val a=j.optJSONArray("results") ?: JSONArray();return (0 until a.length()).mapNotNull {index->val v=a.getJSONObject(index);val kind=v.optString("media_type");if(kind !in setOf("movie","tv")) null else {
   fun image(k:String)=v.optString(k).takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/api/v1/").let {p->"api/v1/$p"}).toString()}
   val genres=v.optJSONArray("genre_ids") ?: JSONArray()
-  Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"),v.primaryGenre(),v.runtimeMinutes())
+  Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"),v.primaryGenre(),v.runtimeMinutes(),tmdbLogo(v) { file ->
+      file.takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/")).toString()}
+  })
  }}}
  override suspend fun search(query:String)=parse(api.authorized("metadata/search?query="+java.net.URLEncoder.encode(query,"UTF-8")))
  override suspend fun home()=parse(api.authorized("metadata/home"))
@@ -147,10 +149,19 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
   check(section==CatalogSection.FOR_YOU||response.optString("category")==section.key){"Для разделов каталога обновите сервер MJWatch в разделе «Управление сервером»."}
   return parse(response)
  }
- override suspend fun details(id:String):Metadata? {
+ override suspend fun details(id:String)=details(id,withArtwork=false)
+ override suspend fun artworkDetails(id:String)=details(id,withArtwork=true)
+ private suspend fun details(id:String,withArtwork:Boolean):Metadata? {
   require(id.matches(Regex("tmdb:(movie|tv):[0-9]+")))
   val (_,kind,number)=id.split(':')
-  val item=api.authorized("metadata/$kind/$number").put("media_type",kind)
+  val path="metadata/$kind/$number"
+  val item=if(!withArtwork) api.authorized(path) else try {
+   api.authorized("$path?artwork=logos")
+  } catch(e:HttpFailure) {
+   if(e.status!=400&&e.status!=404) throw e
+   api.authorized(path)
+  }
+  item.put("media_type",kind)
   return parse(JSONObject().put("results",JSONArray().put(item))).singleOrNull()
  }
 }

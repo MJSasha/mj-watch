@@ -1,6 +1,7 @@
 name: Android
 on:
   push:
+    branches: [main]
     paths-ignore: ["docs/**", "design/**", "STATUS.md", "README.md"]
   pull_request:
     paths-ignore: ["docs/**", "design/**", "STATUS.md", "README.md"]
@@ -8,9 +9,18 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'dry-run' || 'ci' }}
   cancel-in-progress: true
 jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache-dependency-path: server/go.sum
+      - run: sh server/check.sh
   build:
     runs-on: ubuntu-latest
     steps:
@@ -25,13 +35,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
+          cache-dependency-path: server/go.sum
       - run: sh server/prepare-ci.sh --local-test
-      - run: sh server/check.sh
       - uses: gradle/actions/setup-gradle@v4
       - name: Check and build debug APKs
-        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :core:testDebugUnitTest :playback:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug --no-daemon --stacktrace
-      - name: Build release APKs in a fresh JVM
-        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app-mobile:assembleRelease :app-tv:assembleRelease --no-daemon --stacktrace
+        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :core:testDebugUnitTest :playback:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug --build-cache --no-daemon --stacktrace
+      - name: Check release APK compilation on PRs
+        if: github.event_name == 'pull_request'
+        run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app-mobile:assembleRelease :app-tv:assembleRelease --build-cache --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -65,11 +76,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
+          cache-dependency-path: server/go.sum
       - run: sh server/prepare-ci.sh --local-test
       - uses: gradle/actions/setup-gradle@v4
       - run: echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - id: runtime
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -78,33 +89,11 @@ jobs:
           profile: ${{ matrix.profile }}
           script: |
             set -e
-            ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
-            if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
-            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
-      - id: boot-check
-        if: steps.runtime.outcome == 'failure'
-        run: |
-          if [ -d "${{ matrix.app }}/build/outputs/androidTest-results/connected" ]; then
-            echo 'retry=false' >> "$GITHUB_OUTPUT"
-          else
-            echo 'retry=true' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Retry emulator boot before tests
-        if: steps.boot-check.outputs.retry == 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api }}
-          target: ${{ matrix.target }}
-          arch: x86_64
-          profile: ${{ matrix.profile }}
-          script: |
-            set -e
-            ./gradlew --refresh-dependencies :${{ matrix.app }}:connectedDebugAndroidTest
-            if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew :playback:connectedDebugAndroidTest; fi
-            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
-      - name: Preserve test failures
-        if: steps.runtime.outcome == 'failure' && steps.boot-check.outputs.retry != 'true'
-        run: exit 1
+            echo "Emulator ready at $(date -u +%FT%TZ)"
+            ./gradlew --profile --build-cache :${{ matrix.app }}:connectedDebugAndroidTest
+            if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew --profile --build-cache :playback:connectedDebugAndroidTest; fi
+            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew --profile --build-cache :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
+            echo "Runtime checks passed at $(date -u +%FT%TZ)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -112,12 +101,11 @@ jobs:
           path: |
             app-*/build/reports/androidTests/
             playback/build/reports/androidTests/
-  publish-release:
-    needs: [build, runtime]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+            core/build/reports/androidTests/
+            build/reports/profile/
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -130,17 +118,58 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
-      - run: sh server/prepare-ci.sh
+          cache-dependency-path: server/go.sum
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare stable server supply
+        if: github.ref == 'refs/heads/main'
+        run: sh server/prepare-ci.sh
         env:
           MJWATCH_RELEASE_SIGNING_KEY: ${{ secrets.MJWATCH_RELEASE_SIGNING_KEY }}
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Sign and publish stable Latest release
+      - name: Sign stable APKs
+        if: github.ref == 'refs/heads/main'
+        run: scripts/prepare_release.sh
+        env:
+          MJWATCH_TEST_KEYSTORE_B64: ${{ secrets.MJWATCH_TEST_KEYSTORE_B64 }}
+      - name: Prepare dry-run assets with disposable keys
+        if: github.ref != 'refs/heads/main'
+        run: |
+          sh server/prepare-ci.sh --local-test
+          scripts/prepare_release.sh --local-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mjwatch-release-${{ github.sha }}
+          path: dist/release/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+  publish-release:
+    needs: [server, build, runtime, prepare-release]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: mjwatch-release-${{ github.sha }}
+          path: dist/release
+      - name: Verify and publish prepared assets
         env:
           GH_TOKEN: ${{ github.token }}
-          MJWATCH_TEST_KEYSTORE_B64: ${{ secrets.MJWATCH_TEST_KEYSTORE_B64 }}
         run: scripts/publish_release.sh
-      - uses: actions/upload-artifact@v4
-        if: success()
+  verify-dry-run:
+    needs: [server, build, runtime, prepare-release]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: mjwatch-published-apks
-          path: dist/
+          name: mjwatch-release-${{ github.sha }}
+          path: dist/release
+      - run: scripts/publish_release.sh
+        env:
+          MJWATCH_DRY_RUN: 'true'

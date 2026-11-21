@@ -235,6 +235,7 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 	}
 	image := imagePath.FindStringSubmatch(path)
 	api := ""
+	withLogos := false
 	q := url.Values{"language": {v.Language}}
 	if image == nil {
 		switch {
@@ -261,6 +262,11 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			q.Set("category", category)
 		case detailPath.MatchString(path):
 			api = strings.ReplaceAll(strings.ReplaceAll(strings.TrimPrefix(path, "metadata/"), "/seasons/", "/season/"), "/episodes/", "/episode/")
+			withLogos = strings.Count(api, "/") == 1 && r.URL.Query().Get("artwork") == "logos"
+			if withLogos {
+				q.Set("append_to_response", "images")
+				q.Set("include_image_language", "ru,en,null")
+			}
 		default:
 			fail(w, 404, "not_found")
 			return
@@ -328,6 +334,9 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			return
 		}
 		rewriteImages(obj)
+		if withLogos {
+			rewriteTitleLogos(obj)
+		}
 		data, _ = json.Marshal(obj)
 		mime = "application/json"
 	}
@@ -342,6 +351,34 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 	w.Header().Set("Content-Type", mime)
 	w.Write(data)
 }
+
+func rewriteTitleLogos(v any) {
+	title, _ := v.(map[string]any)
+	images, _ := title["images"].(map[string]any)
+	logos, _ := images["logos"].([]any)
+	if logos == nil {
+		return
+	}
+	for _, item := range logos {
+		logo, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		file, _ := logo["file_path"].(string)
+		if strings.HasSuffix(file, ".svg") {
+			file = strings.TrimSuffix(file, ".svg") + ".png"
+		}
+		path := "metadata/images/w500/" + strings.TrimPrefix(file, "/")
+		if imagePath.MatchString(path) {
+			logo["file_path"] = "/api/v1/" + path
+		} else {
+			logo["file_path"] = nil
+		}
+	}
+	// Title details already include the primary backdrop and poster.
+	title["images"] = map[string]any{"logos": logos}
+}
+
 func rewriteImages(v any) {
 	switch x := v.(type) {
 	case map[string]any:

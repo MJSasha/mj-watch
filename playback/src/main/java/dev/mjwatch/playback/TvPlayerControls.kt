@@ -1,6 +1,9 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package dev.mjwatch.playback
 
+import androidx.compose.animation.core.updateTransition
+import dev.mjwatch.core.TorrentPlaybackStats
+
 import android.os.SystemClock
 import android.view.KeyEvent as AndroidKey
 import androidx.compose.foundation.background
@@ -46,6 +49,7 @@ import kotlinx.coroutines.delay
     onRetry:()->Unit, onVisibility:(Boolean)->Unit, onBack:()->Unit, onTracks:()->Unit, onVideo:()->Unit,
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
+    startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, stats:TorrentPlaybackStats?=null, progress:Float?=null,
 ) {
     val statusRipple=LocalRippleConfiguration.current
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -76,7 +80,9 @@ import kotlinx.coroutines.delay
     var repeats by remember {mutableIntStateOf(0)}
     var timelineFocused by remember {mutableStateOf(false)}
     val modal=externalPanel||episodePanel
-    val blockingStatus=status!=null&&!status.compact
+    val splash=updateTransition(startup,label="Playback splash")
+    val splashBlocking=startup!=null||splash.currentState!=null
+    val blockingStatus=splashBlocking||status!=null&&!status.compact
     val blocked=modal||remote.preview!=null||status!=null
     val currentBlocked by rememberUpdatedState(blocked)
     val currentIndex by rememberUpdatedState(episodeIndex)
@@ -133,7 +139,8 @@ import kotlinx.coroutines.delay
     val prompt=remote.prompt.takeIf {!blocked}
     var offeredPrompt by remember {mutableStateOf<String?>(null)}
     LaunchedEffect(windowFocused) {if(windowFocused)inputMode.requestInputMode(InputMode.Keyboard)}
-    LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused,inputMode.inputMode) {
+    LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused,inputMode.inputMode,startup?.loading) {
+        if(!modal&&windowFocused&&startup?.loading==true)rootFocus.requestFocus()
         if(!modal&&!blockingStatus&&windowFocused) {
             // Projector firmware may start in touch mode even when controlled by a D-pad.
             inputMode.requestInputMode(InputMode.Keyboard)
@@ -169,6 +176,9 @@ import kotlinx.coroutines.delay
         Box(Modifier.fillMaxSize().onPreviewKeyEvent {event ->
             val code=event.nativeKeyEvent.keyCode
             val down=event.type==KeyEventType.KeyDown
+            if(startup?.loading==true && code in listOf(AndroidKey.KEYCODE_DPAD_CENTER,AndroidKey.KEYCODE_ENTER,AndroidKey.KEYCODE_NUMPAD_ENTER,
+                    AndroidKey.KEYCODE_DPAD_UP,AndroidKey.KEYCODE_DPAD_DOWN,AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT)) return@onPreviewKeyEvent true
+
             if(down) {interact();requestedFocus=lastFocused}
             if(code in listOf(AndroidKey.KEYCODE_DPAD_UP,AndroidKey.KEYCODE_DPAD_DOWN,AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT)) {
                 navigating=down
@@ -177,12 +187,12 @@ import kotlinx.coroutines.delay
             if(code in listOf(AndroidKey.KEYCODE_DPAD_CENTER,AndroidKey.KEYCODE_ENTER,AndroidKey.KEYCODE_NUMPAD_ENTER)) {
                 if(centerHandled) {if(!down)centerHandled=false;return@onPreviewKeyEvent true}
                 if(down&&event.nativeKeyEvent.repeatCount>0)return@onPreviewKeyEvent true
-                if(!visible&&prompt==null&&down) {
+                if(!splashBlocking&&!visible&&prompt==null&&down) {
                     player()?.let {if(it.playWhenReady)it.pause() else it.play()}
                     requestedFocus=playFocus;onVisibility(true);centerHandled=true;return@onPreviewKeyEvent true
                 }
             }
-            if(!visible&&code in listOf(AndroidKey.KEYCODE_DPAD_UP,AndroidKey.KEYCODE_DPAD_DOWN,AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT)) {
+            if(!splashBlocking&&!visible&&code in listOf(AndroidKey.KEYCODE_DPAD_UP,AndroidKey.KEYCODE_DPAD_DOWN,AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT)) {
                 if(down) when(code) {
                     AndroidKey.KEYCODE_DPAD_UP -> {requestedFocus=backFocus;onVisibility(true)}
                     AndroidKey.KEYCODE_DPAD_DOWN -> {requestedFocus=playFocus;onVisibility(true)}
@@ -192,7 +202,7 @@ import kotlinx.coroutines.delay
                 true
             } else false
         }.then(controlFocus(rootFocus)).focusable()) {
-            PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
+            if(!splashBlocking) PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
                 Box(Modifier.fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-back").then(controlFocus(backFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
@@ -200,7 +210,7 @@ import kotlinx.coroutines.delay
                     IconButton(modifier=Modifier.size(48.dp).then(controlFocus(topTracksFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal),onClick={interact();openPanel(topTracksFocus,onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
             }
-            PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
+            if(!splashBlocking) PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
                 Box(contentAlignment=Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
                     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
@@ -260,9 +270,10 @@ import kotlinx.coroutines.delay
                 }) {Text(if(prompt=="opening")"Пропустить опенинг" else if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}" else "Следующая серия")}
                 TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
             }
-            if(status!=null) Box(Modifier.align(Alignment.Center)) {
+            PlaybackSplash(splash,title,artwork,tv=true,stats=stats,progress=progress,onRetry=onRetry,onCancel=onBack)
+            if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 110.dp else 20.dp)) {
                 CompositionLocalProvider(LocalRippleConfiguration provides statusRipple) {
-                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true)
+                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,stats=stats)
                 }
             }
             if(episodePanel) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={Column(Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState())) {

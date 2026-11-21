@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.2
+
+- Полноэкранная заставка фильмов и серий с логотипами TMDB и статусом подключения внизу.
+- Параллельная подготовка подписанной поставки и проверка перед публикацией релиза.
+
 ## 0.12.1
 
 - Animate screen navigation, bottom navigation, artwork, and list changes on phones, tablets, and Android TV.
