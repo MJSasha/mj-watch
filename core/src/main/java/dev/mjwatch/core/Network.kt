@@ -252,7 +252,7 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
     }
     override suspend fun status(hash: String) = action(JSONObject().put("action","get").put("hash",hash))
     override fun stream(handle: TorrentHandle, file: TorrentFile): StreamRequest {
-        require(file.serverFileId>0 && handle.files.any { it.serverFileId==file.serverFileId })
+        require(file.serverFileId>0 && file.serverFileId in handle.fileIds)
         val url=endpoint(config.torrServer).child("stream").newBuilder().addPathSegment(file.path.substringAfterLast('/'))
             .addQueryParameter("link",handle.hash).addQueryParameter("index",file.serverFileId.toString()).addQueryParameter("play","").build()
         return StreamRequest(url.toString(),if(auth.isEmpty()) emptyMap() else mapOf("Authorization" to auth))

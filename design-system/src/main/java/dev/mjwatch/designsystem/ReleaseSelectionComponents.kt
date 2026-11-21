@@ -33,7 +33,7 @@ import kotlinx.coroutines.delay
     }
 }
 
-@Composable internal fun ReleaseFiltersDialog(tv:Boolean,count:Int,onReset:()->Unit,onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
+@Composable internal fun ReleaseFiltersDialog(tv:Boolean,count:Int?,onReset:()->Unit,onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
     val configuration=LocalConfiguration.current
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.background,modifier=Modifier.testTag("release-filters-dialog").padding(16.dp).widthIn(max=if(tv)840.dp else 640.dp).fillMaxWidth().heightIn(max=(configuration.screenHeightDp*.92f).dp)) {
@@ -42,7 +42,7 @@ import kotlinx.coroutines.delay
                     Icon(Icons.Outlined.Tune,null,tint=MaterialTheme.colorScheme.primary)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Text("Фильтры раздач",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,modifier=Modifier.semantics{heading()})
-                        Text("Найдено: $count",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+                        Text(if(count==null) "Применяем фильтры…" else "Найдено: $count",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                     }
                     IconButton(onClick=onDismiss,modifier=Modifier.tvFocusRing(tv)){Icon(Icons.Outlined.Close,"Закрыть фильтры")}
                 }
@@ -50,7 +50,7 @@ import kotlinx.coroutines.delay
                 Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()).testTag("release-filters").padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
                 Column(Modifier.padding(horizontal=16.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Action("Показать результаты ($count)",tv,Modifier.fillMaxWidth(),icon=Icons.Outlined.Check,onClick=onDismiss)
+                    Action(if(count==null) "Показать результаты" else "Показать результаты ($count)",tv,Modifier.fillMaxWidth(),icon=Icons.Outlined.Check,onClick=onDismiss)
                     TextButton(onClick=onReset,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(tv)){Text("Сбросить всё")}
                 }
             }

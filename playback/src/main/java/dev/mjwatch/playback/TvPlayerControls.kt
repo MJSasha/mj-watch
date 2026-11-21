@@ -8,8 +8,9 @@ import android.view.KeyEvent as AndroidKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.text.TextStyle
@@ -69,6 +70,8 @@ import kotlinx.coroutines.delay
     var navigating by remember {mutableStateOf(false)}
     var navigationVersion by remember {mutableIntStateOf(0)}
     var modalNavigationVersion by remember {mutableIntStateOf(0)}
+    var modalEpisodeIndex by remember {mutableIntStateOf(episodeIndex)}
+    var restoreModalFocus by remember {mutableStateOf(false)}
     @Composable fun controlFocus(target:FocusRequester=remember {FocusRequester()})=Modifier.focusRequester(target).onFocusChanged {
         if(it.isFocused) {
             lastFocused=target
@@ -89,8 +92,12 @@ import kotlinx.coroutines.delay
     val currentVisible by rememberUpdatedState(visible)
     val currentModal by rememberUpdatedState(modal)
     val currentKeepVisible by rememberUpdatedState(keepVisible)
+    val currentEpisodes by rememberUpdatedState(episodes)
+    val selectEpisode by rememberUpdatedState(onEpisode)
     fun interact() {remote.interact(now())}
-    fun openPanel(target:FocusRequester,action:()->Unit) {modalReturn=target;modalNavigationVersion=navigationVersion;action()}
+    fun openPanel(target:FocusRequester,action:()->Unit) {
+        modalReturn=target;modalNavigationVersion=navigationVersion;modalEpisodeIndex=episodeIndex;action()
+    }
     fun focusPlayback() {requestedFocus=playFocus;onVisibility(true);interact();playFocus.requestFocus()}
     fun dismissPrompt() {remote.dismissPrompt();focusPlayback()}
     fun back() {
@@ -121,15 +128,16 @@ import kotlinx.coroutines.delay
                 playing=p.isPlaying;ready=p.playbackState==Player.STATE_READY||p.duration>0
                 seekable=p.isCurrentMediaItemSeekable
                 val index=currentIndex
-                val episode=episodes.getOrNull(index)
+                val queue=currentEpisodes
+                val episode=queue.getOrNull(index)
                 val autoSkip=preferences.getBoolean("auto-skip",false)
                 if(autoSkip&&!currentBlocked) {
                     val target=episode?.openingTarget(position,duration)
-                        ?: if(index==episodes.lastIndex) markerTarget(episode?.endingStartMs,episode?.endingEndMs,position,duration) else null
+                        ?: if(index==queue.lastIndex) markerTarget(episode?.endingStartMs,episode?.endingEndMs,position,duration) else null
                     if(target!=null) {p.seekTo(target);position=target}
                 }
-                if(remote.update(position,duration,playing,episode,index>=0&&index<episodes.lastIndex,currentBlocked,
-                        preferences.getBoolean("auto-next",true))) onEpisode(index+1)
+                if(remote.update(position,duration,playing,episode,index>=0&&index<queue.lastIndex,currentBlocked,
+                        preferences.getBoolean("auto-next",true))) selectEpisode(index+1)
             }
             if(currentVisible&&!currentKeepVisible&&currentStatus==null&&remote.shouldHide(now(),currentModal)) onVisibility(false)
             delay(250)
@@ -139,10 +147,22 @@ import kotlinx.coroutines.delay
     var offeredPrompt by remember {mutableStateOf<String?>(null)}
     LaunchedEffect(windowFocused) {if(windowFocused)inputMode.requestInputMode(InputMode.Keyboard)}
     LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused,inputMode.inputMode,startup?.loading) {
-        if(!modal&&windowFocused&&startup?.loading==true)rootFocus.requestFocus()
-        if(!modal&&!blockingStatus&&windowFocused) {
+        if(modal) {
+            restoreModalFocus=true
+            return@LaunchedEffect
+        }
+        if(!windowFocused)return@LaunchedEffect
+        if(startup?.loading==true)rootFocus.requestFocus()
+        if(!blockingStatus) {
             // Projector firmware may start in touch mode even when controlled by a D-pad.
             inputMode.requestInputMode(InputMode.Keyboard)
+            if(restoreModalFocus) {
+                withFrameNanos {}
+                restoreModalFocus=false
+                if(visible&&ready&&currentIndex==modalEpisodeIndex&&navigationVersion==modalNavigationVersion) {
+                    if(prompt==null||requestedFocus!=promptFocus)requestedFocus=modalReturn
+                }
+            }
             val target=when {
                 requestedFocus==promptFocus||requestedFocus==stayFocus -> requestedFocus.takeIf {prompt!=null}
                 !visible -> rootFocus
@@ -153,13 +173,7 @@ import kotlinx.coroutines.delay
             target?.requestFocus()
         }
     }
-    var wasModal by remember {mutableStateOf(false)}
-    LaunchedEffect(modal) {
-        interact()
-        val closing=wasModal&&!modal
-        wasModal=modal
-        if(closing&&visible&&status==null&&navigationVersion==modalNavigationVersion) requestedFocus=if(prompt!=null&&prompt!=offeredPrompt)promptFocus else modalReturn
-    }
+    LaunchedEffect(modal) {interact()}
     LaunchedEffect(prompt,remote.prompt) {
         if(remote.prompt==null)offeredPrompt=null
         if(prompt!=null&&prompt!=offeredPrompt) {
@@ -275,13 +289,25 @@ import kotlinx.coroutines.delay
                     PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,metrics=metrics)
                 }
             }
-            if(episodePanel) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={Column(Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState())) {
+            if(episodePanel&&episodes.isNotEmpty()) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={
+                val initialIndex=remember {episodeIndex.coerceIn(0,episodes.lastIndex)}
+                val listState=rememberLazyListState(initialFirstVisibleItemIndex=initialIndex)
                 val selectedFocus=remember {FocusRequester()}
-                LaunchedEffect(Unit) {selectedFocus.requestFocus()}
-                episodes.forEachIndexed {index,episode ->
-                    TextButton(modifier=(if(index==episodeIndex)Modifier.focusRequester(selectedFocus) else Modifier).fillMaxWidth().tvPlayerFocus(true),onClick={episodePanel=false;interact();onEpisode(index)}) {Text("${if(index==episodeIndex)"▶ " else ""}${episode.path}")}
+                LaunchedEffect(Unit) {withFrameNanos {};selectedFocus.requestFocus()}
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max=320.dp).testTag("player-episode-list"),state=listState) {
+                    itemsIndexed(episodes) {index,episode ->
+                        TextButton(modifier=(if(index==initialIndex)Modifier.focusRequester(selectedFocus) else Modifier).fillMaxWidth().tvPlayerFocus(true),
+                            onClick={episodePanel=false;interact();onEpisode(index)}) {
+                            val path=episode.path.replace('\\','/')
+                            Column(Modifier.fillMaxWidth()) {
+                                Text("${if(index==episodeIndex)"▶ " else ""}${path.substringAfterLast('/')}",maxLines=2,overflow=TextOverflow.Ellipsis)
+                                val directory=path.substringBeforeLast('/',"")
+                                if(directory.isNotEmpty()) Text(directory,style=MaterialTheme.typography.bodySmall,maxLines=1,overflow=TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
                 }
-            }},confirmButton={TextButton(modifier=Modifier.tvPlayerFocus(true),onClick={episodePanel=false}) {Text("Закрыть")}})
+            },confirmButton={TextButton(modifier=Modifier.tvPlayerFocus(true),onClick={episodePanel=false}) {Text("Закрыть")}})
         }
     }
 }

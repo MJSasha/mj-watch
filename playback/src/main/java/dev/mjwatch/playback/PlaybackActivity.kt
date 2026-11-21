@@ -39,6 +39,7 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
 private const val INITIAL_BUFFER_MS = 1500
@@ -91,8 +92,12 @@ class PlaybackActivity : ComponentActivity() {
         fun stopActivePlayback() {active?.get()?.let {it.save();it.releasePlayer();it.finish()}}
     }
     private val offline get()=intent.getBooleanExtra(EXTRA_OFFLINE,false)
-    private var episodes=emptyList<PlaybackEpisode>()
+    private val queue by lazy {
+        intent.getStringExtra(PlaybackQueue.EXTRA)?.let {PlaybackQueue.open(cacheDir,it)}
+    }
+    private var episodes by androidx.compose.runtime.mutableStateOf(emptyList<PlaybackEpisode>())
     private var episodeIndex by androidx.compose.runtime.mutableIntStateOf(-1)
+    private var startupJob:Job?=null
     private var episodeLoad:Job?=null
     private var mediaInteraction by androidx.compose.runtime.mutableIntStateOf(0)
     private var panelOpen by androidx.compose.runtime.mutableStateOf(false)
@@ -126,6 +131,7 @@ class PlaybackActivity : ComponentActivity() {
     private var playbackSequence=0L
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
+    private var rememberedAudio:RememberedAudio?=null
     private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(bufferingStatus(false))
     private var artwork by androidx.compose.runtime.mutableStateOf<PlaybackArtwork?>(null)
     private var artworkJob: Job? = null
@@ -144,9 +150,6 @@ class PlaybackActivity : ComponentActivity() {
         remoteContentId=intent.getStringExtra("remoteContentId").orEmpty()
         contentIdentity=intent.getStringExtra("contentKey") ?: ""
         releaseId=intent.getStringExtra("releaseId") ?: ""; path=intent.getStringExtra("path") ?: ""; fileId=intent.getIntExtra("fileId",0)
-        episodes=PlaybackEpisode.decode(intent.getStringExtra("episodes"))
-        if(offline)episodes=episodes.filter {isLocalFile(it.uri)}
-        episodeIndex=episodes.indexOfFirst {it.path==path&&it.fileId==fileId}
         db=Room.databaseBuilder(applicationContext, WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
         window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
         val root=FrameLayout(this).apply {setBackgroundColor(android.graphics.Color.BLACK)}
@@ -164,7 +167,18 @@ class PlaybackActivity : ComponentActivity() {
         scope.launch {while(isActive) {delay(1000);if(!released&&firstFrame&&lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))backdrop.sample(view.videoSurfaceView)}}
         androidx.core.view.WindowCompat.getInsetsController(window,root).apply {hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());systemBarsBehavior=androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE}
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true) { override fun handleOnBackPressed() = handlePlaybackBack() })
-        scope.launch {
+        startupJob=scope.launch {
+            episodes=withContext(Dispatchers.IO) {
+                val stored=queue
+                val loaded=if(stored==null) PlaybackEpisode.decode(intent.getStringExtra("episodes")) else try {
+                    stored.read()
+                } catch(e:IOException) {
+                    android.util.Log.w("MJWatch","Unable to read playback queue",e)
+                    emptyList()
+                }
+                if(offline)loaded.filter {isLocalFile(it.uri)} else loaded
+            }
+            episodeIndex=episodes.indexOfFirst {it.path==path&&it.fileId==fileId}
             val config=Settings(applicationContext).config.first();playbackConfig=config
             val uri=intent.getStringExtra("uri") ?: return@launch finish()
             val dataSource:DataSource.Factory
@@ -178,17 +192,25 @@ class PlaybackActivity : ComponentActivity() {
                 if(!validStreamUri(uri,config)) {
                     status=PlaybackStatus("Подключение изменено","Вернитесь к карточке и выберите раздачу заново.");return@launch
                 }
-                if(config.managed&&!uri.startsWith("asset:")) {
-                    val checked=runCatching {withContext(Dispatchers.IO){ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}
-                    if(checked.isFailure){status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.");return@launch}
-                    scope.launch(Dispatchers.IO) {while(isActive){delay(60_000);runCatching {ManagedApi(config,SecretStore(applicationContext)).authorized("me")}}}
+                val managedApi=if(config.managed&&!uri.startsWith("asset:")) {
+                    try {
+                        withContext(Dispatchers.IO) {ManagedApi(config,SecretStore(applicationContext)).also {it.authorized("me")}}
+                    } catch(e:CancellationException) {throw e}
+                    catch(e:Exception) {
+                        status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.")
+                        return@launch
+                    }
+                } else null
+                if(managedApi!=null) launch(Dispatchers.IO) {
+                    while(isActive) {delay(60_000);runCatching {managedApi.authorized("me")}}
                 }
-                val headers=mutableMapOf<String,String>()
-                val auth=if(config.managed) "" else SecretStore(applicationContext).get("torrAuth:${config.torrServer}")
-                if(!uri.startsWith("asset:")&&auth.isNotBlank())headers["Authorization"]=auth
-                val client=if(config.managed)managedClient(config,SecretStore(applicationContext))
-                    else guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))
-                val http=OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers).setTransferListener(streamTransferListener)
+                val http=withContext(Dispatchers.IO) {
+                    val auth=if(!config.managed&&!uri.startsWith("asset:"))SecretStore(applicationContext).get("torrAuth:${config.torrServer}") else ""
+                    val client=managedApi?.client ?: guardedClient(config.copy(jackett="",indexers="",metadataProvider="none",torznabPaths=emptyMap()))
+                    OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build())
+                        .setDefaultRequestProperties(if(auth.isNotBlank())mapOf("Authorization" to auth) else emptyMap())
+                        .setTransferListener(streamTransferListener)
+                }
                 dataSource=DefaultDataSource.Factory(this@PlaybackActivity,http)
             }
             if(!offline) { loadArtwork(config); trackLoading(config) }
@@ -207,8 +229,9 @@ class PlaybackActivity : ComponentActivity() {
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
             player.setHandleAudioBecomingNoisy(true)
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
+            rememberedAudio=audioPreferenceKey(config)?.let {RememberedAudio.decode(preferences.getString(it,null))}
             player.trackSelectionParameters=player.trackSelectionParameters.buildUpon()
-                .setPreferredAudioLanguage(preferences.getString("audio-language",null))
+                .setPreferredAudioLanguage(rememberedAudio?.language ?: preferences.getString("audio-language",null))
                 .setPreferredTextLanguage(preferences.getString("subtitle-language",null))
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT,preferences.getBoolean("subtitles-off",false)).build()
             player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE,preferences.getInt("max-video-height",Int.MAX_VALUE)).build()
@@ -223,6 +246,7 @@ class PlaybackActivity : ComponentActivity() {
                 }
             }).build()
             player.addListener(object: Player.Listener {
+                override fun onTracksChanged(tracks:Tracks) {restoreAudio(tracks)}
                 override fun onEvents(player:Player,events:Player.Events) {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
@@ -375,9 +399,9 @@ class PlaybackActivity : ComponentActivity() {
         if (metadataId == null && backdrop == null && poster == null && logo == null) return
         artworkJob = scope.launch {
             try {
-                val secrets = SecretStore(applicationContext)
-                val client = withContext(Dispatchers.IO) {
-                    if (config.managed) managedClient(config, secrets) else guardedClient(config)
+                val (secrets,client) = withContext(Dispatchers.IO) {
+                    val secrets=SecretStore(applicationContext)
+                    secrets to if (config.managed) managedClient(config, secrets) else guardedClient(config)
                 }
                 val loader = ImageLoader.Builder(applicationContext).okHttpClient(client).memoryCache(null).build()
                 artwork = PlaybackArtwork(loader, backdrop, poster, logo)
@@ -461,30 +485,43 @@ class PlaybackActivity : ComponentActivity() {
                 if(automatic||retries>0)delay(listOf(1000L,3000L,8000L)[retries.coerceAtMost(2)])
                 retries++
                 try {
+                    val previousEpisodes=episodes
+                    val currentPath=path
+                    val raw=intent.getStringExtra("recoveryRelease")
+                    val previousHandle=intent.getStringExtra("torrentHandle")
                     val source=withContext(Dispatchers.IO) {
                         val secrets=SecretStore(applicationContext)
                         if(Settings(applicationContext).config.first().profileKey!=config.profileKey)error("Подключение изменено")
-                        if(config.managed)ManagedApi(config,secrets).authorized("me")
-                        val raw=intent.getStringExtra("recoveryRelease")
+                        val managedApi=if(config.managed)ManagedApi(config,secrets).also {it.authorized("me")} else null
                         if(raw==null)null else {
                             val json=org.json.JSONObject(raw)
                             val hash=json.getString("hash")
                             val release=Release(json.getString("id"),json.getString("title"),json.getString("source"),hash=hash,
                                 magnet=json.optString("magnet").takeIf {it.isNotBlank()},download=json.optString("download").takeIf {it.isNotBlank()})
-                            val client=if(config.managed&&endpoint(config.jackett).origin()==endpoint(config.managedUrl).origin())managedClient(config,secrets) else guardedClient(config)
+                            val client=if(managedApi!=null&&endpoint(config.jackett).origin()==managedApi.base.origin())managedApi.client else guardedClient(config)
                             val torrents=TorznabRepository(config,secrets.get("jackett:${config.jackett}"),client)
-                            val gateway=if(config.managed)ManagedGateway(ManagedApi(config,secrets),torrents) else TorrServerGateway(config,secrets.get("torrAuth:${config.torrServer}"),client,torrents)
-                            val handle=recoverTorrent(gateway,release,intent.getStringExtra("torrentHandle") ?: hash,hash,path)
-                            handle to handle.files.associate {it.path to gateway.stream(handle,it).uri}
+                            val gateway=if(managedApi!=null)ManagedGateway(managedApi,torrents) else TorrServerGateway(config,secrets.get("torrAuth:${config.torrServer}"),client,torrents)
+                            val handle=recoverTorrent(gateway,release,previousHandle ?: hash,hash,currentPath)
+                            val files=handle.files.groupBy {it.path}
+                            val current=files.getValue(currentPath).single()
+                            val restored=previousEpisodes.map {episode->
+                                files[episode.path]?.singleOrNull()?.let {file->
+                                    episode.copy(uri=gateway.stream(handle,file).uri,fileId=file.serverFileId)
+                                } ?: episode
+                            }
+                            val uri=gateway.stream(handle,current).uri
+                            val stored=queue
+                            stored?.write(restored)
+                            RecoveredSource(handle.hash,current.serverFileId,uri,restored,
+                                if(stored==null)PlaybackEpisode.encode(restored) else null)
                         }
                     }
                     if(released)return@launch
                     if(source!=null) {
-                        intent.putExtra("torrentHandle",source.first.hash)
-                        val file=source.first.files.single {it.path==path};fileId=file.serverFileId
-                        intent.putExtra("fileId",fileId).putExtra("uri",source.second.getValue(path))
-                        episodes=episodes.map {episode->source.first.files.singleOrNull {it.path==episode.path}?.let {episode.copy(uri=source.second.getValue(it.path),fileId=it.serverFileId)} ?: episode}
-                        intent.putExtra("episodes",PlaybackEpisode.encode(episodes))
+                        fileId=source.fileId
+                        intent.putExtra("torrentHandle",source.handle).putExtra("fileId",fileId).putExtra("uri",source.uri)
+                        episodes=source.episodes
+                        source.legacyQueue?.let {intent.putExtra("episodes",it)}
                     }
                     startedAt=System.currentTimeMillis()
                     player.setMediaItem(mediaItem(intent.getStringExtra("uri")!!),position)
@@ -499,6 +536,10 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
+
+    private data class RecoveredSource(val handle:String,val fileId:Int,val uri:String,
+        val episodes:List<PlaybackEpisode>,val legacyQueue:String?)
+
     private fun save(ended:Boolean=false) {
         val config=playbackConfig ?: return
         if(!::player.isInitialized || released || !firstFrame || !config.historyEnabled) return
@@ -522,24 +563,56 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
+    private fun audioPreferenceKey(config:Config):String? =
+        releaseId.takeIf {it.isNotBlank()}?.let {"audio-track:${config.profileKey}:$it"}
+
+    private fun restoreAudio(tracks:Tracks) {
+        if(released)return
+        val saved=rememberedAudio ?: return
+        val target=tracks.playbackTracks().filter {(group,index)->
+            group.type==C.TRACK_TYPE_AUDIO&&saved.matches(group.getTrackFormat(index))
+        }.drop(saved.ordinal).firstOrNull()?.let {(group,index)->TrackSelectionOverride(group.mediaTrackGroup,index)}
+        val parameters=player.trackSelectionParameters
+        val current=parameters.overrides.values.firstOrNull {it.type==C.TRACK_TYPE_AUDIO}
+        if(current==target)return
+        val updated=parameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+        if(target!=null)updated.addOverride(target)
+        player.trackSelectionParameters=updated.build()
+    }
+
     private fun tracks() {
-        if(!::player.isInitialized) return
-        val names=mutableListOf("Субтитры выключены"); val choices=mutableListOf<Pair<Tracks.Group,Int>?>(null)
-        player.currentTracks.groups.filter { it.type==C.TRACK_TYPE_AUDIO || it.type==C.TRACK_TYPE_TEXT }.forEach { group ->
-            for(i in 0 until group.length) if(group.isTrackSupported(i)) {
-                val f=group.getTrackFormat(i); names+="${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${trackName(f.label,f.language)}${if(group.isTrackSelected(i)) " ✓" else ""}"; choices+=group to i
-            }
+        if(!::player.isInitialized||released)return
+        val choices=player.currentTracks.playbackTracks().toList()
+        val names=listOf("Субтитры выключены")+choices.map {(group,index)->
+            val format=group.getTrackFormat(index)
+            "${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${trackName(format.label,format.language)}${if(group.isTrackSelected(index)) " ✓" else ""}"
         }
         panelOpen=true
         panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
-            val builder=player.trackSelectionParameters.buildUpon(); val selected=choices[which]
+            val builder=player.trackSelectionParameters.buildUpon()
+            val selected=choices.getOrNull(which-1)
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
             if(selected==null) {builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true);preferences.edit().putBoolean("subtitles-off",true).apply()} else {
-                val language=selected.first.getTrackFormat(selected.second).language
-                if(selected.first.type==C.TRACK_TYPE_AUDIO) preferences.edit().putString("audio-language",language).apply()
-                else preferences.edit().putString("subtitle-language",language).putBoolean("subtitles-off",false).apply()
-                builder.setTrackTypeDisabled(selected.first.type,false).setOverrideForType(TrackSelectionOverride(selected.first.mediaTrackGroup, selected.second))
+                val (group,index)=selected
+                val format=group.getTrackFormat(index)
+                builder.setTrackTypeDisabled(group.type,false)
+                if(group.type==C.TRACK_TYPE_AUDIO) {
+                    val choice=RememberedAudio(format.language,format.label,0)
+                    val ordinal=choices.take(which-1).count {(previous,position)->
+                        previous.type==C.TRACK_TYPE_AUDIO&&choice.matches(previous.getTrackFormat(position))
+                    }
+                    val exactChoice=choice.copy(ordinal=ordinal)
+                    rememberedAudio=exactChoice
+                    preferences.edit().putString("audio-language",format.language).apply {
+                        playbackConfig?.let(::audioPreferenceKey)?.let {putString(it,exactChoice.encode())}
+                    }.apply()
+                    builder.setPreferredAudioLanguage(format.language)
+                } else {
+                    preferences.edit().putString("subtitle-language",format.language).putBoolean("subtitles-off",false).apply()
+                    builder.setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup,index))
+                }
             }; save(); player.trackSelectionParameters=builder.build()
+            restoreAudio(player.currentTracks)
             val c=playbackConfig
             if(c?.historyEnabled==true)scope.launch(Dispatchers.IO){
                 if(Settings(applicationContext).config.first().profileKey!=c.profileKey)return@launch
@@ -611,15 +684,25 @@ class PlaybackActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
-    private fun releasePlayer() {if(!released) {released=true;episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
+    private fun releasePlayer() {if(!released) {released=true;startupJob?.cancel();episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
         artworkJob?.cancel()
         artwork?.loader?.shutdown()
         save()
         val pending=lastProgressWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
+        val finished=isFinishing
         if(active?.get()===this) active=null
         // Finish the final atomic Room write before closing the database.
-        scope.launch { pending?.join(); db.close(); scope.cancel() }
+        scope.launch {
+            pending?.join()
+            startupJob?.join()
+            recoveryJob?.join()
+            withContext(Dispatchers.IO) {
+                if(finished)queue?.delete()
+                db.close()
+            }
+            scope.cancel()
+        }
         super.onDestroy()
     }
     private fun handleMediaKey(event:KeyEvent):Boolean {
@@ -655,6 +738,31 @@ class PlaybackActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER -> {if(player.playWhenReady)player.pause() else player.play();controlsVisible=true;return true}
         }
         return super.dispatchKeyEvent(event)
+    }
+}
+
+private fun Tracks.playbackTracks():Sequence<Pair<Tracks.Group,Int>> = groups.asSequence()
+    .filter {it.type==C.TRACK_TYPE_AUDIO||it.type==C.TRACK_TYPE_TEXT}
+    .flatMap {group->(0 until group.length).asSequence().filter(group::isTrackSupported).map {group to it}}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+private data class RememberedAudio(val language:String?,val label:String?,val ordinal:Int) {
+    fun matches(format:Format):Boolean =
+        languageKey(language)==languageKey(format.language)&&label.orEmpty().trim().equals(format.label.orEmpty().trim(),ignoreCase=true)
+
+    fun encode():String = org.json.JSONObject().put("language",language).put("label",label).put("ordinal",ordinal).toString()
+
+    companion object {
+        private fun languageKey(language:String?):String =
+            language?.let(androidx.media3.common.util.Util::normalizeLanguageCode).orEmpty().takeUnless {it=="und"}.orEmpty()
+
+        fun decode(raw:String?):RememberedAudio? = raw?.let {
+            runCatching {
+                val value=org.json.JSONObject(it)
+                RememberedAudio(value.optString("language","").ifBlank {null},value.optString("label","").ifBlank {null},
+                    value.getInt("ordinal").also {ordinal->require(ordinal>=0)})
+            }.getOrNull()
+        }
     }
 }
 

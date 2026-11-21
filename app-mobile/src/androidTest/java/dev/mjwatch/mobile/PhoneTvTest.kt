@@ -77,10 +77,12 @@ class PhoneTvTest {
         waitFor("Connection was acknowledged"){RemotePlaybackService.state.value.canLaunch}
         compose.onNodeWithTag("connected-tv").assertExists();proof("02-connected")
         compose.onNodeWithTag("detail-sources").performClick()
+        compose.waitUntil(10000){compose.onAllNodesWithTag("source-continue").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("source-continue").performClick()
         compose.onNodeWithTag("source-continue-tv").performClick()
         compose.waitUntil(25000){model.state.value.page=="files"||(!model.state.value.busy&&model.state.value.message.isNotBlank())}
         Assert.assertEquals("files",model.state.value.page)
+        compose.waitUntil(5000){compose.onAllNodesWithTag("file-17").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("file-17").performClick()
         compose.onNodeWithTag("file-continue").performClick()
         waitFor("Receiver rendered the first frame"){RemotePlaybackService.state.value.target?.video?.status=="playing"}

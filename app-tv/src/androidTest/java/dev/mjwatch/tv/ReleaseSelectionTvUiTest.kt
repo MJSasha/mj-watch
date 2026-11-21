@@ -41,14 +41,18 @@ class ReleaseSelectionTvUiTest {
         ui.runOnIdle{model.page("releases")}
         ui.waitUntil(5000){runCatching{ui.onNodeWithText(DemoReleases.items.first().title).assertIsFocused();true}.getOrDefault(false)}
         ui.onNodeWithText("Фильтры").remoteClick();shot("filters")
+        ui.waitUntil(5000) {ui.onAllNodesWithTag("release-filters").fetchSemanticsNodes().isNotEmpty()}
         ui.onNodeWithTag("release-filters").performScrollToNode(hasText("0 сидов"))
         ui.onNode(hasText("0 сидов") and hasAnyAncestor(hasTestTag("release-filters"))).remoteClick()
+        ui.waitUntil(5000) {ui.onAllNodesWithText("Показать результаты (1)").fetchSemanticsNodes().isNotEmpty()}
         ui.onNodeWithText("Показать результаты (1)").remoteClick()
+        ui.onNodeWithText(DemoReleases.items.last().title).assertIsDisplayed()
         ui.onNodeWithText(DemoReleases.items.first().title).assertDoesNotExist()
         ui.onNodeWithText("Сбросить всё").remoteClick()
-        ui.onNodeWithText(DemoReleases.items.first().title).assertExists()
+        ui.waitUntil(5000) {ui.onAllNodesWithText(DemoReleases.items.first().title).fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithText(DemoReleases.items.first().title).assertIsDisplayed()
         ui.runOnIdle{model.playRelease(DemoReleases.items.first(),null)}
-        ui.waitUntil(10000){model.state.value.page=="files"}
+        ui.waitUntil(10000){ui.onAllNodesWithTag("file-3").fetchSemanticsNodes().isNotEmpty()}
         ui.onNodeWithTag("file-3").remoteClick().assertIsSelected();shot("episodes")
         ui.onNodeWithTag("file-continue").assertIsDisplayed()
         ui.onNodeWithText("Все файлы и sample").remoteClick()

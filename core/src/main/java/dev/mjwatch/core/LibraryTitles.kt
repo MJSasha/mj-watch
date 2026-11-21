@@ -1,7 +1,7 @@
 package dev.mjwatch.core
 
 data class LibraryTitle(val entry:LibraryEntry,val metadata:Metadata?,val records:List<LibraryEntry>) {
-    val releaseIds get()=records.map {it.id}.toSet()
+    val releaseIds=records.map {it.id}.toSet()
     fun progress(positions:List<Progress>)=positions.filter {it.releaseId in releaseIds}.maxByOrNull {it.updatedAt}
 }
 

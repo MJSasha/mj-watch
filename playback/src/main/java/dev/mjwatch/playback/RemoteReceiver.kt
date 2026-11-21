@@ -53,10 +53,12 @@ object RemoteReceiver {
                         last=id;ack=id
                         if(command!!.getString("instance")==instance&&command.optString("session")==observed.session&&android.os.SystemClock.elapsedRealtime()<expiresAt) {
                             if(command.getString("action")=="load") {
+                                var pendingPlayback:Intent?=null
                                 try {
                                     val handle=command.getString("handle")
                                     val playback = withContext(Dispatchers.IO) {
                                         remotePlaybackIntent(app, api.base, api.authorized("playback/$handle"), command)
+                                            .also {pendingPlayback=it}
                                     }
                                     val contentId = playback.getStringExtra("remoteContentId")
                                     val current=PlaybackActivity.remoteVideo() ?: failure ?: RemoteVideo()
@@ -65,12 +67,18 @@ object RemoteReceiver {
                                         check(android.os.SystemClock.elapsedRealtime()<expiresAt){"Expired command"}
                                         val activity=foreground?.get() ?: error("Receiver left foreground")
                                         activity.startActivity(playback)
+                                        pendingPlayback=null
                                         // Wait until the new Activity owns the session; never report old video as the new one.
                                         withTimeout(5000){while(PlaybackActivity.remoteVideo()?.session!=id){delay(50)}}
                                     }
                                     failure=null
                                 } catch(e:CancellationException){if(e !is TimeoutCancellationException)throw e;failure=RemoteVideo(session=id,title=command.optString("title"),status="error")}
                                 catch(e:Exception){failure=RemoteVideo(session=id,title=command.optString("title"),status="error")}
+                                finally {
+                                    pendingPlayback?.getStringExtra(PlaybackQueue.EXTRA)?.let {token ->
+                                        withContext(NonCancellable+Dispatchers.IO) {PlaybackQueue.open(app.cacheDir,token)?.delete()}
+                                    }
+                                }
                             } else PlaybackActivity.remoteCommand(command)
                         }
                     }
@@ -121,6 +129,17 @@ internal fun remotePlaybackIntent(context: Context, base: HttpUrl, response: JSO
         .putExtra("path", current.path)
         .putExtra("fileId", current.fileId)
         .putExtra("contentKey", current.contentKey)
-        .putExtra("episodes", PlaybackEpisode.encode(queue))
         .putExtra("mobile", false)
+        .apply {
+            if(queue.isNotEmpty()) {
+                val stored=PlaybackQueue.create(context.cacheDir)
+                try {
+                    stored.write(queue)
+                    putExtra(PlaybackQueue.EXTRA,stored.token)
+                } catch(e:Exception) {
+                    stored.delete()
+                    throw e
+                }
+            }
+        }
 }

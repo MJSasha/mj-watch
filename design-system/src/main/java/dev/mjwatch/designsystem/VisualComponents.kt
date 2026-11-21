@@ -238,8 +238,9 @@ internal class TVBringIntoView(private val clearance:Float):androidx.compose.fou
 }
 
 @Composable internal fun LoadingIndicator(label:String,modifier:Modifier=Modifier) {
-    Box(modifier.fillMaxWidth().padding(vertical=16.dp),contentAlignment=Alignment.Center) {
-        CircularProgressIndicator(Modifier.size(28.dp).semantics {contentDescription=label},strokeWidth=3.dp)
+    Row(modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp,Alignment.CenterHorizontally),verticalAlignment=Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(24.dp).semantics {contentDescription=label},strokeWidth=3.dp)
+        Text(label,modifier=Modifier.clearAndSetSemantics {},style=MaterialTheme.typography.bodyMedium)
     }
 }
 

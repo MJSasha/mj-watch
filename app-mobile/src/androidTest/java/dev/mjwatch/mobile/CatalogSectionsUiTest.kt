@@ -59,16 +59,20 @@ class CatalogSectionsUiTest {
         compose.waitUntil(10000){!model.state.value.busy&&model.state.value.results.size==2}
         compose.runOnIdle {model.page("releases")}
         compose.onNodeWithText("Фильтры").performClick()
-        compose.onNode(hasText("1080p") and hasAnyAncestor(hasTestTag("release-filters"))).performClick()
+        val quality=hasText("1080p") and hasAnyAncestor(hasTestTag("release-filters"))
+        compose.waitUntil(5000) {compose.onAllNodes(quality).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNode(quality).performClick()
         compose.onNodeWithTag("release-filters").performScrollToNode(hasText("0 сидов"))
         compose.onNode(hasText("0 сидов") and hasAnyAncestor(hasTestTag("release-filters"))).performClick()
         shot("release-filters-dialog")
+        compose.waitUntil(5000) {compose.onAllNodesWithText("Показать результаты (1)").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText("Показать результаты (1)").performClick()
         compose.onNodeWithText(DemoReleases.items.last().title).assertExists()
         compose.onNodeWithText(DemoReleases.items.first().title).assertDoesNotExist()
         compose.onNodeWithText("Фильтры · 2").assertExists()
         shot("release-filters-applied")
         compose.onNodeWithText("Сбросить всё").performClick()
+        compose.waitUntil(5000) {compose.onAllNodesWithText(DemoReleases.items.first().title).fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText(DemoReleases.items.first().title).assertExists()
         compose.onNodeWithText(DemoReleases.items.last().title).assertExists()
     }

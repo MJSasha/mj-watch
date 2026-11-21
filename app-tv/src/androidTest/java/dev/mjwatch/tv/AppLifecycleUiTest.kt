@@ -45,13 +45,13 @@ class AppLifecycleUiTest {
         compose.runOnUiThread {compose.activity.setContent {WatchApp(model,true)}}
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithTag("startup-banner").assertIsDisplayed()
-        compose.mainClock.advanceTimeBy(750)
+        compose.mainClock.advanceTimeBy(200)
         capture("startup")
-        compose.mainClock.advanceTimeBy(600)
+        compose.mainClock.advanceTimeBy(250)
         compose.onNodeWithTag("startup-banner").assertIsDisplayed()
         compose.onNodeWithTag("app-content").assertExists()
         capture("startup-reveal")
-        compose.mainClock.advanceTimeBy(450)
+        compose.mainClock.advanceTimeBy(250)
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
         compose.mainClock.autoAdvance=true
         compose.runOnIdle {model.page("settings");model.page("home")}
