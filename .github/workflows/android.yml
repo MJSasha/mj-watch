@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'dry-run' || 'ci' }}
   cancel-in-progress: true
 jobs:
   server:

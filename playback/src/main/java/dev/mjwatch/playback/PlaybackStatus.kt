@@ -91,7 +91,7 @@ internal fun PlaybackStatusOverlay(
                 if (available >= 235.dp) stats?.connectedSeeders?.let { add("Сиды $it" to false) }
             }
             if (isEmpty() || status.compact || !metrics) add(0, status.title to true)
-            if (status.message.isNotBlank() && available >= 570.dp) add(status.message to false)
+            if (status.loading && status.message.isNotBlank() && available >= 570.dp) add(status.message to false)
         }
         val line = buildAnnotatedString {
             labels.forEachIndexed { index, (label, emphasis) ->
@@ -111,14 +111,23 @@ internal fun PlaybackStatusOverlay(
                 Modifier.heightIn(min = if (status.loading) 18.dp else 36.dp).semantics {
                     if (stats == null && progress == null) liveRegion = LiveRegionMode.Polite
                     else stateDescription = status.title
-                    if (status.message.isNotBlank() && available < 570.dp) contentDescription = status.message
+                    if (status.loading && status.message.isNotBlank() && available < 570.dp) contentDescription = status.message
                 },
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(if (status.loading) Icons.Outlined.FileDownload else Icons.Outlined.ErrorOutline,
                     contentDescription = null, modifier = Modifier.size(17.dp), tint = muted)
-                Text(line, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (status.loading) {
+                    Text(line, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                } else {
+                    Column {
+                        Text(status.title, color = foreground, style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (status.message.isNotBlank()) Text(status.message, color = muted,
+                            style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
             if (!status.loading && active) {
                 val actionColors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = foreground)
