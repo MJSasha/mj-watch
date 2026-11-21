@@ -1,6 +1,9 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class,androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package dev.mjwatch.playback
 
+import androidx.compose.animation.core.updateTransition
+import dev.mjwatch.core.TorrentPlaybackStats
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,11 +47,14 @@ import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
 internal val PlayerLime=Color(0xFFC7FF68)
-@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0) {
+@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,stats:TorrentPlaybackStats?=null,progress:Float?=null) {
+    val startup=status.takeIf {beforeFirstFrame}
     if(!mobile) {
-        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction)
+        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction,startup=startup,artwork=artwork,stats=stats,progress=progress)
         return
     }
+    val splash=updateTransition(startup,label="Playback splash")
+    val splashBlocking=startup!=null||splash.currentState!=null
     val playFocus=remember {FocusRequester()};val timelineFocus=remember {FocusRequester()};val tracksFocus=remember {FocusRequester()}
     var position by remember {mutableLongStateOf(0)};var duration by remember {mutableLongStateOf(0)};var playing by remember {mutableStateOf(false)};var ready by remember {mutableStateOf(false)}
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -64,7 +70,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
     fun touch(block:()->Unit) {interaction++;block()}
     MaterialTheme(colorScheme=darkColorScheme(primary=PlayerLime,onPrimary=Color(0xFF0C0E15),surface=Color(0xFF191E29),onSurface=Color(0xFFF0F2EC))) {
         CompositionLocalProvider(LocalContentColor provides Color(0xFFF0F2EC)) {Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().testTag("player-gestures").then(if(!visible)Modifier.semantics {onClick(label="Показать элементы управления"){onVisibility(true);true}} else Modifier).pointerInput(visible,externalPanel,keepVisible) {
+            Box(Modifier.fillMaxSize().testTag("player-gestures").then(if(!visible&&!splashBlocking)Modifier.semantics {onClick(label="Показать элементы управления"){onVisibility(true);true}} else Modifier).pointerInput(visible,externalPanel,keepVisible,splashBlocking) {
+                if(splashBlocking)return@pointerInput
                 detectTapGestures(onTap={touch {onVisibility(keepVisible||!visible)}},onDoubleTap={offset->
                     val p=player()
                     if(p!=null&&p.isCurrentMediaItemSeekable&&p.duration>0&&!externalPanel) touch {
@@ -74,7 +81,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     }
                 })
             })
-            PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
+            if(!splashBlocking) PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
                 Box(Modifier.fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
                 Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
@@ -82,7 +89,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-tracks").focusRequester(tracksFocus).focusProperties {if(!mobile)down=timelineFocus}.playerFocus(),onClick={touch(onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
                 }
             }
-            PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
+            if(!splashBlocking) PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
                 Box(contentAlignment=Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
                     Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -133,7 +140,9 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     Text(seekFeedback,fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
                 }
             }
-            if(status!=null)Box(Modifier.align(Alignment.Center)){PlaybackStatusOverlay(status,onRetry,onBack)}
+            PlaybackSplash(splash,title,artwork,tv=false,stats=stats,progress=progress,onRetry=onRetry,onCancel=onBack)
+            if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,stats=stats)}
+
         }
     }
 }

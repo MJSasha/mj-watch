@@ -32,15 +32,17 @@ class BufferingUiTest {
         Settings(c).handleLegacyHistory();Settings(c).save(Config(torrServer=server.url("/").toString(),localHttp=true));Settings(c).destination("home")
     };override fun after(){server.shutdown()}}
     @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
-    @Test fun bufferingIsCompactAndRetryRendersARealFirstFrame() {
+    @Test fun startupSplashAndRetryRendersARealFirstFrame() {
         val i=InstrumentationRegistry.getInstrumentation();val context=i.targetContext
         server.enqueue(MockResponse().setHeadersDelay(8,TimeUnit.SECONDS).setBody("not a video"))
         context.startActivity(Intent(context,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",server.url("/movie.mp4").toString()).putExtra("title","Проверка подгрузки").putExtra("mobile",false).putExtra("releaseId","buffering-fixture").putExtra("path","movie.mp4"))
         compose.waitUntil(10000){compose.onAllNodesWithTag("playback-status").fetchSemanticsNodes().isNotEmpty()}
         UiDevice.getInstance(i).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1000)?.click()
         Thread.sleep(500)
+        val splash=compose.onNodeWithTag("playback-splash").fetchSemanticsNode().boundsInRoot
         val status=compose.onNodeWithTag("playback-status").fetchSemanticsNode().boundsInRoot
-        Assert.assertTrue("Loading surface must not span the video",status.width<context.resources.displayMetrics.widthPixels*.7f)
+        Assert.assertTrue("Status stays in the lower part of the splash",status.center.y>splash.center.y)
+        for(tag in listOf("player-play","player-timeline","player-tracks"))compose.onNodeWithTag(tag).assertDoesNotExist()
         compose.onNodeWithText("Готовим видео").assertExists()
         compose.onNodeWithText("Буферизация… · Назад — отменить").assertDoesNotExist()
         val dir=File(context.getExternalFilesDir(null),"issues-6-7").apply {mkdirs()}
@@ -51,6 +53,7 @@ class BufferingUiTest {
         var player:PlaybackActivity?=null
         compose.waitUntil(20000){i.runOnMainSync {player=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlaybackActivity>().firstOrNull {it.firstFrameSeen}};player!=null}
         compose.onNodeWithTag("playback-status").assertDoesNotExist()
+        compose.onNodeWithTag("playback-splash").assertDoesNotExist()
         i.runOnMainSync {player!!.finish()}
     }
 }

@@ -38,6 +38,7 @@ class TvRemoteControlsTest {
     private var transitions=0
     private var retries=0
     private var status by mutableStateOf<PlaybackStatus?>(null)
+    private var startsWithSplash=false
     private var back:(()->Unit)?=null
     private var panel by mutableStateOf(false)
     private var visible by mutableStateOf(false)
@@ -60,7 +61,7 @@ class TvRemoteControlsTest {
         visible=shown
         compose.setContent {
             Box(Modifier.fillMaxSize().background(frame)) {
-            TvPlayerControls({fake},"Test",visible,false,status,{retries++}, {visible=it},{exits++},{panel=true},{panel=true},queue,0,{selected=it;transitions++},panel,{back=it},now={clock})
+            TvPlayerControls({fake},"Test",visible,false,status,{retries++}, {visible=it},{exits++},{panel=true},{panel=true},queue,0,{selected=it;transitions++},panel,{back=it},now={clock},startup=status.takeIf {startsWithSplash})
             BackHandler {if(panel)panel=false else back?.invoke()}
             }
         }
@@ -222,9 +223,10 @@ class TvRemoteControlsTest {
     }
 
     @Test fun loadingCompletionRestoresFocusToAVisiblePlaybackAction() {
+        startsWithSplash=true
         status=PlaybackStatus("Готовим видео",loading=true)
         start(true)
-        compose.onNodeWithText("Отменить").assertIsFocused()
+        compose.onNodeWithText("Отменить").assertDoesNotExist()
         compose.runOnIdle {status=null}
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("player-play").assertIsFocused()
@@ -245,12 +247,12 @@ class TvRemoteControlsTest {
         pressBack();assertEquals(1,exits)
     }
 
-    @Test fun prolongedBufferingExplainsWaitAndFocusesCancel() {
+    @Test fun prolongedBufferingKeepsStatusAndBackAvailable() {
         start(true);focus("player-tracks")
         compose.runOnIdle {status=bufferingStatus(firstFrame=true,elapsedMs=30_000)}
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithTag("playback-buffering").assertDoesNotExist()
-        compose.onNodeWithText("Отменить").assertIsFocused()
+        compose.onNodeWithText("Отменить").assertDoesNotExist()
         captureBuffering("tv-prolonged-buffering-focus")
         key(Key.DirectionCenter);assertEquals(1,exits)
     }

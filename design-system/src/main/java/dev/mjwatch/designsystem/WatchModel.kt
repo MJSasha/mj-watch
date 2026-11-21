@@ -126,12 +126,13 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
     suspend fun loadTitleFacts(item: Metadata, config: Config) {
         if (config.demo || config.metadataProvider != "tmdb" || !item.id.matches(Regex("tmdb:(movie|tv):[0-9]+"))) return
-        val detail = withContext(Dispatchers.IO) { metadataRepository(config).titleFacts(item.id) } ?: return
+        val detail = withContext(Dispatchers.IO) { metadataRepository(config).titleFacts(item.id,withArtwork=true) } ?: return
         update { current ->
             val selected = current.selectedMetadata
             if (current.config != config || selected?.id != item.id || current.page != "detail") current
             else current.copy(selectedMetadata = selected.copy(
-                genre = detail.genre ?: selected.genre, runtimeMinutes = detail.runtimeMinutes ?: selected.runtimeMinutes
+                genre = detail.genre ?: selected.genre, runtimeMinutes = detail.runtimeMinutes ?: selected.runtimeMinutes,
+                logo = detail.logo ?: selected.logo
             ))
         }
     }

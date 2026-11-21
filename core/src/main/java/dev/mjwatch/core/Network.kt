@@ -266,6 +266,59 @@ class TorrServerGateway(private val config: Config, private val auth: String, cl
         }
     }
 }
+private fun torrentObject(raw:String):JSONObject =
+    if(raw.trimStart().startsWith("[")) JSONArray(raw).also {require(it.length()==1)}.getJSONObject(0) else JSONObject(raw)
+
+data class TorrentPlaybackStats(
+    val downloadBytesPerSecond:Double?,
+    val activePeers:Int?,
+    val totalPeers:Int?,
+    val connectedSeeders:Int?
+)
+
+/** Passive status for the selected torrent. TorrServer exposes these counters for the torrent as a whole. */
+class TorrentPlaybackStatsSource(private val config:Config,secrets:SecretStore) {
+    private val managed=if(config.historyEnabled&&!config.demo) ManagedApi(config,secrets) else null
+    private val direct=if(!config.managed&&!config.demo&&config.torrServer.isNotBlank()) {
+        guardedClient(config.copy(jackett="",metadataProvider="none")).newBuilder().callTimeout(4,TimeUnit.SECONDS).build()
+    } else null
+    private val directAuth=if(direct!=null) secrets.get("torrAuth:${config.torrServer}") else ""
+
+    suspend fun read(handle:String,fileId:Int):TorrentPlaybackStats? {
+        if(fileId<=0) return null
+        val data=when {
+            managed!=null&&handle.matches(managedHandle)->managed.authorized("playback/$handle/stats?file=$fileId")
+            direct!=null&&handle.matches(torrentHash)->{
+                val request=Request.Builder().url(endpoint(config.torrServer).child("torrents"))
+                    .apply {if(directAuth.isNotBlank()) header("Authorization",directAuth)}
+                    .post(JSONObject().put("action","get").put("hash",handle).toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                val torrent=torrentObject(String(direct.bytes(request,4L*1024*1024)))
+                val files=torrent.optJSONArray("file_stats") ?: return null
+                if(!torrent.optString("hash").equals(handle,ignoreCase=true)) return null
+                if((0 until files.length()).none {index->
+                    (files.optJSONObject(index)?.opt("id") as? Number)?.toDouble()==fileId.toDouble()
+                }) return null
+                torrent
+            }
+            else->return null
+        }
+        return parseTorrentPlaybackStats(data)
+    }
+
+    private companion object {
+        val managedHandle=Regex("[A-Za-z0-9_-]{43}")
+        val torrentHash=Regex("[a-fA-F0-9]{40}")
+    }
+}
+
+private fun parseTorrentPlaybackStats(data:JSONObject):TorrentPlaybackStats? {
+    fun number(key:String)=(data.opt(key) as? Number)?.toDouble()?.takeIf {it.isFinite()&&it>=0}
+    fun count(key:String)=number(key)?.takeIf {it<=Int.MAX_VALUE&&it%1==0.0}?.toInt()
+    val stats=TorrentPlaybackStats(number("download_speed"),count("active_peers"),count("total_peers"),count("connected_seeders"))
+    return stats.takeIf {it.downloadBytesPerSecond!=null||it.activePeers!=null||it.totalPeers!=null||it.connectedSeeders!=null}
+}
+
 fun safeError(e: Throwable): String = when(e) {
     is HttpFailure -> when(runCatching {JSONObject(e.responseBody ?: "{}").optString("code")}.getOrDefault("")) {
         "migration_in_progress"->"Идёт перенос сервера. Приложение повторит подключение."

@@ -290,3 +290,59 @@ func TestSecretsNeverReturnedAndTMDBBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaybackStatsExposeOnlyAuthorizedTorrentCounters(t *testing.T) {
+	s, owner := fixture(t)
+	identity, err := s.identity(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := Token()
+	const hash = "0123456789012345678901234567890123456789"
+	if _, err := s.DB.Exec("INSERT INTO playback VALUES(?,?,?)", id, identity.User, hash); err != nil {
+		t.Fatal(err)
+	}
+	code, invite := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "other-viewer"})
+	if code != 200 {
+		t.Fatal(code, invite)
+	}
+	code, login := call(t, s, "", "POST", "auth/accept-invite", map[string]string{"invite": invite["invite"].(string), "password": "other-password-long", "device": "other"})
+	if code != 200 {
+		t.Fatal(code, login)
+	}
+	calls := 0
+	s.Config.TorrURL = "http://torrserver.invalid"
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		var request map[string]string
+		if r.Method != "POST" || r.URL.Path != "/torrents" || json.NewDecoder(r.Body).Decode(&request) != nil || request["action"] != "get" || request["hash"] != hash {
+			t.Fatalf("unexpected upstream request %s %s %v", r.Method, r.URL, request)
+		}
+		body := `{"download_speed":1200000.5,"active_peers":2,"total_peers":9,"connected_seeders":0,"preloaded_bytes":999,"preload_size":2000,"data":"private","file_stats":[{"id":17,"path":"private.mp4"}]}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	path := "playback/" + id + "/stats?file="
+	for _, check := range []struct {
+		token, method, file string
+		want                int
+	}{
+		{"", "GET", "17", 401},
+		{login["accessToken"].(string), "GET", "17", 404},
+		{owner, "POST", "17", 405},
+		{owner, "GET", "-1", 400},
+	} {
+		if code, body := call(t, s, check.token, check.method, path+check.file, nil); code != check.want {
+			t.Fatal(code, body)
+		}
+	}
+	if calls != 0 {
+		t.Fatal("unauthorized requests reached TorrServer")
+	}
+	if code, _ := call(t, s, owner, "GET", path+"99", nil); code != 404 {
+		t.Fatal("unknown file", code)
+	}
+	code, body := call(t, s, owner, "GET", path+"17", nil)
+	if code != 200 || len(body) != 4 || body["download_speed"] != 1200000.5 || body["active_peers"] != 2.0 || body["total_peers"] != 9.0 || body["connected_seeders"] != 0.0 {
+		t.Fatal(code, body)
+	}
+}

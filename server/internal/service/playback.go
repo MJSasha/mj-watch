@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -217,12 +218,25 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		fail(w, 405, "method_not_allowed")
 		return
 	}
-	if len(parts) == 3 && parts[2] == "stream" {
-		index, err := strconv.Atoi(r.URL.Query().Get("file"))
-		if err != nil {
+	index := 0
+	stats := len(parts) == 3 && parts[2] == "stats"
+	if len(parts) == 3 {
+		if !stats && parts[2] != "stream" {
+			fail(w, 404, "not_found")
+			return
+		}
+		if stats && r.Method != "GET" {
+			fail(w, 405, "method_not_allowed")
+			return
+		}
+		var err error
+		index, err = strconv.Atoi(r.URL.Query().Get("file"))
+		if err != nil || (stats && index <= 0) {
 			fail(w, 400, "invalid_file")
 			return
 		}
+	}
+	if len(parts) == 3 && !stats {
 		key := i.Session + ":" + hash + ":" + strconv.Itoa(index)
 		if !s.acquireStream(i.User, key) {
 			w.Header().Set("Retry-After", "5")
@@ -246,7 +260,7 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		var state string
 		var created int64
 		s.DB.QueryRow("SELECT state,created FROM playback_jobs WHERE handle=?", id).Scan(&state, &created)
-		if state == "pending" && time.Now().Unix()-created < 120 {
+		if !stats && state == "pending" && time.Now().Unix()-created < 120 {
 			respond(w, 200, map[string]any{"id": id, "hash": hash, "torrent": map[string]any{"hash": hash, "file_stats": []any{}}, "preparing": true})
 			return
 		}
@@ -261,15 +275,6 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		respond(w, 200, map[string]any{"id": id, "hash": hash, "torrent": safeTorrent(torrent)})
 		return
 	}
-	if parts[2] != "stream" {
-		fail(w, 404, "not_found")
-		return
-	}
-	index, e := strconv.Atoi(r.URL.Query().Get("file"))
-	if e != nil {
-		fail(w, 400, "invalid_file")
-		return
-	}
 	found := false
 	if files, ok := torrent["file_stats"].([]any); ok {
 		for _, f := range files {
@@ -280,6 +285,10 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 	}
 	if !found {
 		fail(w, 404, "file_not_found")
+		return
+	}
+	if stats {
+		respond(w, 200, safePlaybackStats(torrent))
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())
@@ -360,6 +369,19 @@ func safeTorrent(v map[string]any) map[string]any {
 		out["file_stats"] = safe
 	}
 	return out
+}
+
+func safePlaybackStats(torrent map[string]any) map[string]float64 {
+	stats := make(map[string]float64)
+	if speed, ok := torrent["download_speed"].(float64); ok && speed >= 0 {
+		stats["download_speed"] = speed
+	}
+	for _, key := range []string{"active_peers", "total_peers", "connected_seeders"} {
+		if count, ok := torrent[key].(float64); ok && count >= 0 && count <= math.MaxInt32 && count == math.Trunc(count) {
+			stats[key] = count
+		}
+	}
+	return stats
 }
 
 type upstreamFailure struct{ Code int }

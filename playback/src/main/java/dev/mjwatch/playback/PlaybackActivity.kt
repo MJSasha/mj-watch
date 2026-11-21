@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import android.content.res.Configuration
 import android.os.Bundle
@@ -31,9 +32,13 @@ import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.Futures
 import androidx.room.Room
+import coil.ImageLoader
 import dev.mjwatch.core.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+
+private const val INITIAL_BUFFER_MS = 1500
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlaybackActivity : ComponentActivity() {
@@ -118,7 +123,12 @@ class PlaybackActivity : ComponentActivity() {
     private var playbackSequence=0L
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
-    private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(PlaybackStatus("Готовим видео","Загружаем первые кадры",loading=true))
+    private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(bufferingStatus(false))
+    private var artwork by androidx.compose.runtime.mutableStateOf<PlaybackArtwork?>(null)
+    private var artworkJob: Job? = null
+    private var torrentStats by androidx.compose.runtime.mutableStateOf<TorrentPlaybackStats?>(null)
+    private var startupProgress by androidx.compose.runtime.mutableStateOf<Float?>(null)
+
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,7 +151,7 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction)
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,stats=torrentStats,progress=startupProgress)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -175,6 +185,7 @@ class PlaybackActivity : ComponentActivity() {
                 val http=OkHttpDataSource.Factory(client.newBuilder().callTimeout(0,java.util.concurrent.TimeUnit.MILLISECONDS).build()).setDefaultRequestProperties(headers)
                 dataSource=DefaultDataSource.Factory(this@PlaybackActivity,http)
             }
+            if(!offline) { loadArtwork(config); trackLoading(config) }
             val memory=android.app.ActivityManager.MemoryInfo()
             val manager=getSystemService(android.app.ActivityManager::class.java)
             manager.getMemoryInfo(memory)
@@ -183,7 +194,7 @@ class PlaybackActivity : ComponentActivity() {
             val requested=getSharedPreferences("playback-preferences",MODE_PRIVATE).getInt("buffer-mib",0)
             bufferTargetBytes=if(requested<=0)bufferPlan.recommendedBytes else (requested.toLong()*1048576).coerceIn(4L*1048576,bufferPlan.maximumBytes.toLong()).toInt()
             val loadControl=androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15000,120000,1500,3000)
+                .setBufferDurationsMs(15000,120000,INITIAL_BUFFER_MS,3000)
                 .setTargetBufferBytes(bufferTargetBytes).setPrioritizeTimeOverSizeThresholds(false).build()
             player=ExoPlayer.Builder(this@PlaybackActivity,decoderFallback.renderers(this@PlaybackActivity)).setLoadControl(loadControl).setMediaSourceFactory(DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(StreamLoadErrorPolicy()))
                 .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
@@ -209,7 +220,7 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onEvents(player:Player,events:Player.Events) {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
-                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; view.setKeepContentOnPlayerReset(true); status=null }
+                override fun onRenderedFirstFrame() { firstFrame=true; firstFrameSeen=true; if(startupProgress!=null) startupProgress=1f; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null }
                 override fun onPlaybackStateChanged(state: Int) {
                     if(state==Player.STATE_BUFFERING) { status=bufferingStatus(firstFrame); startedAt=System.currentTimeMillis() }
                     if(state==Player.STATE_READY&&firstFrame) status=null
@@ -271,6 +282,86 @@ class PlaybackActivity : ComponentActivity() {
         }
         fun episodeChanged()=invalidateState()
     }
+    private fun trackLoading(config: Config) {
+        scope.launch {
+            snapshotFlow { status?.loading == true && !firstFrameSeen }.collectLatest { loading ->
+                if (!loading) return@collectLatest
+                while (isActive) {
+                    if (::player.isInitialized && player.playbackState == Player.STATE_BUFFERING && player.duration > 0) {
+                        // This is the player's start buffer in playout time, independent of TorrServer's cache.
+                        val target = INITIAL_BUFFER_MS * player.playbackParameters.speed
+                        startupProgress = (player.totalBufferedDuration / target).coerceIn(0f, .99f)
+                    }
+                    delay(200)
+                }
+            }
+        }
+        if (intent.getStringExtra("torrentHandle").isNullOrBlank()) return
+        scope.launch {
+            val source = try {
+                withContext(Dispatchers.IO) { TorrentPlaybackStatsSource(config, SecretStore(applicationContext)) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            snapshotFlow { status?.loading == true }.collectLatest { loading ->
+                if (!loading) return@collectLatest
+                try {
+                    while (isActive) {
+                        val handle = intent.getStringExtra("torrentHandle") ?: break
+                        val index = fileId
+                        val stats = try {
+                            withTimeoutOrNull(2_000) { withContext(Dispatchers.IO) { source.read(handle, index) } }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (handle == intent.getStringExtra("torrentHandle") && index == fileId) torrentStats = stats
+                        delay(1_250)
+                    }
+                } finally {
+                    torrentStats = null
+                }
+            }
+        }
+    }
+
+    private fun loadArtwork(config: Config) {
+        if (config.metadataProvider != "tmdb") return
+        val metadataId = intent.getStringExtra("artMetadataId")
+        val backdrop = intent.getStringExtra("artBackdrop")
+        val poster = intent.getStringExtra("artPoster")
+        val logo = intent.getStringExtra("artLogo")
+        if (metadataId == null && backdrop == null && poster == null && logo == null) return
+        artworkJob = scope.launch {
+            try {
+                val secrets = SecretStore(applicationContext)
+                val client = withContext(Dispatchers.IO) {
+                    if (config.managed) managedClient(config, secrets) else guardedClient(config)
+                }
+                val loader = ImageLoader.Builder(applicationContext).okHttpClient(client).memoryCache(null).build()
+                artwork = PlaybackArtwork(loader, backdrop, poster, logo)
+                if (logo == null && metadataId != null) {
+                    val metadata = withContext(Dispatchers.IO) {
+                        val adapter = if (config.managed) ManagedMetadata(ManagedApi(config, secrets))
+                            else TmdbAdapter(secrets.get("tmdb"), client)
+                        MetadataRepository(adapter, db.dao(), if (config.managed) config.scope else "direct")
+                            .details(metadataId, withArtwork = true)
+                    }
+                    if (metadata != null) {
+                        artwork = PlaybackArtwork(loader, metadata.backdrop ?: backdrop, metadata.poster ?: poster, metadata.logo)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The title is available while optional artwork is unavailable.
+            }
+        }
+    }
+
     private fun switchEpisode(index:Int) {
         val episode=episodes.getOrNull(index) ?: return
         val config=playbackConfig ?: return
@@ -279,6 +370,7 @@ class PlaybackActivity : ComponentActivity() {
         save()
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
+        startupProgress=null;torrentStats=null
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
@@ -483,6 +575,8 @@ class PlaybackActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
     private fun releasePlayer() {if(!released) {released=true;episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
+        artworkJob?.cancel()
+        artwork?.loader?.shutdown()
         save()
         val pending=lastProgressWrite; handler.removeCallbacksAndMessages(null); releasePlayer()
         if(active?.get()===this) active=null
