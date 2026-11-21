@@ -61,9 +61,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mjwatch.core.*
 import dev.mjwatch.playback.PlaybackActivity
 import dev.mjwatch.playback.PlaybackEpisode
+import dev.mjwatch.playback.PlaybackQueue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class Destination(val id:String,val title:String,val icon:ImageVector)
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
@@ -77,11 +84,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val reveal=remember {Animatable(0f)}
     LaunchedEffect(Unit) {
         if(!startupShown) {
-            entrance.animateTo(1f,tween(1100))
+            entrance.animateTo(1f,tween(if(tv) 350 else 1100))
             snapshotFlow {state.initializing}.first {!it}
             revealing=true
             withFrameNanos {}
-            reveal.animateTo(1f,tween(420,easing=FastOutSlowInEasing))
+            reveal.animateTo(1f,tween(if(tv) 200 else 420,easing=FastOutSlowInEasing))
             startupShown=true
         }
     }
@@ -109,19 +116,22 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     if(state.legacyHistoryRecords>0) AlertDialog(onDismissRequest={},title={Text("Прежняя локальная история")},text={Text("Найдено ${state.legacyHistoryRecords} записей открытий и позиций. В direct история скрыта и больше не обновляется. Импорт на сервер доступен отдельным действием.")},confirmButton={TextButton(onClick={model.managed.direct(false);model.legacyHandled()}){Text("Сохранить отдельно")}},dismissButton={TextButton(onClick={model.managed.direct(true);model.legacyHandled()}){Text("Удалить локальную историю")}})
     val snackbar=remember {SnackbarHostState()}
     LaunchedEffect(state.page,state.message) {
-        if(state.page=="detail"&&state.message.isNotBlank()) snackbar.showSnackbar(state.message,duration=SnackbarDuration.Long)
+        if(state.page in setOf("detail","home","library","history")&&state.message.isNotBlank()) snackbar.showSnackbar(state.message,duration=SnackbarDuration.Long)
     }
     LaunchedEffect(state.removed) {state.removed?.let {entry->
         if(snackbar.showSnackbar("Удалено из локальной библиотеки","Отменить",duration=SnackbarDuration.Long)==SnackbarResult.ActionPerformed) model.undo(entry,state.removedBookmarks) else model.clearUndo()
     }}
     val snapshot by model.scopedLibrary.collectAsStateWithLifecycle()
-    val library=if(snapshot.context==state.config.profileKey)snapshot.entries else emptyList()
-    val progress=if(snapshot.context==state.config.profileKey)snapshot.positions else emptyList()
-    val titles=if(snapshot.context==state.config.profileKey)snapshot.titles else emptyList()
+    val currentLibrary=snapshot.takeIf {it.context==state.config.profileKey}
+    val library=currentLibrary?.entries.orEmpty()
+    val progress=currentLibrary?.positions.orEmpty()
     var editorBack by remember {mutableStateOf<(() -> Unit)?>(null)}
     val saved=rememberSaveableStateHolder();val searchScroll=rememberLazyListState()
     val context=LocalContext.current.applicationContext
-    val images=remember(state.config) {ImageLoader.Builder(context).okHttpClient(if(state.config.managed) managedClient(state.config,model.secrets) else guardedClient(state.config)).build()}
+    val imageConfig=state.config
+    val images=remember(imageConfig) {ImageLoader.Builder(context).okHttpClient {
+        if(imageConfig.managed) managedClient(imageConfig,model.secrets) else guardedClient(imageConfig)
+    }.build()}
     DisposableEffect(images) {onDispose {images.shutdown()}}
     val focusClearance=with(LocalDensity.current) {8.dp.toPx()}
     val tvScrollSpec=remember(focusClearance) {TVBringIntoView(focusClearance)}
@@ -253,7 +263,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             saved.SaveableStateProvider(screenKey) {
                                 when(page) {
                                     "invitation-register"->InvitationScreen(model,tv)
-                                    "home"->HomeScreen(state,titles,progress,model,tv)
+                                    "home"->HomeScreen(state,currentLibrary,model,tv)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
@@ -261,10 +271,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
-                                    "settings-catalog"->if(state.config.managed) Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){SettingsCard("Каталог и обложки",Icons.Outlined.Movie,tv){SettingsHint("Каталог TMDB работает через сервер MJWatch. Ключ хранится у владельца сервера.");Action("Проверить каталог",tv,Modifier.fillMaxWidth()){model.refreshCatalog(true)};OperationMessage(state.catalogMessage);SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и сервер","Управление подключением",tv){model.page("managed-account")}}} else SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
+                                    "settings-catalog"->if(state.config.managed) Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){SettingsCard("Каталог и обложки",Icons.Outlined.Movie,tv){SettingsHint("Каталог TMDB работает через сервер MJWatch. Ключ хранится у владельца сервера.");Action("Проверить каталог",tv,Modifier.fillMaxWidth(),loading=state.catalogBusy){model.refreshCatalog(true)};OperationMessage(state.catalogMessage);SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и сервер","Управление подключением",tv){model.page("managed-account")}}} else SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
                                     "settings-updates"->LazyColumn(Modifier.testTag("settings-list"),contentPadding=PaddingValues(vertical=16.dp)) {item {UpdateSection(model.updates,tv)}}
                                     "search"->BoundedPane(!tv,maxWidth=840.dp) {SearchScreen(state,model,tv,searchScroll)}
-                                    "library","history"->LibraryScreen(titles,progress,model,tv)
+                                    "library","history"->LibraryScreen(state,currentLibrary,model,tv)
                                     "detail"->if(!tv&&width>=840&&state.originPage=="search") Row(Modifier.fillMaxSize()) {
                                         Column(Modifier.weight(1f).fillMaxHeight().padding(24.dp)) {Heading("Поиск");Spacer(Modifier.height(16.dp));SearchScreen(state,model,false,searchScroll)}
                                         VerticalDivider()
@@ -275,6 +285,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "preparing"->PreparingScreen(state,model,tv)
                                 }
                             }
+                            }
+                            if(state.busy&&page in setOf("home","library","history")) {
+                                Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp),shape=MaterialTheme.shapes.medium) {
+                                    LoadingIndicator("Открываем карточку…",Modifier.widthIn(max=280.dp))
+                                }
                             }
                         }
                         if(releaseSheet) saved.SaveableStateProvider(releaseKey) {
@@ -339,12 +354,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
-@Composable private fun TvHomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel) {
+@Composable private fun TvHomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel) {
+    val entries=library?.titles.orEmpty()
     var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     var lastCard by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     val restoreCard=remember(s.catalogSection) {lastCard}
     val hero=s.catalog.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: s.catalog.firstOrNull()
-    val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
+    val continuing=remember(library) {entries.filter {it.canContinue(library?.unfinishedReleaseIds.orEmpty())}}
     val inset=tvUnit(40f)
     val hasCategories=s.config.metadataProvider=="tmdb"||s.config.demo
     val tabsFocus=remember {FocusRequester()}
@@ -388,7 +404,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         "continue"->{
                             Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить просмотр")}
                             TvCarousel(inset,14.dp,up=if(hasCategories)tabsFocus else null) {items(continuing,key={it.entry.id}) {e->
-                                Box(Modifier.width(tvUnit(512f))) {LibraryCard(e,progress,model,true,
+                                Box(Modifier.width(tvUnit(512f))) {LibraryCard(e,library?.latestProgress.orEmpty(),s,model,true,
                                     restoreFocus=restoreCard=="library:${e.entry.id}",onFocus={lastCard="library:${e.entry.id}";e.metadata?.let {featured=it.id}})}
                             }}
                         }
@@ -423,8 +439,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 
-@Composable private fun HomeScreen(s:WatchState,entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
-    if(tv) {TvHomeScreen(s,entries,progress,model);return}
+private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&&releaseIds.any {it in unfinished}
+
+@Composable private fun HomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean) {
+    if(tv) {TvHomeScreen(s,library,model);return}
+    val entries=library?.titles.orEmpty()
+    val continuing=remember(library) {entries.filter {it.canContinue(library?.unfinishedReleaseIds.orEmpty())}}
     val category=s.catalogSection.label;var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     val catalogue=s.catalog
     val hero=catalogue.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: catalogue.firstOrNull()
@@ -458,12 +478,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     Action("Поиск",tv,secondary=true){model.page("search")}
                 }
             }
-            val continuing=entries.filter {e->e.entry.openedAt>0&&progress.any {it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0}}
             if(continuing.isNotEmpty()) {
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить","Вся история") {model.page("history")}}}
                 items(continuing.take(3).chunked(columns),key={"continue:${it.first().entry.id}"}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                        row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,progress,model,false)}}
+                        row.forEach {e->Box(Modifier.weight(1f)) {LibraryCard(e,library?.latestProgress.orEmpty(),s,model,false)}}
                         repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
                     }
                 }
@@ -504,17 +523,22 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val voiceAvailable=remember {context.packageManager.resolveActivity(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH),0)!=null}
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val posterColumns=if(tv) 4 else (maxWidth/180.dp).toInt().coerceIn(2,6)
+    val posterRows=remember(s.metadata,posterColumns) {s.metadata.chunked(posterColumns)}
     Column(Modifier.fillMaxSize().padding(top=if(tv) 24.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) focusResultsOnReady=true}),modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation().focusRequester(fieldFocus).testTag("search-field"),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
-    AnimatedVisibility(
+    if(tv) {
+        if(s.busy) LoadingIndicator("Поиск…")
+    } else AnimatedVisibility(
         visible=s.busy,
         enter=fadeIn(tween(150))+expandVertically(tween(200),expandFrom=Alignment.Top),
         exit=fadeOut(tween(100))+shrinkVertically(tween(180),shrinkTowards=Alignment.Top),
     ) {LoadingIndicator("Поиск…")}
-    if(s.metadata.isNotEmpty()) Box(Modifier.softEntrance("search-tabs",offset=0.dp)) {
-        WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
+    if(s.metadata.isNotEmpty()) {
+        Box(if(tv) Modifier else Modifier.softEntrance("search-tabs",offset=0.dp)) {
+            WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
+        }
     }
     LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
@@ -522,12 +546,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         else if(s.message.isNotEmpty()&&s.metadata.isEmpty()) item {Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(s.metadata.isNotEmpty()) item {SectionTitle("Результаты поиска");if(s.metadataCached) Text("Данные из кеша")}
-        if(resultTab=="Каталог") items(s.metadata.chunked(posterColumns),key={it.joinToString {m->m.id}}) {row -> Row(Modifier.animateItem(placementSpec=tween(220)),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        if(resultTab=="Каталог") items(posterRows,key={it.joinToString {m->m.id}}) {row -> Row(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220)),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
             repeat(posterColumns-row.size) {Spacer(Modifier.weight(1f))}
         }}
         if(s.metadata.isEmpty()||resultTab=="Раздачи") items(s.results,key={it.id}) {r->
-            Box(Modifier.animateItem(placementSpec=tween(220))) {
+            Box(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))) {
                 ReleaseCard(r,tv,s.focusKey==r.id) {keyboard?.hide();model.open(r)}
             }
         }
@@ -557,6 +581,22 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
+@Composable private fun <T:Any> backgroundValue(vararg inputs:Any?,calculate:suspend CoroutineScope.()->T):T? {
+    var value by remember(*inputs) {mutableStateOf<T?>(null)}
+    LaunchedEffect(*inputs) {value=withContext(Dispatchers.Default,calculate)}
+    return value
+}
+
+private val russianRelease=Regex("(?i)(rus|russian|рус|дубляж)")
+private data class IndexedRelease(val release:Release,val quality:String,val seasons:Set<Int>,val voices:Set<String>,val russian:Boolean)
+private class ReleaseOptions(
+    val rows:List<IndexedRelease>,
+    val seasons:List<Int>,
+    val voices:List<String>,
+    val qualities:List<String>,
+    val sources:List<String>,
+)
+
 @Composable internal fun ReleasesScreen(
     s:WatchState,model:WatchModel,tv:Boolean,
     detailHeader:(@Composable () -> Unit)?=null,
@@ -564,7 +604,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     sourceStatus:(@Composable () -> Unit)?=null
 ) {
     val remote by model.remote.collectAsStateWithLifecycle()
-    if(s.busy) {Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {LoadingIndicator("Ищем раздачи…");Action("Отменить",tv,secondary=true) {model.back()}};return}
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
     var filter by rememberSaveable {mutableStateOf(preferences.getString("quality","Все") ?: "Все")}
     var selectedId by rememberSaveable {mutableStateOf(s.selected?.id)}
@@ -574,22 +613,57 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var season by rememberSaveable {mutableStateOf(s.releaseSeason)}
     var voice by rememberSaveable {mutableStateOf<String?>(null)}
     var filters by remember {mutableStateOf(false)}
-    val candidates=(s.results+listOfNotNull(s.selected)).distinctBy {it.id}
-    val seasons=candidates.flatMap {seasonNumbers(it.title)}.distinct().sorted()
-    val voices=candidates.flatMap {releaseVoices(it.title)}.distinct().sorted()
-    val releases=candidates.filter {r ->
-        val russian=Regex("(?i)(rus|russian|рус|дубляж)").containsMatchIn(r.title)
-        ReleaseFilter(filter,season,voice).matches(r)&&(source=="Все источники"||r.source==source)&&
-            when(seeds) {"Есть сиды" -> r.seeds?.let {it>0}==true;"0 сидов" -> r.seeds==0;"Сиды не указаны" -> r.seeds==null;else -> true}&&
-            when(language) {"Русский (название)" -> russian;"Русский не указан" -> !russian;else -> true}
+    var focusInitialRelease by rememberSaveable {mutableStateOf(tv&&detailHeader==null)}
+    val releaseScroll=rememberLazyListState()
+    if(s.busy) {
+        Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
+            LoadingIndicator("Ищем раздачи…")
+            Action("Отменить",tv,secondary=true) {model.back()}
+        }
+        return
     }
+    val options=backgroundValue(s.results,s.selected) {
+        val candidates=(s.results+listOfNotNull(s.selected)).distinctBy {it.id}
+        val rows=candidates.map {
+            ensureActive()
+            IndexedRelease(it,it.resolution,seasonNumbers(it.title),releaseVoices(it.title),russianRelease.containsMatchIn(it.title))
+        }
+        ReleaseOptions(rows,rows.flatMap {it.seasons}.distinct().sorted(),rows.flatMap {it.voices}.distinct().sorted(),
+            rows.map {it.quality}.distinct().sorted(),candidates.map {it.source}.distinct())
+    }
+    val criteria=ReleaseFilter(filter,season,voice)
+    val selectedSource=source
+    val selectedSeeds=seeds
+    val selectedLanguage=language
+    val readyReleases=if(options==null) null else backgroundValue(options,criteria,selectedSource,selectedSeeds,selectedLanguage) {
+        options.rows.filter {row->
+            ensureActive()
+            val r=row.release
+            (criteria.quality=="Все"||row.quality==criteria.quality)&&
+                (criteria.season==null||criteria.season in row.seasons)&&
+                (criteria.voice==null||criteria.voice in row.voices)&&
+                (selectedSource=="Все источники"||r.source==selectedSource)&&
+                when(selectedSeeds) {"Есть сиды" -> (r.seeds ?: 0)>0;"0 сидов" -> r.seeds==0;"Сиды не указаны" -> r.seeds==null;else -> true}&&
+                when(selectedLanguage) {"Русский (название)" -> row.russian;"Русский не указан" -> !row.russian;else -> true}
+        }.map {it.release}
+    }
+    val filtering=readyReleases==null
+    var previousReleases by remember(options) {mutableStateOf<List<Release>?>(null)}
+    SideEffect {if(readyReleases!=null) previousReleases=readyReleases}
+    val releases=(readyReleases ?: previousReleases).orEmpty()
+    val seasons=options?.seasons.orEmpty()
+    val voices=options?.voices.orEmpty()
     val activeFilters=listOf(filter!="Все",season!=null,voice!=null,source!="Все источники",seeds!="Любые сиды",language!="Любой язык").count {it}
-    fun resetFilters() {filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"}
-    if(filters) ReleaseFiltersDialog(tv,releases.size,onReset={resetFilters()},onDismiss={filters=false}) {
-        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,(listOf("Все",filter)+candidates.map {it.resolution}.distinct().sorted()).distinct(),filter,tv){filter=it}
+    fun resetFilters() {
+        focusInitialRelease=false
+        filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"
+        releaseScroll.requestScrollToItem(if(detailHeader==null) 0 else 1)
+    }
+    if(filters) ReleaseFiltersDialog(tv,readyReleases?.size,onReset={resetFilters()},onDismiss={filters=false}) {
+        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,(listOf("Все",filter)+options?.qualities.orEmpty()).distinct(),filter,tv){filter=it}
         if(seasons.isNotEmpty())ReleaseFilterChoices("Сезон",Icons.Outlined.Layers,listOf("Все сезоны")+seasons.map {"Сезон $it"},season?.let {"Сезон $it"} ?: "Все сезоны",tv){label->season=seasons.firstOrNull {"Сезон $it"==label}}
         if(voices.isNotEmpty())ReleaseFilterChoices("Озвучка",Icons.Outlined.RecordVoiceOver,listOf("Любая озвучка")+voices,voice ?: "Любая озвучка",tv,hint="Определена по названию раздачи. Точные дорожки доступны в плеере."){voice=it.takeUnless {it=="Любая озвучка"}}
-        ReleaseFilterChoices("Источник",Icons.Outlined.Storage,listOf("Все источники")+candidates.map {it.source}.distinct(),source,tv){source=it}
+        ReleaseFilterChoices("Источник",Icons.Outlined.Storage,listOf("Все источники")+options?.sources.orEmpty(),source,tv){source=it}
         ReleaseFilterChoices("Сиды",Icons.Outlined.PeopleOutline,listOf("Любые сиды","Есть сиды","0 сидов","Сиды не указаны"),seeds,tv){seeds=it}
         ReleaseFilterChoices("Язык",Icons.Outlined.Translate,listOf("Любой язык","Русский (название)","Русский не указан"),language,tv,hint="Язык указан по названию раздачи. Проверьте аудиодорожки в плеере."){language=it}
     }
@@ -598,38 +672,62 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
             val quickQualities=listOf("Все","1080p","2160p","720p",if(tv)"Не указано" else filter).distinct()
             quickQualities.forEach {label->
-                Pill(if(label=="2160p") "4K" else label,filter==label,tv) {filter=label}
+                Pill(if(label=="2160p") "4K" else label,filter==label,tv) {focusInitialRelease=false;filter=label}
             }
         }
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,secondary=true,icon=Icons.Outlined.Tune){filters=true}
+            Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,secondary=true,icon=Icons.Outlined.Tune){focusInitialRelease=false;filters=true}
             if(activeFilters>0)TextButton(onClick={resetFilters()},modifier=Modifier.tvFocusRing(tv)){Text("Сбросить всё")}
         }
-        if(seasons.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Pill("Все сезоны",season==null,tv){season=null}
-            seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number}}
+        if(seasons.isNotEmpty()) LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            item {Pill("Все сезоны",season==null,tv){focusInitialRelease=false;season=null}}
+            items(seasons,key={it}) {number->Pill("Сезон $number",season==number,tv){focusInitialRelease=false;season=number}}
         }
         if(voice!=null||source!="Все источники"||seeds!="Любые сиды"||language!="Любой язык")FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
             listOfNotNull(voice,source.takeUnless {it=="Все источники"},seeds.takeUnless {it=="Любые сиды"},language.takeUnless {it=="Любой язык"}).forEach {Badge(it,accent=true)}
         }
-        val resourceContext=LocalContext.current
-        val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
-        Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(filtering) LoadingIndicator("Применяем фильтры…")
+        else {
+            val resourceContext=LocalContext.current
+            val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
+            Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }}
     val scrollingHeader=!tv||detailHeader!=null
-    val entrance=if(detailHeader==null) Modifier.softEntrance("releases-loaded",offset=4.dp) else Modifier
+    val entrance=if(!tv&&detailHeader==null) Modifier.softEntrance("releases-loaded",offset=4.dp) else Modifier
     Column(entrance,verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!scrollingHeader) header()
-        LazyColumn(Modifier.weight(1f).testTag("release-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
+        if(filtering&&previousReleases==null&&detailHeader==null) {
+            if(scrollingHeader) Box(Modifier.padding(horizontal=detailInset)) {header()}
+            Spacer(Modifier.weight(1f))
+        } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
             if(detailHeader!=null) item(key="detail-header") {detailHeader()}
             if(scrollingHeader && sourceStatus==null) item {Box(Modifier.padding(horizontal=detailInset)) {header()}}
-            items(releases,key={it.id}) {r->Box(Modifier.animateItem(placementSpec=tween(220)).padding(horizontal=detailInset)) {
-                ReleaseCard(r,tv,focus=tv&&detailHeader==null&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {selectedId=r.id;if(tv) model.playRelease(r,season,fromDetailTab=detailHeader!=null)}
+            items(releases,key={it.id}) {r->Box((if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))).padding(horizontal=detailInset)) {
+                ReleaseCard(r,tv,focus=focusInitialRelease&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {
+                    if(!filtering) {
+                        selectedId=r.id
+                        if(tv) model.playRelease(r,season,fromDetailTab=detailHeader!=null)
+                    }
+                }
             }}
             if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
-            else if(releases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}}}
+            else if(!filtering&&releases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {
+                if(options?.rows.isNullOrEmpty()&&s.message.isNotBlank()&&s.selectedMetadata!=null) {
+                    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
+                        if(s.failures.isNotEmpty()) Text(s.failures.joinToString("\n"),color=MaterialTheme.colorScheme.error)
+                        Action("Повторить поиск",tv,secondary=true) {
+                            val seasonNumber=s.releaseSeason
+                            val episodeNumber=s.releaseEpisode
+                            if(seasonNumber!=null&&episodeNumber!=null) model.findEpisodeReleases(s.selectedMetadata,seasonNumber,episodeNumber,s.episodeTargetId,s.episodeDownload)
+                            else model.findReleases()
+                        }
+                    }
+                } else Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}
+            }}
         }
-        val selected=releases.firstOrNull {it.id==selectedId}
+        val selected=readyReleases?.firstOrNull {it.id==selectedId}
         if(!tv&&releases.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=detailInset).padding(bottom=12.dp)) {
             val gap=8.dp
             val density = LocalDensity.current
@@ -687,46 +785,94 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var downloadError by remember {mutableStateOf("")}
+    val handle=s.handle
+    val release=s.selected
+    var launching by remember(handle?.hash) {mutableStateOf(false)}
+    var launchError by remember(handle?.hash) {mutableStateOf("")}
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val playerLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {model.playerClosed()}
     var showAll by rememberSaveable(s.handle?.hash) { mutableStateOf(false) }
     var autoLaunched by remember(s.handle?.hash) {mutableStateOf(false)}
     val scoped by model.scopedLibrary.collectAsStateWithLifecycle()
     val progress=if(scoped.context==s.config.profileKey)scoped.positions else emptyList()
-    val allFiles=s.handle?.files.orEmpty()
-    val seasons=allFiles.filter {it.video&&!it.sample}.mapNotNull {episodeNumber(it.path).season}.distinct().sorted()
+    val allFiles=handle?.files.orEmpty()
+    val indexed=backgroundValue(allFiles) {sortedVideoFiles(allFiles).map {it to episodeNumber(it.path)}}
+    val seasons=remember(indexed) {
+        indexed.orEmpty().mapNotNull {(file,number)->number.season.takeIf {file.video&&!file.sample}}.distinct().sorted()
+    }
     var season by rememberSaveable(s.handle?.hash) {mutableStateOf(s.releaseSeason)}
     var episode by rememberSaveable(s.handle?.hash) {mutableStateOf(s.releaseEpisode)}
-    val visibleFiles=sortedVideoFiles(allFiles.filter {f->
-        (showAll||f.video&&!f.sample)&&(season==null||episodeNumber(f.path).season==season)&&
-            (episode==null||episodeNumber(f.path).episode==episode)
-    })
+    val visibleFiles=remember(indexed,showAll,season,episode) {
+        indexed.orEmpty().filter {(file,number)->
+            (showAll||file.video&&!file.sample)&&(season==null||number.season==season)&&(episode==null||number.episode==episode)
+        }.map {it.first}
+    }
+    val videos=remember(visibleFiles) {visibleFiles.filter {it.video&&!it.sample}}
+    val positionByPath=remember(progress,release?.id) {
+        progress.asReversed().filter {it.releaseId==release?.id}.associateBy {it.path}
+    }
     var selection by rememberSaveable(s.handle?.hash,s.downloadSelection,s.releaseSeason,s.releaseEpisode) {
-        mutableStateOf(if(s.downloadSelection) visibleFiles.singleOrNull {it.video&&!it.sample}?.serverFileId else null)
+        mutableStateOf<Int?>(null)
     }
     fun launch(file:TorrentFile) {
-        if(s.downloadSelection||!model.isFileSelectionActive(s.handle?.hash,s.selected?.id)) return
+        if(s.downloadSelection||launching||handle==null||release==null||!model.isFileSelectionActive(handle.hash,release.id)) return
         if(!tv&&s.remotePlayback) {
             val target=remote.target ?: return
             val current=model.remote.value.target
             if(current?.id!=target.id||current.instance!=target.instance)return
-            dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(s.handle!!.hash,file.serverFileId,s.selectedMetadata?.title ?: s.selected!!.displayTitle(),s.selected!!.id,"${s.handle!!.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==file.path&&!it.completed}?.positionMs ?: 0))
+            dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(handle.hash,file.serverFileId,s.selectedMetadata?.title ?: release.displayTitle(),release.id,"${handle.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),progress.firstOrNull {it.releaseId==release.id&&it.path==file.path&&!it.completed}?.positionMs ?: 0))
             model.playerClosed();return
         }
         if(!tv) dev.mjwatch.playback.RemotePlaybackService.disconnect(context)
-        val request=model.stream(file)
-        val episodes=sortedVideoFiles(allFiles.filter {it.video&&!it.sample}).map {f->
-            PlaybackEpisode(model.stream(f).uri,f.path,f.serverFileId,if(s.config.managed) contentKey(s.handle!!.contentHash!!,f.path,f.size) else "")
+        launching=true
+        launchError=""
+        scope.launch {
+            val queue=PlaybackQueue.create(context.cacheDir)
+            var launched=false
+            try {
+                val intent=withContext(Dispatchers.IO) {
+                    val gateway=model.streamGateway(s.config)
+                    fun identity(f:TorrentFile)=if(s.config.managed) contentKey(requireNotNull(handle.contentHash),f.path,f.size) else ""
+                    val request=gateway.stream(handle,file)
+                    val episodes=indexed.orEmpty().asSequence().map {it.first}.filter {it.video&&!it.sample}.map {f->
+                        PlaybackEpisode(gateway.stream(handle,f).uri,f.path,f.serverFileId,identity(f))
+                    }.toList()
+                    queue.write(episodes)
+                    val recovery=org.json.JSONObject().put("id",release.id).put("title",release.title).put("source",release.source)
+                        .put("magnet",release.magnet).put("download",release.download).put("hash",handle.contentHash ?: handle.hash)
+                    val metadata=s.selectedMetadata
+                    Intent(context,PlaybackActivity::class.java)
+                        .putExtra("recoveryRelease",recovery.toString()).putExtra("torrentHandle",handle.hash)
+                        .putExtra("remoteContentId","${handle.contentHash}:${file.serverFileId}")
+                        .putExtra("metadataId",metadata?.id).putExtra("artMetadataId",metadata?.id)
+                        .putExtra("artBackdrop",metadata?.backdrop).putExtra("artPoster",metadata?.poster).putExtra("artLogo",metadata?.logo)
+                        .putExtra("trackerSeeders",release.seeds ?: -1).putExtra(PlaybackQueue.EXTRA,queue.token)
+                        .putExtra("contentKey",identity(file)).putExtra("uri",request.uri).putExtra("releaseId",release.id)
+                        .putExtra("fileId",file.serverFileId).putExtra("path",file.path).putExtra("mobile",!tv)
+                        .putExtra("title",metadata?.title ?: release.displayTitle())
+                }
+                if(model.isFileSelectionActive(handle.hash,release.id)) {
+                    android.util.Log.d("MJWatch","Dispatching playback activity")
+                    playerLauncher.launch(intent)
+                    launched=true
+                }
+            } catch(e:CancellationException) {throw e}
+            catch(e:Exception) {launchError="Не удалось открыть видео. ${safeError(e)}"}
+            finally {
+                if(!launched) withContext(NonCancellable+Dispatchers.IO) {queue.delete()}
+                launching=false
+            }
         }
-        android.util.Log.d("MJWatch","Dispatching playback activity")
-        val selected=s.selected!!
-        val recovery=org.json.JSONObject().put("id",selected.id).put("title",selected.title).put("source",selected.source).put("magnet",selected.magnet).put("download",selected.download).put("hash",s.handle!!.contentHash ?: s.handle!!.hash)
-        playerLauncher.launch(Intent(context,PlaybackActivity::class.java).putExtra("recoveryRelease",recovery.toString()).putExtra("torrentHandle",s.handle!!.hash).putExtra("remoteContentId","${s.handle!!.contentHash}:${file.serverFileId}").putExtra("metadataId",s.selectedMetadata?.id).putExtra("artMetadataId",s.selectedMetadata?.id).putExtra("artBackdrop",s.selectedMetadata?.backdrop).putExtra("artPoster",s.selectedMetadata?.poster).putExtra("artLogo",s.selectedMetadata?.logo).putExtra("trackerSeeders",selected.seeds ?: -1).putExtra("episodes",PlaybackEpisode.encode(episodes)).putExtra("contentKey",if(s.config.managed) contentKey(s.handle!!.contentHash!!,file.path,file.size) else "").putExtra("uri",request.uri).putExtra("releaseId",s.selected!!.id).putExtra("fileId",file.serverFileId).putExtra("path",file.path).putExtra("mobile",!tv).putExtra("title",s.selectedMetadata?.title ?: s.selected?.displayTitle()))
     }
-    LaunchedEffect(s.handle?.hash,s.resumePath) {
-        if(s.downloadSelection||autoLaunched||!tv&&s.remotePlayback&&!remote.canLaunch) return@LaunchedEffect
-        val videos=visibleFiles.filter {it.video&&!it.sample}
-        val target=if(s.resumePath!=null) s.handle?.files.orEmpty().singleOrNull {it.video&&it.path==s.resumePath} else videos.singleOrNull()
+    val awaitingRemote=!tv&&s.remotePlayback&&!remote.canLaunch
+    LaunchedEffect(handle?.hash,s.resumePath,indexed,s.downloadSelection,awaitingRemote) {
+        if(indexed==null) return@LaunchedEffect
+        if(s.downloadSelection) {
+            if(selection==null) selection=videos.singleOrNull()?.serverFileId
+            return@LaunchedEffect
+        }
+        if(autoLaunched||awaitingRemote) return@LaunchedEffect
+        val target=if(s.resumePath!=null) allFiles.singleOrNull {it.video&&it.path==s.resumePath} else videos.singleOrNull()
         android.util.Log.d("MJWatch","Automatic file selection: resume=${s.resumePath!=null}, target=${target!=null}")
         if(target!=null) {autoLaunched=true;selection=target.serverFileId;launch(target)}
         if(s.resumePath!=null) {if(target==null) selection=null;model.consumeResume(target==null)}
@@ -738,12 +884,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             Text(file?.let {fileLabel(it.path)} ?: "Выберите видеофайл",fontSize=20.sp,fontWeight=FontWeight.Bold)
         }
         if(file!=null) {
-            val p=progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==file.path}
+            val p=positionByPath[file.path]
             if(p!=null&&tv) Text("Сохранено ${time(p.positionMs)}${if(p.completed) " · завершено" else ""}")
             if(!s.downloadSelection) {
                 val onTv=!tv&&s.remotePlayback
                 val label=if(onTv) remote.target?.name?.let {"Смотреть на ТВ · $it"} ?: "Смотреть на ТВ" else "Смотреть"
-                Action(label+if(p!=null&&!p.completed) " с ${time(p.positionMs)}" else "",tv,Modifier.fillMaxWidth().testTag("file-continue"),enabled=!onTv||remote.canLaunch&&remote.profileKey==s.config.profileKey,icon=Icons.Outlined.PlayArrow) {launch(file)}
+                Action(if(launching) "Открываем видео…" else label+if(p!=null&&!p.completed) " с ${time(p.positionMs)}" else "",
+                    tv,Modifier.fillMaxWidth().testTag("file-continue"),enabled=!onTv||remote.canLaunch&&remote.profileKey==s.config.profileKey,
+                    icon=Icons.Outlined.PlayArrow,loading=launching) {launch(file)}
             }
             if(!tv&&s.downloadSelection) Action("Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),enabled=!s.config.demo,icon=Icons.Outlined.FileDownload) {
                 scope.launch {try {
@@ -763,14 +911,15 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         } else Text(if(s.downloadSelection)"Выберите файл для загрузки" else "Выберите файл для просмотра",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
     val header:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        if(s.message.isNotBlank()||downloadError.isNotBlank()) Text(downloadError.ifBlank {s.message},color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+        val error=launchError.ifBlank {downloadError.ifBlank {s.message}}
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
         if(s.downloadSelection&&s.config.demo) Text("Загрузки недоступны в деморежиме",color=MaterialTheme.colorScheme.onSurfaceVariant)
         Text(s.selectedMetadata?.title ?: s.selected?.displayTitle().orEmpty(),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold,maxLines=if(tv)2 else Int.MAX_VALUE,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         if(seasons.isNotEmpty()||season!=null||episode!=null) {
             val seasonChoices:@Composable ()->Unit={
-                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Pill("Все сезоны",season==null,tv){season=null;episode=null;selection=null}
-                    seasons.forEach {number->Pill("Сезон $number",season==number,tv){season=number;episode=null;selection=null}}
+                LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    item {Pill("Все сезоны",season==null,tv){season=null;episode=null;selection=null}}
+                    items(seasons,key={it}) {number->Pill("Сезон $number",season==number,tv){season=number;episode=null;selection=null}}
                 }
                 if(episode!=null)Pill("Серия $episode · показать все серии",true,tv){episode=null;selection=null}
             }
@@ -783,7 +932,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             Text(if(seasons.isNotEmpty())"Серии" else "Видеофайлы",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f).semantics{heading()})
-            Badge(visibleFiles.count {it.video&&!it.sample}.toString())
+            if(indexed!=null) Badge(videos.size.toString())
         }
         if(tv)Text("OK — выбрать серию · повторный OK — смотреть",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
@@ -792,10 +941,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             if(tv)header()
             LazyColumn(Modifier.weight(1f).testTag("file-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
                 if(!tv)item {header()}
-                if(visibleFiles.isEmpty())item {Empty("Нет файлов для выбранного сезона или серии","Попробуйте другой сезон или покажите все серии.",tv,"Показать все серии"){season=null;episode=null;selection=null}}
+                if(indexed==null) item {LoadingIndicator("Готовим список файлов…")}
+                else if(visibleFiles.isEmpty())item {Empty("Нет файлов для выбранного сезона или серии","Попробуйте другой сезон или покажите все серии.",tv,"Показать все серии"){season=null;episode=null;selection=null}}
                 items(visibleFiles,key={it.serverFileId}) {f->
-                    Box(Modifier.animateItem(placementSpec=tween(220))) {
-                        FileCard(f,tv,selection==f.serverFileId,progress=progress.firstOrNull {it.releaseId==s.selected?.id&&it.path==f.path},focus=tv&&f.serverFileId==(selection ?: visibleFiles.firstOrNull {it.video&&!it.sample}?.serverFileId)) {if(f.video) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}}
+                    Box(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))) {
+                        FileCard(f,tv,selection==f.serverFileId,progress=positionByPath[f.path],focus=tv&&f.serverFileId==(selection ?: videos.firstOrNull()?.serverFileId)) {
+                            if(f.video&&!launching) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}
+                        }
                     }
                 }
             }
@@ -805,17 +957,16 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 
-@Composable private fun LibraryCard(item:LibraryTitle,progress:List<Progress>,model:WatchModel,tv:Boolean,showMenu:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={},onFocus:()->Unit={}) {
+@Composable private fun LibraryCard(item:LibraryTitle,progress:Map<String,Progress>,state:WatchState,model:WatchModel,tv:Boolean,showMenu:Boolean=false,bookmarkOnly:Boolean=false,restoreFocus:Boolean=false,onOpen:()->Unit={},onFocus:()->Unit={}) {
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
     if(menu) {
         val confirmFocus=remember {FocusRequester()}
         AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};TextButton(modifier=Modifier.heightIn(min=48.dp).focusRequester(confirmFocus).tvFocusRing(tv),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить")}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
     }
-    val p=item.progress(progress)
-    val cardState by model.state.collectAsState()
-    val config=cardState.config
-    val metadata=item.metadata ?: cardState.catalog.firstOrNull {it.id==e.metadataId}
+    val p=remember(item,progress) {item.releaseIds.mapNotNull(progress::get).maxByOrNull {it.updatedAt}}
+    val config=state.config
+    val metadata=remember(item,state.catalog) {item.metadata ?: state.catalog.firstOrNull {it.id==e.metadataId}}
     val requester=remember {FocusRequester()}
     LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
     val duration=p?.durationMs?.takeIf {it>0}
@@ -876,8 +1027,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 
-@Composable private fun LibraryScreen(entries:List<LibraryTitle>,progress:List<Progress>,model:WatchModel,tv:Boolean) {
-    val libraryState by model.state.collectAsState()
+@Composable private fun LibraryScreen(libraryState:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean) {
     var tab by rememberSaveable { mutableStateOf(if(model.state.value.page=="history") "История" else "Продолжить") }
     LaunchedEffect(libraryState.openDownloadsRequested) {
         if(!tv&&libraryState.page=="library"&&libraryState.openDownloadsRequested) {
@@ -886,12 +1036,21 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
     var returnFocusId by rememberSaveable {mutableStateOf<String?>(null)}
-    val filtered=entries.filter { e -> when(tab) { "Буду смотреть" -> e.entry.bookmarked; "Продолжить" -> e.entry.openedAt>0&&progress.any { it.releaseId in e.releaseIds&&!it.completed&&it.positionMs>0 }; else -> e.entry.openedAt>0 } }
+    val filtered=remember(library,tab) {
+        library?.titles.orEmpty().filter {entry->
+            when(tab) {
+                "Буду смотреть" -> entry.entry.bookmarked
+                "Продолжить" -> entry.canContinue(library?.unfinishedReleaseIds.orEmpty())
+                else -> entry.entry.openedAt>0
+            }
+        }
+    }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         WatchTabs(if(tv) listOf("Продолжить","Буду смотреть","История") else listOf("Продолжить","Загрузки","Буду смотреть","История"),tab,tv) {if(it=="Загрузки"&&libraryState.page=="history") model.openDownloads() else tab=it}
         if(tab=="Загрузки"&&!tv) OfflineScreen(model,false) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
-            items(filtered,key={it.entry.id}) {e->LibraryCard(e,progress,model,tv,showMenu=tab!="Продолжить",bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
+            if(library==null) item {LoadingIndicator("Загружаем библиотеку…")}
+            else if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
+            items(filtered,key={it.entry.id}) {e->LibraryCard(e,library?.latestProgress.orEmpty(),libraryState,model,tv,showMenu=tab!="Продолжить",bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}
         }
     }
 }
@@ -945,14 +1104,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             Text("Jackett / JacRed находит раздачи для просмотра.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
-            Action("Проверить поиск",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh){model.check(true,c,key,user,password)}
+            Action("Проверить поиск",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingJackett){model.check(true,c,key,user,password)}
             OperationMessage(s.checkJackett)
         }}
         if((!setup||setupStep==2)&&(section==null||section=="server"))item {SettingsCard("Сервер видео",Icons.Outlined.Dns,tv){
             OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank())"Введите http/https URL без логина, query и fragment" else runCatching{"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)}"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SettingsHint("Для IP без порта используется 8090. В прямом подключении открытия и позиции просмотра не сохраняются.")
             SettingsToggle("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))},description="Для сервера в вашей локальной сети")
-            Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh){model.check(false,c,key,user,password)}
+            Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingTorr){model.check(false,c,key,user,password)}
             OperationMessage(s.checkTorr)
         }}
         if(section=="search")item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){

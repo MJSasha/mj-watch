@@ -4,15 +4,19 @@ data class Release(val id: String, val title: String, val source: String, val ha
     val magnet: String? = null, val download: String? = null, val size: Long? = null, val seeds: Int? = null) {
     val resolution: String get() = releaseResolution(title)
 }
+private val videoExtensions=setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
+private val samplePattern=Regex("(?i)(^|[/_. -])sample([/_. -]|$)")
 data class TorrentFile(val serverFileId: Int, val path: String, val size: Long) {
-    val video get() = path.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
-    val sample get() = Regex("(?i)(^|[/_. -])sample([/_. -]|$)").containsMatchIn(path)
+    val video get() = path.substringAfterLast('.').lowercase() in videoExtensions
+    val sample get() = samplePattern.containsMatchIn(path)
 }
 sealed interface TorrentInput {
     data class Magnet(val link:String):TorrentInput
     data class File(val bytes:ByteArray):TorrentInput
 }
-data class TorrentHandle(val hash: String, val files: List<TorrentFile>,val contentHash:String?=null)
+data class TorrentHandle(val hash: String, val files: List<TorrentFile>,val contentHash:String?=null) {
+    internal val fileIds by lazy {files.mapTo(HashSet()) {it.serverFileId}}
+}
 data class StreamRequest(val uri: String, val headers: Map<String, String> = emptyMap())
 data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
 data class Config(val schemaVersion: Int = 1, val jackett: String = "https://jac.red", val indexers: String = "",

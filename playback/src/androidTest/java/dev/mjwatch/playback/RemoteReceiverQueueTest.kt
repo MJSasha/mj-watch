@@ -11,13 +11,14 @@ import org.junit.Test
 class RemoteReceiverQueueTest {
     private val hash = "0123456789abcdef0123456789abcdef01234567"
     private val base = "https://receiver.example/".toHttpUrl()
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val files = listOf(
         82 to "Show.S01E10.mkv", 18 to "Show.S01E02.1080p.mkv", 45 to "Show.S01E01.mp4",
         19 to "Show.S01E02.720p.mkv", 90 to "sample/Show.S01E03.mp4", 30 to "Show.S01E03.srt",
         86 to "Extras/Interview.mp4"
     )
     private fun load(fileId: Int) = remotePlaybackIntent(
-        InstrumentationRegistry.getInstrumentation().targetContext, base,
+        context, base,
         JSONObject().put("hash", hash).put("torrent", JSONObject().put("file_stats", JSONArray().apply {
             files.forEach { (id, path) -> put(JSONObject().put("id", id).put("path", path).put("length", 2500)) }
         })),
@@ -28,7 +29,13 @@ class RemoteReceiverQueueTest {
 
     @Test fun selectedVersionAndNextEpisodeUseReceiverStreamAndProgressIdentities() {
         val intent = load(19)
-        val episodes = PlaybackEpisode.decode(intent.getStringExtra("episodes"))
+        val queue = checkNotNull(PlaybackQueue.open(context.cacheDir, intent.getStringExtra(PlaybackQueue.EXTRA)))
+        val episodes = try {
+            queue.read()
+        } finally {
+            queue.delete()
+        }
+        assertNull(intent.getStringExtra("episodes"))
         assertEquals(listOf(45, 19, 82), episodes.map { it.fileId })
         episodes.forEach {
             assertEquals("https://receiver.example/api/v1/playback/handle/stream?file=${it.fileId}", it.uri)
@@ -45,7 +52,8 @@ class RemoteReceiverQueueTest {
         for (id in listOf(86, 90)) {
             val intent = load(id)
             assertEquals(id, intent.getIntExtra("fileId", -1))
-            assertTrue(PlaybackEpisode.decode(intent.getStringExtra("episodes")).isEmpty())
+            assertNull(intent.getStringExtra(PlaybackQueue.EXTRA))
+            assertNull(intent.getStringExtra("episodes"))
         }
     }
 

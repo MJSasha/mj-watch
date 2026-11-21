@@ -78,6 +78,7 @@ class ManagedEpisodesUiTest {
             model.playRelease(pack,model.state.value.releaseSeason,download=true)
         }
         ui.waitUntil(10000){model.state.value.page=="files"}
+        ui.waitUntil(5000){ui.onAllNodesWithText("Серии").fetchSemanticsNodes().isNotEmpty()}
         ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-23"))
         ui.onNodeWithTag("file-23").assertIsSelected()
         ui.onNodeWithTag("file-13").assertDoesNotExist()

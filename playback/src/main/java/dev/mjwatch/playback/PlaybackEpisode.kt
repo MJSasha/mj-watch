@@ -1,5 +1,8 @@
 package dev.mjwatch.playback
 
+import android.util.AtomicFile
+import java.io.File
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,3 +18,33 @@ data class PlaybackEpisode(val uri:String,val path:String,val fileId:Int,val con
 }
 
 private fun JSONObject.marker(key:String):Long? = if(isNull(key)) null else optLong(key,-1).takeIf {it>=0}
+
+/** Keep the queue out of the Activity's Binder transaction, including during recreation. */
+class PlaybackQueue private constructor(private val file:AtomicFile,val token:String) {
+    fun read():List<PlaybackEpisode> = PlaybackEpisode.decode(file.readFully().decodeToString())
+
+    fun write(episodes:List<PlaybackEpisode>) {
+        val payload=PlaybackEpisode.encode(episodes).encodeToByteArray()
+        val output=file.startWrite()
+        try {
+            output.write(payload)
+            file.finishWrite(output)
+        } catch(e:Exception) {
+            file.failWrite(output)
+            throw e
+        }
+    }
+
+    fun delete() = file.delete()
+
+    companion object {
+        const val EXTRA="playbackQueue"
+
+        fun create(cacheDir:File):PlaybackQueue = open(cacheDir,UUID.randomUUID().toString())!!
+
+        fun open(cacheDir:File,token:String?):PlaybackQueue? {
+            if(token==null||!runCatching {UUID.fromString(token).toString()==token}.getOrDefault(false))return null
+            return PlaybackQueue(AtomicFile(File(cacheDir,"playback-$token.json")),token)
+        }
+    }
+}

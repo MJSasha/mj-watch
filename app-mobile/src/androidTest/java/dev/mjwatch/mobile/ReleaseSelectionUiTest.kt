@@ -60,8 +60,16 @@ class ReleaseSelectionUiTest {
         val i=InstrumentationRegistry.getInstrumentation();val dir=File(i.targetContext.getExternalFilesDir(null),"release-review/$phase").apply{mkdirs()}
         Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))
     }
+    private fun awaitNode(matcher:SemanticsMatcher):SemanticsNodeInteraction {
+        ui.waitUntil(5000){ui.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()}
+        return ui.onNode(matcher)
+    }
+    private fun showFilterResults(count:Int) {
+        awaitNode(hasText("Показать результаты ($count)")).assertIsDisplayed().performClick()
+    }
     private fun awaitSelectedFileVisible(){
         ui.waitUntil(5000){
+            if(ui.onAllNodesWithTag("file-17").fetchSemanticsNodes().isEmpty())return@waitUntil false
             val row=ui.onNodeWithTag("file-17").getUnclippedBoundsInRoot()
             val viewport=ui.onNodeWithTag("file-list").getUnclippedBoundsInRoot()
             row.top>=viewport.top-1.dp&&row.bottom<=viewport.bottom+1.dp
@@ -71,25 +79,29 @@ class ReleaseSelectionUiTest {
         Assume.assumeTrue(args.getString("releaseReview")!=null)
         val model=model();ui.runOnIdle{model.search("орбита")}
         ui.waitUntil(10000){!model.state.value.busy&&model.state.value.results.size==3}
-        ui.runOnIdle{model.page("releases")};shot("releases")
+        ui.runOnIdle{model.page("releases")}
+        awaitNode(hasTestTag("source-continue"));shot("releases")
         ui.onNodeWithText("Фильтры").performClick();shot("filters")
         ui.onNodeWithTag("release-filters").performScrollToNode(hasText("Русский не указан"));shot("filters-bottom")
-        ui.onNodeWithText("Показать результаты (3)").performClick()
+        showFilterResults(3)
         ui.runOnIdle{model.playRelease(releases.first(),null)}
-        ui.waitUntil(10000){model.state.value.page=="files"};shot("episodes")
+        ui.waitUntil(10000){model.state.value.page=="files"}
+        awaitNode(hasText("Сезоны и серии"));shot("episodes")
         ui.onNodeWithText("Сезон 1").performClick()
-        ui.onNodeWithTag("file-17").performScrollTo().performClick();awaitSelectedFileVisible();shot("episode-selected")
+        ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-17"))
+        ui.onNodeWithTag("file-17").performClick();awaitSelectedFileVisible();shot("episode-selected")
     }
     @Test fun filtersKeepAllSixChoicesAndResetTogether(){
         val model=model();ui.runOnIdle{model.search("орбита")}
         ui.waitUntil(10000){!model.state.value.busy&&model.state.value.results.size==3}
         ui.runOnIdle{model.page("releases")}
         ui.onNodeWithText("Фильтры").performClick()
+        awaitNode(hasText("Показать результаты (3)"))
         for(label in listOf("1080p","Сезон 2","LostFilm","Источник A","Есть сиды","Русский (название)")) {
             ui.onNodeWithTag("release-filters").performScrollToNode(hasText(label))
             ui.onNode(hasText(label) and hasAnyAncestor(hasTestTag("release-filters"))).performClick()
         }
-        ui.onNodeWithText("Показать результаты (1)").assertIsDisplayed().performClick()
+        showFilterResults(1)
         ui.onNodeWithText("Фильтры · 6").assertExists()
         ui.onNodeWithText(releases.first().title).assertExists()
         ui.onNodeWithText(releases[1].title).assertDoesNotExist()
@@ -97,14 +109,16 @@ class ReleaseSelectionUiTest {
         ui.onNodeWithContentDescription("Закрыть фильтры").performClick()
         ui.onNodeWithText("Фильтры · 6").performClick()
         ui.onNode(hasText("Сбросить всё") and hasAnyAncestor(hasTestTag("release-filters-dialog"))).performClick()
-        ui.onNodeWithText("Показать результаты (3)").performClick()
+        showFilterResults(3)
         ui.onNodeWithText("Фильтры").assertExists()
         ui.onNodeWithText(releases[1].title).assertExists()
     }
     @Test fun seriesKeepProgressSelectionAndAdditionalFiles(){
         val model=model();ui.runOnIdle{model.playRelease(releases.first(),null)}
         ui.waitUntil(10000){model.state.value.page=="files"}
+        awaitNode(hasText("Сезоны и серии"))
         ui.onNodeWithTag("file-99").assertDoesNotExist()
+        ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-3"))
         ui.onNodeWithText("Просмотрено").assertExists()
         ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-17"))
         ui.onNodeWithText("Продолжить с 14:00").assertExists()

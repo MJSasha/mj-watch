@@ -49,8 +49,8 @@ class RemoteNavigationUiTest {
         compose.onNodeWithText("Моё").assertIsDisplayed()
         shot("tv-light-home")
         compose.runOnIdle {model.open(DemoReleases.items.first());model.prepare()}
-        compose.waitUntil(10000){model.state.value.page=="files"}
-        val file=compose.onNodeWithText("Сезон 1 · Серия 1")
+        compose.waitUntil(10000){compose.onAllNodesWithTag("file-3").fetchSemanticsNodes().isNotEmpty()}
+        val file=compose.onNodeWithTag("file-3")
         file.performSemanticsAction(SemanticsActions.RequestFocus)
         file.performKeyInput {pressKey(Key.DirectionCenter)}
         compose.onNodeWithText("OK — выбрать серию · повторный OK — смотреть").assertExists()

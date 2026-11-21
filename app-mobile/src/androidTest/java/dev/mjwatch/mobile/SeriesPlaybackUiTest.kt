@@ -17,6 +17,7 @@ import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
 import dev.mjwatch.playback.PlaybackActivity
 import dev.mjwatch.playback.PlaybackEpisode
+import dev.mjwatch.playback.PlaybackQueue
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.runner.RunWith
@@ -48,12 +49,16 @@ class SeriesPlaybackUiTest {
         compose.waitUntil(10000){model.state.value.config.demo}
         // Low-level shared player regression. Phone catalogue launch gates are tested separately.
         val queueFixture=listOf(PlaybackEpisode("asset:///demo.mp4","Сезон 1/Серия 01.mp4",3),PlaybackEpisode("asset:///demo.mp4","Сезон 1/Серия 02.mp4",17))
-        instrumentation.runOnMainSync {compose.activity.startActivity(android.content.Intent(compose.activity,PlaybackActivity::class.java).putExtra("uri","asset:///demo.mp4").putExtra("path",queueFixture.first().path).putExtra("fileId",3).putExtra("episodes",PlaybackEpisode.encode(queueFixture)).putExtra("mobile",true))}
+        val queue=PlaybackQueue.create(instrumentation.targetContext.cacheDir).apply {write(queueFixture)}
+        instrumentation.runOnMainSync {
+            compose.activity.startActivity(android.content.Intent(compose.activity,PlaybackActivity::class.java)
+                .putExtra("uri",queueFixture.first().uri).putExtra("path",queueFixture.first().path)
+                .putExtra("fileId",3).putExtra(PlaybackQueue.EXTRA,queue.token).putExtra("mobile",true))
+        }
         var a=awaitEpisode(3)
         UiDevice.getInstance(instrumentation).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))),1000)?.click()
-        var queue=emptyList<PlaybackEpisode>()
-        instrumentation.runOnMainSync {queue=PlaybackEpisode.decode(a.intent.getStringExtra("episodes"))}
-        Assert.assertEquals(listOf(3,17),queue.map {it.fileId})
+        val savedQueue=PlaybackQueue.open(a.cacheDir,a.intent.getStringExtra(PlaybackQueue.EXTRA))
+        Assert.assertEquals(listOf(3,17),savedQueue?.read()?.map {it.fileId})
         compose.onNodeWithTag("player-previous-episode").assertIsNotEnabled()
         compose.onNodeWithTag("player-next-episode").assertIsEnabled()
         screenAwake(true)

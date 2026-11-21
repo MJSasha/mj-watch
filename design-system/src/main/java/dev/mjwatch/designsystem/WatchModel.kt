@@ -12,7 +12,7 @@ import okhttp3.Credentials
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
     val episodeTargetId:String?=null,val episodeDownload:Boolean=false,
-    val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено")
+    val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено",val checkingJackett:Boolean=false,val checkingTorr:Boolean=false)
 class WatchModel(app:Application): AndroidViewModel(app) {
     private var cachedEpisodeCatalog: EpisodeCatalog? = null
     internal fun episodeCatalog(id: String, config: Config): EpisodeCatalog =
@@ -28,7 +28,14 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     private val db=Room.databaseBuilder(app,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
     val dao=db.dao()
     data class LibrarySnapshot(val context:String="",val entries:List<LibraryEntry> = emptyList(),val positions:List<Progress> = emptyList(),val metadata:Map<String,Metadata> = emptyMap()) {
-        val titles get()=libraryTitles(entries,metadata)
+        val titles=libraryTitles(entries,metadata)
+        val latestProgress:Map<String,Progress> = buildMap {
+            for(position in positions) {
+                val current=get(position.releaseId)
+                if(current==null||position.updatedAt>current.updatedAt) put(position.releaseId,position)
+            }
+        }
+        val unfinishedReleaseIds=positions.asSequence().filter {!it.completed&&it.positionMs>0}.map {it.releaseId}.toSet()
     }
     private fun snapshot(c:Config,entries:List<LibraryEntry>,positions:List<Progress>,cache:List<CachedMetadata>):LibrarySnapshot {
         val byId=cache.associateBy {it.id}
@@ -43,11 +50,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         if(c.historyEnabled) combine(db.syncDao().entities(c.scope),dao.metadataEntries()) {rows,cache->
             val favorites=rows.filter {it.kind=="favorite"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}.filter {it.bookmarked}.associateBy {it.id}
             val openings=rows.filter {it.kind=="opening"}.mapNotNull {runCatching {it.libraryEntry()}.getOrNull()}
-            snapshot(c,(openings.map {it.copy(bookmarked=favorites[it.id]?.bookmarked==true)}+favorites.values.filter {f->openings.none {it.id==f.id}}).sortedByDescending {it.openedAt},
+            val openedIds=openings.mapTo(HashSet()) {it.id}
+            snapshot(c,(openings.map {it.copy(bookmarked=favorites[it.id]?.bookmarked==true)}+favorites.values.filter {it.id !in openedIds}).sortedByDescending {it.openedAt},
                 rows.filter {it.kind=="progress"}.mapNotNull {runCatching {it.progress()}.getOrNull()},cache)
         } else if(c.managed) flowOf(LibrarySnapshot(c.profileKey))
         else combine(dao.library(),dao.metadataEntries()) {rows,cache->snapshot(c,rows.filter {it.bookmarked}.map {it.copy(openedAt=0)},emptyList(),cache)}
-    }.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),LibrarySnapshot())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),LibrarySnapshot())
     val library:StateFlow<List<LibraryEntry>> =scopedLibrary.map {it.entries}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val progress:StateFlow<List<Progress>> =scopedLibrary.map {it.positions}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     private val mutable=MutableStateFlow(WatchState())
@@ -62,7 +70,8 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
     fun openInvitation(raw:String){invitation.open(raw);page("invitation-register")}
     var draftConfig:Config?=null; var draftKey="";var draftUser="";var draftPassword="";var draftMetadata=""
-    private var cachedConfig:Config?=null;private var cachedRepositories:Pair<ReleaseRepository,StreamGateway>?=null
+    private var cachedConfig:Config?=null
+    @Volatile private var cachedRepositories:Pair<ReleaseRepository,StreamGateway>?=null
     private var catalogJob:Job?=null
     private var checkRevision=0;private val checkJobs=mutableMapOf<Boolean,Job>()
     private var work:Job?=null; private var generation=0;private var pageIndex=0
@@ -116,8 +125,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
     fun cancel() { generation++; work?.cancel(); update { it.copy(busy=false) } }
-    private fun repositories():Pair<ReleaseRepository,StreamGateway> {
-        val c=state.value.config
+    @Synchronized private fun repositories(c:Config=state.value.config):Pair<ReleaseRepository,StreamGateway> {
         if(cachedConfig==c) cachedRepositories?.let {return it}
         if(c.demo) return DemoReleases to DemoGateway
         val client=if(c.managed&&runCatching{endpoint(c.jackett).origin()==endpoint(c.managedUrl).origin()}.getOrDefault(false)) managedClient(c,secrets) else guardedClient(c); val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client)
@@ -150,18 +158,23 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             update {it.copy(catalog=result.items,catalogBusy=false,catalogMessage=if(result.cached) "Каталог из кеша" else "")}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
     }
-    fun search(query:String) {
-        cancel(); pageIndex=0; val token=generation; update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==query.trim()},metadata=emptyList(),results=emptyList(),more=false,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,page="search",busy=query.trim().length>=2,message="",failures=emptyList()) }
-        if(query.trim().length<2) { update { it.copy(results=emptyList()) }; return }
+    fun search(query:String) = search(query,releasesOnly=false)
+    private fun search(query:String,releasesOnly:Boolean) {
+        val term=query.trim()
+        val activeQuery=term.length>=2||releasesOnly&&term.isNotEmpty()
+        val config=state.value.config
+        cancel(); pageIndex=0; val token=generation
+        update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==term},metadata=emptyList(),results=emptyList(),more=false,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,page=if(releasesOnly) "releases" else "search",busy=activeQuery,message="",failures=emptyList()) }
+        if(!activeQuery) return
         work=viewModelScope.launch {
-            delay(400)
+            if(!releasesOnly) delay(400)
             supervisorScope {
-                if(state.value.config.metadataProvider=="tmdb") launch {
-                    try {val result=withContext(Dispatchers.IO) {metadataRepository().search(query.trim())};if(token==generation) update {it.copy(metadata=result.items,metadataCached=result.cached)}}
+                if(!releasesOnly&&config.metadataProvider=="tmdb") launch {
+                    try {val result=withContext(Dispatchers.IO) {metadataRepository(config).search(term)};if(token==generation) update {it.copy(metadata=result.items,metadataCached=result.cached)}}
                     catch(e:CancellationException) {throw e} catch(_:Exception) {if(token==generation) update {it.copy(metadata=emptyList())}}
                 }
                 try {
-                    val result=withContext(Dispatchers.IO) {repositories().first.search(query.trim())}
+                    val result=withContext(Dispatchers.IO) {repositories(config).first.search(term)}
                     if(token==generation) update {it.copy(results=result.releases,more=result.more,failures=result.failures,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
                 } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(message=safeError(e))}}
             }
@@ -174,10 +187,16 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         cancel();val token=generation;update {it.copy(busy=true)}
         work=viewModelScope.launch {
             try {
-                val repository=repositories().first as? TorznabRepository ?: run {update {it.copy(busy=false)}; return@launch}
                 val page=if(retryFailed) pageIndex else pageIndex+1
-                val result=withContext(Dispatchers.IO) {repository.searchPage(previous.query,page,if(retryFailed) previous.failures.map {it.substringBefore(':')}.toSet() else null)}
-                if(token==generation) {if(!retryFailed) pageIndex=page;update {it.copy(results=(previous.results+result.releases).distinctBy {it.hash ?: it.id},more=result.more,failures=result.failures,busy=false)}}
+                val result=withContext(Dispatchers.IO) {
+                    val repository=repositories(previous.config).first as? TorznabRepository ?: return@withContext null
+                    val next=repository.searchPage(previous.query.trim(),page,if(retryFailed) previous.failures.map {it.substringBefore(':')}.toSet() else null)
+                    next.copy(releases=(previous.results+next.releases).distinctBy {it.hash ?: it.id})
+                }
+                if(token==generation) {
+                    if(result!=null&&!retryFailed) pageIndex=page
+                    update {if(result==null) it.copy(busy=false) else it.copy(results=result.releases,more=result.more,failures=result.failures,busy=false)}
+                }
             } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
         }
     }
@@ -202,10 +221,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             detailSourceResult=result
         }
     }
-    fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title);update {it.copy(page="releases")}}
+    fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title,releasesOnly=true)}
     fun findEpisodeReleases(item:Metadata,season:Int,episode:Int,targetId:String?=null,download:Boolean=false) {
-        search(item.title)
-        update {it.copy(selectedMetadata=item,page="releases",releaseSeason=season,releaseEpisode=episode,episodeTargetId=targetId,episodeDownload=download,resumePath=null)}
+        search(item.title,releasesOnly=true)
+        update {it.copy(selectedMetadata=item,releaseSeason=season,releaseEpisode=episode,episodeTargetId=targetId,episodeDownload=download,resumePath=null)}
     }
 
     fun open(release:Release,focusKey:String=release.id,metadata:Metadata?=state.value.selectedMetadata?.takeIf {state.value.page in setOf("releases","search","detail")}) {
@@ -216,18 +235,30 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             managed.record(c,"opening",release.id,LibraryEntry(release.id,release.title,release.source,System.currentTimeMillis(),metadataId=metadata?.id).syncJson())
         }}
     }
-    fun restore(entry:LibraryEntry) {cancel();val c=state.value.config;val token=generation;viewModelScope.launch(Dispatchers.IO) {
-        val metadata=entry.metadataId?.let {id->
-            (dao.metadata("${if(c.managed)c.scope else "direct"}:$id") ?: if(!c.managed)dao.metadata(id) else null)?.let {metadataFromJson(it.json)}
-                ?: Metadata(id,entry.title,null,null,kind=if(id.startsWith("tmdb:tv:"))"tv" else "movie")
+    fun restore(entry:LibraryEntry) {
+        if(state.value.busy) return
+        cancel();val c=state.value.config;val token=generation
+        update {it.copy(busy=true,message="")}
+        work=viewModelScope.launch {
+            try {
+                val metadata=entry.metadataId?.let {id->withContext(Dispatchers.IO) {
+                    (dao.metadata("${if(c.managed)c.scope else "direct"}:$id") ?: if(!c.managed)dao.metadata(id) else null)?.let {metadataFromJson(it.json)}
+                        ?: Metadata(id,entry.title,null,null,kind=if(id.startsWith("tmdb:tv:"))"tv" else "movie")
+                }}
+                val release=if(metadata!=null) null else withContext(Dispatchers.IO) {
+                    val raw=secrets.get("release:${c.scope}:${entry.id}").ifBlank {if(!c.managed)secrets.get("release:${entry.id}") else ""}
+                    raw.takeIf {it.isNotBlank()}?.let(::releaseFromJson)
+                }
+                if(state.value.config.profileKey!=c.profileKey||generation!=token) return@launch
+                when {
+                    metadata!=null -> this@WatchModel.metadata(metadata,cache=false)
+                    release!=null -> open(release,metadata=null)
+                    else -> {search(entry.title);update {it.copy(message="Сохранённая ссылка недоступна. Найдите раздачу заново.")}}
+                }
+            } catch(e:CancellationException) {throw e}
+            catch(e:Exception) {if(generation==token) update {it.copy(busy=false,message=safeError(e))}}
         }
-        val raw=secrets.get("release:${c.scope}:${entry.id}").ifBlank {if(!c.managed)secrets.get("release:${entry.id}") else ""}
-        withContext(Dispatchers.Main){if(state.value.config.profileKey!=c.profileKey||generation!=token)return@withContext
-            if(metadata!=null)this@WatchModel.metadata(metadata,cache=false)
-            else if(raw.isNotBlank())open(releaseFromJson(raw),metadata=metadata.takeIf {c.metadataProvider!="none"})
-            else {search(entry.title);update {it.copy(message="Сохранённая ссылка недоступна. Найдите раздачу заново.")}}
-        }
-    }}
+    }
     fun resume(saved:Progress,onTv:Boolean=false) {
         detailOrigin=null
         if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
@@ -319,9 +350,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             focusKey=origin.focusKey,message="",handle=null,releaseSeason=null,releaseEpisode=null,resumePath=null,
             remotePlayback=false,downloadSelection=false,episodeTargetId=null,episodeDownload=false)}
     }
-    fun stream(file:TorrentFile): StreamRequest = repositories().second.stream(state.value.handle!!,file)
+    internal fun streamGateway(config:Config):StreamGateway = repositories(config).second
     fun check(jackett:Boolean,c:Config,key:String,user:String,password:String) {
         val revision=checkRevision;checkJobs[jackett]?.cancel()
+        update {if(jackett) it.copy(checkingJackett=true) else it.copy(checkingTorr=true)}
         checkJobs[jackett]=viewModelScope.launch {
             try { val result=withContext(Dispatchers.IO) {
                 if(c.demo) { if(jackett) DemoReleases.check() else DemoGateway.check() } else {
@@ -329,11 +361,11 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                     if(jackett) endpoint(c.jackett) else endpoint(c.torrServer); val scoped=if(jackett) c.copy(torrServer="") else c.copy(jackett="",indexers="",torznabPaths=emptyMap());val client=guardedClient(scoped); val r=TorznabRepository(scoped,key,client)
                     if(jackett) r.check() else TorrServerGateway(scoped,if(user.isBlank()) "" else Credentials.basic(user,password),client,r).check()
                 }
-            }; if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=result) else it.copy(checkTorr=result) }
-            } catch(e:CancellationException) {throw e} catch(e:Exception) { if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=safeError(e)) else it.copy(checkTorr=safeError(e)) } }
+            }; if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=result,checkingJackett=false) else it.copy(checkTorr=result,checkingTorr=false) }
+            } catch(e:CancellationException) {throw e} catch(e:Exception) { if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=safeError(e),checkingJackett=false) else it.copy(checkTorr=safeError(e),checkingTorr=false) } }
         }
     }
-    fun invalidateChecks() {checkRevision++;checkJobs.values.forEach {it.cancel()}; update { it.copy(checkJackett="Не проверено",checkTorr="Не проверено") } }
+    fun invalidateChecks() {checkRevision++;checkJobs.values.forEach {it.cancel()}; update { it.copy(checkJackett="Не проверено",checkTorr="Не проверено",checkingJackett=false,checkingTorr=false) } }
     fun validate(c:Config) {if(c.managed) {require(endpoint(c.managedUrl).scheme=="https");return}; if(!c.demo) { if(c.jackett.isNotBlank()) endpoint(c.jackett); if(c.torrServer.isNotBlank()) endpoint(c.torrServer); require(c.torrServer.isNotBlank()) { "Укажите TorrServer" } } }
     fun save(input:Config,key:String,user:String,password:String,metadataToken:String="",section:String?=null) {
         val current=state.value.config

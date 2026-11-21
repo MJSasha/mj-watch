@@ -35,6 +35,7 @@ class PhonePlaybackRouteTest {
             remote.value=RemotePlaybackState(target=RemoteTarget("test-tv","Тестовый ТВ","instance",RemoteVideo()),connected=connected,profileKey=model.state.value.config.profileKey,observedAt=System.nanoTime())
             model.open(DemoReleases.items.first());model.page("releases")
         }
+        ui.waitUntil(5000) {ui.onAllNodesWithTag("source-continue").fetchSemanticsNodes().isNotEmpty()}
     }
     @Test fun unavailableTelevisionDoesNotBlockPhonePlayback() {
         selectRelease(false)
@@ -61,6 +62,7 @@ class PhonePlaybackRouteTest {
         ui.runOnIdle {model=ViewModelProvider(ui.activity)[WatchModel::class.java]}
         ui.waitUntil(10000) {model.state.value.page=="files"}
         Assert.assertTrue(model.state.value.remotePlayback)
+        ui.waitUntil(5000) {ui.onAllNodesWithText("Сезон 1 · Серия 1").fetchSemanticsNodes().isNotEmpty()}
         ui.onNodeWithText("Сезон 1 · Серия 1").performClick()
         ui.onNodeWithTag("file-continue").performClick()
         ui.waitUntil(5000) {model.state.value.page=="detail"}

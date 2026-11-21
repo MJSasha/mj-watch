@@ -170,7 +170,7 @@ class OfflineDesignReviewTest {
             )
         }
         ui.onNodeWithTag("detail-sources").performClick()
-        awaitTag("release-list")
+        awaitTag("source-continue")
         val release = hasText(title) and hasClickAction()
         ui.onNodeWithTag("release-list").performScrollToNode(release)
         val card = ui.onNode(release)
@@ -178,7 +178,6 @@ class OfflineDesignReviewTest {
             val center = card.fetchSemanticsNode().boundsInWindow.center
             assertTrue(device.click(center.x.toInt(), center.y.toInt()))
         } else card.performTouchInput { click() }
-        awaitTag("source-continue")
     }
 
     private fun assertTwoActions() {

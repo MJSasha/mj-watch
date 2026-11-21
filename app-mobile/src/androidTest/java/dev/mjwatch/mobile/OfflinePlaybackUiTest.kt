@@ -124,14 +124,15 @@ class OfflinePlaybackUiTest {
                                 kind=if(media===film)"movie" else "tv"))
                     }
                     ui.onNodeWithTag("detail-sources").performClick()
-                    awaitTag("release-list")
+                    awaitTag("source-download")
                     val release=hasText("${media.title} 720p") and hasClickAction()
                     ui.onNodeWithTag("release-list").performScrollToNode(release)
                     ui.onNode(release).performClick()
-                    awaitTag("source-download")
                     ui.onNodeWithTag("source-download").performClick()
                     awaitTag("file-list")
-                    ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-$id"))
+                    ui.waitUntil(5000){
+                        runCatching {ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-$id"))}.isSuccess
+                    }
                     ui.onNodeWithTag("file-$id").performClick()
                     ui.onNodeWithTag("file-download").performClick()
                     awaitTag("offline-list")

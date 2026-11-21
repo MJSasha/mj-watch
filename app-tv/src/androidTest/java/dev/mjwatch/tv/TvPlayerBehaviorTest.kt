@@ -11,6 +11,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -18,7 +19,13 @@ import androidx.test.runner.lifecycle.Stage
 import dev.mjwatch.core.*
 import dev.mjwatch.playback.PlaybackActivity
 import dev.mjwatch.playback.PlaybackEpisode
+import dev.mjwatch.playback.PlaybackQueue
 import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import okio.Buffer
 import org.junit.*
 
 /** Installed TV APK + ExoPlayer + bundled real MP4. No user devices or mouse input. */
@@ -299,4 +306,88 @@ class TvPlayerBehaviorTest {
         instrumentation.runOnMainSync {Assert.assertFalse((field(activity()!!,"player") as Player).playWhenReady)}
     }
 
+    @Test fun remembersLabeledAudioAcrossReorderedEpisodesAndReopen() {
+        val context = instrumentation.targetContext
+        val releaseId = "test:audio-tracks:${java.util.UUID.randomUUID()}"
+        val files = listOf("audio-tracks-original.mkv", "audio-tracks-reordered.mkv")
+        val fixtures = files.associateWith { name ->
+            instrumentation.context.assets.open(name).use { it.readBytes() }
+        }
+
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val bytes = fixtures[request.path?.removePrefix("/")]
+                        ?: return MockResponse().setResponseCode(404)
+                    return MockResponse().setHeader("Content-Type", "video/x-matroska")
+                        .setBody(Buffer().write(bytes))
+                }
+            }
+            server.start()
+            runBlocking {
+                Settings(context).save(Config(torrServer = server.url("/").toString(), localHttp = true))
+            }
+            val episodes = files.mapIndexed { index, name ->
+                PlaybackEpisode(server.url("/$name").toString(), name, index + 1)
+            }
+            fun openRelease() {
+                val first = episodes.first()
+                val queue = PlaybackQueue.create(context.cacheDir).apply { write(episodes) }
+                context.startActivity(Intent(context, PlaybackActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra("uri", first.uri)
+                    .putExtra("path", first.path)
+                    .putExtra("fileId", first.fileId)
+                    .putExtra("releaseId", releaseId)
+                    .putExtra(PlaybackQueue.EXTRA, queue.token)
+                    .putExtra("mobile", false))
+            }
+            fun awaitAudio(fileId: Int, label: String): PlaybackActivity {
+                var match: PlaybackActivity? = null
+                compose.waitUntil(10000) {
+                    instrumentation.runOnMainSync {
+                        val current = activity()?.takeIf { it.firstFrameSeen && field(it, "fileId") == fileId }
+                            ?: return@runOnMainSync
+                        val player = field(current, "player") as Player
+                        val audio = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                        if (audio.any { group ->
+                                (0 until group.length).any { index ->
+                                    group.isTrackSelected(index) && group.getTrackFormat(index).label == label
+                                }
+                            }
+                        ) match = current
+                    }
+                    match != null
+                }
+                return checkNotNull(match)
+            }
+
+            openRelease()
+            val first = awaitAudio(1, "Studio")
+            instrumentation.runOnMainSync { (field(first, "player") as Player).pause() }
+            awaitReady(first)
+            compose.onNodeWithTag("player-tracks").performClick()
+            var commentary = -1
+            instrumentation.runOnMainSync {
+                val dialog = field(first, "panel") as android.app.AlertDialog
+                val rows = dialog.listView.adapter
+                commentary = (0 until rows.count).first { rows.getItem(it).toString().contains("Commentary") }
+            }
+            selectDialog(commentary)
+            awaitAudio(1, "Commentary")
+
+            compose.onNodeWithTag("player-next-episode").performClick()
+            val second = awaitAudio(2, "Commentary")
+            instrumentation.runOnMainSync { second.finish() }
+            compose.waitUntil(5000) {
+                var closed = false
+                instrumentation.runOnMainSync { closed = activity() == null }
+                closed
+            }
+
+            openRelease()
+            val reopened = awaitAudio(1, "Commentary")
+            instrumentation.runOnMainSync { reopened.finish() }
+        }
+    }
 }
