@@ -25,7 +25,10 @@ class PlaybackSplashArtworkUiTest {
     private val server=MockWebServer()
     @get:Rule val fixture=object:ExternalResource() {
         override fun before() {server.start()}
-        override fun after() {server.shutdown()}
+        override fun after() {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {PlaybackActivity.stopActivePlayback()}
+            server.shutdown()
+        }
     }
 
     @Test fun artworkSplashStaysUntilFirstFrame() {
@@ -55,7 +58,7 @@ class PlaybackSplashArtworkUiTest {
                 "/logo.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(logoBytes))
                 "/torrents" -> {
                     val speed = if(statRequests.getAndIncrement()%2==0) 7_125_000 else 7_250_000
-                    MockResponse().setHeader("Content-Type","application/json").setBody("""{"hash":"$hash","file_stats":[{"id":1}],"download_speed":$speed,"active_peers":12,"total_peers":446,"connected_seeders":12}""")
+                    MockResponse().setHeader("Content-Type","application/json").setBody("""{"hash":"$hash","download_speed":$speed,"active_peers":12,"total_peers":446,"connected_seeders":12}""")
                 }
                 "/movie.mp4" -> MockResponse().setHeadersDelay(7,TimeUnit.SECONDS).setHeader("Content-Type","video/mp4").setBody(okio.Buffer().write(video))
                 else -> MockResponse().setResponseCode(404)
@@ -66,7 +69,8 @@ class PlaybackSplashArtworkUiTest {
             .putExtra("artBackdrop",server.url("/backdrop.png").toString()).putExtra("artLogo",server.url("/logo.png").toString())
             .putExtra("torrentHandle",hash).putExtra("fileId",1))
         assertNotNull("The graphic logo is visible",device.wait(Until.findObject(By.desc("Тихая орбита")),5_000))
-        assertNotNull("Torrent telemetry is visible",device.wait(Until.findObject(By.textContains("Мбит/с")),5_000))
+        assertNotNull("Torrent telemetry is visible",device.wait(Until.findObject(By.text("57 Мбит/с")),5_000))
+        assertNotNull("Connected seeders are visible",device.wait(Until.findObject(By.text("Сиды 12")),5_000))
         assertTrue("The logo clears after the first frame",device.wait(Until.gone(By.desc("Тихая орбита")),20_000))
         if(InstrumentationRegistry.getArguments().getString("capturePlaybackPreview")=="true") Thread.sleep(4500)
     }

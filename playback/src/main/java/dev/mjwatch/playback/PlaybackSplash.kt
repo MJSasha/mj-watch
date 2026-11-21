@@ -1,6 +1,7 @@
 package dev.mjwatch.playback
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.animateFloat
@@ -24,7 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -36,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import dev.mjwatch.core.TorrentPlaybackStats
 
 internal data class PlaybackArtwork(
     val loader: ImageLoader,
@@ -51,7 +51,7 @@ internal fun PlaybackSplash(
     title: String,
     artwork: PlaybackArtwork?,
     tv: Boolean,
-    stats: TorrentPlaybackStats?,
+    metrics: PlaybackLoadingMetrics?,
     progress: Float?,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
@@ -62,7 +62,7 @@ internal fun PlaybackSplash(
         contentKey = { it != null },
     ) { loading ->
         if (loading != null) {
-            SplashContent(loading, title, artwork, tv, stats, progress, transition.targetState != null, onRetry, onCancel)
+            SplashContent(loading, title, artwork, tv, metrics, progress, transition.targetState != null, onRetry, onCancel)
         } else Spacer(Modifier.fillMaxSize())
     }
 }
@@ -73,18 +73,12 @@ private fun SplashContent(
     title: String,
     artwork: PlaybackArtwork?,
     tv: Boolean,
-    stats: TorrentPlaybackStats?,
+    metrics: PlaybackLoadingMetrics?,
     progress: Float?,
     active: Boolean,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val pulse = if (status.loading) rememberInfiniteTransition(label = "Title pulse").animateFloat(
-        initialValue = 1f,
-        targetValue = 1.035f,
-        animationSpec = infiniteRepeatable(tween(1_000), RepeatMode.Reverse),
-        label = "Title scale",
-    ) else null
     var backdropFailed by remember(artwork?.backdrop) { mutableStateOf(false) }
     val background = if (backdropFailed) artwork?.poster else artwork?.backdrop ?: artwork?.poster
 
@@ -111,7 +105,7 @@ private fun SplashContent(
         val logoReady = logoAspect != null
         val logoHeight = if (short) 84.dp else 150.dp
         val reveal = progress.takeIf { status.loading }
-        val progressFill = Modifier.titleProgress(reveal)
+        val progressFill = Modifier.titleProgress(status.loading,reveal)
         Column(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
@@ -121,8 +115,7 @@ private fun SplashContent(
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Box(
                     Modifier.widthIn(max = 720.dp).fillMaxWidth(0.83f)
-                        .heightIn(max = if (short) 101.dp else 164.dp)
-                        .graphicsLayer { scaleX = pulse?.value ?: 1f; scaleY = scaleX },
+                        .heightIn(max = if (short) 101.dp else 164.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (artwork?.logo != null) {
@@ -155,22 +148,49 @@ private fun SplashContent(
                     )
                 }
             }
-            PlaybackStatusOverlay(status,onRetry,onCancel,focusAction=tv,active=active,stats=stats,progress=reveal)
+            PlaybackStatusOverlay(status,onRetry,onCancel,focusAction=tv,active=active,metrics=metrics,progress=reveal)
         }
     }
 }
 
 @Composable
-private fun Modifier.titleProgress(progress: Float?): Modifier {
-    if (progress == null) return this
-    val fill by animateFloatAsState(progress, tween(180), label = "Title progress")
-    val muted = remember { Paint().apply { alpha = 0.3f } }
+private fun Modifier.titleProgress(loading:Boolean, progress:Float?): Modifier {
+    if (!loading) return this
+    val fill = animateFloatAsState(progress ?: 0f, tween(200), label = "Title progress")
+    val motion = rememberInfiniteTransition(label = "Title illumination")
+    val glow = motion.animateFloat(
+        .38f, .55f, infiniteRepeatable(tween(1_200), RepeatMode.Reverse), label = "Title glow",
+    )
+    val sweep = if (progress == null) motion.animateFloat(
+        -.25f, 1.25f, infiniteRepeatable(tween(2_400, easing = LinearEasing)), label = "Title sweep",
+    ) else null
+    val base = remember { Paint() }
+    val mask = remember { Paint() }
     return drawWithContent {
+        val bounds = Rect(0f, 0f, size.width, size.height)
         drawIntoCanvas { canvas ->
-            canvas.saveLayer(Rect(0f, 0f, size.width, size.height), muted)
+            base.alpha = glow.value
+            canvas.saveLayer(bounds, base)
             drawContent()
             canvas.restore()
         }
-        clipRect(right = size.width * fill) { this@drawWithContent.drawContent() }
+        if (sweep == null) {
+            clipRect(right = size.width * fill.value) { this@drawWithContent.drawContent() }
+        } else {
+            val center = sweep.value * size.width
+            val halfBand = size.width * .23f
+            drawIntoCanvas { canvas ->
+                canvas.saveLayer(bounds, mask)
+                drawContent()
+                drawRect(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color.White, Color.Transparent),
+                        startX = center - halfBand, endX = center + halfBand,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+                canvas.restore()
+            }
+        }
     }
 }

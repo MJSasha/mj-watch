@@ -2,7 +2,6 @@
 package dev.mjwatch.playback
 
 import androidx.compose.animation.core.updateTransition
-import dev.mjwatch.core.TorrentPlaybackStats
 
 import android.os.SystemClock
 import android.view.KeyEvent as AndroidKey
@@ -49,7 +48,7 @@ import kotlinx.coroutines.delay
     onRetry:()->Unit, onVisibility:(Boolean)->Unit, onBack:()->Unit, onTracks:()->Unit, onVideo:()->Unit,
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
-    startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, stats:TorrentPlaybackStats?=null, progress:Float?=null,
+    startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, metrics:PlaybackLoadingMetrics?=null, progress:Float?=null,
 ) {
     val statusRipple=LocalRippleConfiguration.current
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -270,10 +269,10 @@ import kotlinx.coroutines.delay
                 }) {Text(if(prompt=="opening")"Пропустить опенинг" else if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}" else "Следующая серия")}
                 TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
             }
-            PlaybackSplash(splash,title,artwork,tv=true,stats=stats,progress=progress,onRetry=onRetry,onCancel=onBack)
+            PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
             if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 110.dp else 20.dp)) {
                 CompositionLocalProvider(LocalRippleConfiguration provides statusRipple) {
-                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,stats=stats)
+                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,metrics=metrics)
                 }
             }
             if(episodePanel) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={Column(Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState())) {

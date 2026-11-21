@@ -294,11 +294,8 @@ class TorrentPlaybackStatsSource(private val config:Config,secrets:SecretStore) 
                     .post(JSONObject().put("action","get").put("hash",handle).toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 val torrent=torrentObject(String(direct.bytes(request,4L*1024*1024)))
-                val files=torrent.optJSONArray("file_stats") ?: return null
+                // These counters belong to the torrent, including while its file list is unavailable.
                 if(!torrent.optString("hash").equals(handle,ignoreCase=true)) return null
-                if((0 until files.length()).none {index->
-                    (files.optJSONObject(index)?.opt("id") as? Number)?.toDouble()==fileId.toDouble()
-                }) return null
                 torrent
             }
             else->return null

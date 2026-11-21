@@ -2,7 +2,6 @@
 package dev.mjwatch.playback
 
 import androidx.compose.animation.core.updateTransition
-import dev.mjwatch.core.TorrentPlaybackStats
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -47,10 +46,10 @@ import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
 internal val PlayerLime=Color(0xFFC7FF68)
-@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,stats:TorrentPlaybackStats?=null,progress:Float?=null) {
+@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onFit:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,metrics:PlaybackLoadingMetrics?=null,progress:Float?=null) {
     val startup=status.takeIf {beforeFirstFrame}
     if(!mobile) {
-        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction,startup=startup,artwork=artwork,stats=stats,progress=progress)
+        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction,startup=startup,artwork=artwork,metrics=metrics,progress=progress)
         return
     }
     val splash=updateTransition(startup,label="Playback splash")
@@ -140,8 +139,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     Text(seekFeedback,fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
                 }
             }
-            PlaybackSplash(splash,title,artwork,tv=false,stats=stats,progress=progress,onRetry=onRetry,onCancel=onBack)
-            if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,stats=stats)}
+            PlaybackSplash(splash,title,artwork,tv=false,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
+            if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,metrics=metrics)}
 
         }
     }
