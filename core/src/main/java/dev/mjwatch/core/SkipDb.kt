@@ -60,7 +60,7 @@ suspend fun loadSkipSegments(
     return parseSkipSegments(response, durationMs)
 }
 
-internal fun parseSkipSegments(response: JSONObject, durationMs: Long): List<SkipSegment> {
+fun parseSkipSegments(response: JSONObject, durationMs: Long): List<SkipSegment> {
     val segments = response.optJSONObject("segments") ?: return emptyList()
     val matches = SegmentKind.entries.mapNotNull { kind ->
         val marker = segments.optJSONObject(kind.apiKey) ?: return@mapNotNull null

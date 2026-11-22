@@ -17,6 +17,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.media3.common.Player
+import dev.mjwatch.core.SegmentKind
+import dev.mjwatch.core.SkipSegment
+import dev.mjwatch.core.parseSkipSegments
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
