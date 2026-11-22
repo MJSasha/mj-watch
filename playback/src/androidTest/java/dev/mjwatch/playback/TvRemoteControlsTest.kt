@@ -101,9 +101,12 @@ class TvRemoteControlsTest {
         key(Key.DirectionUp);compose.onNodeWithTag("player-back").assertIsFocused()
         key(Key.DirectionDown);compose.onNodeWithTag("player-play").assertIsFocused()
         key(Key.DirectionUp);compose.onNodeWithTag("player-timeline").assertIsFocused()
-        key(Key.DirectionUp);compose.onNodeWithTag("player-tracks").assertIsFocused()
+        key(Key.DirectionRight)
         key(Key.DirectionUp);assertFalse(visible)
+        assertEquals(50_000L,position)
         key(Key.DirectionDown);compose.onNodeWithTag("player-play").assertIsFocused()
+        key(Key.DirectionUp);compose.onNodeWithTag("player-timeline").assertIsFocused()
+        key(Key.DirectionCenter);assertEquals(50_000L,position)
     }
     @Test fun hiddenOkTogglesOnceAndPreviewRequiresConfirmationOrCancelsOnBackAndBlur() {
         start();key(Key.DirectionCenter);assertEquals(1,toggles);assertFalse(playing)

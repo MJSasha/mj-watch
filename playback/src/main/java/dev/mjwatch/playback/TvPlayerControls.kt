@@ -260,7 +260,7 @@ import kotlinx.coroutines.delay
                                     true
                                 }
                                 AndroidKey.KEYCODE_DPAD_CENTER,AndroidKey.KEYCODE_ENTER,AndroidKey.KEYCODE_NUMPAD_ENTER -> {if(down&&event.nativeKeyEvent.repeatCount==0)remote.confirmSeek()?.let {player()?.seekTo(it)};true}
-                                AndroidKey.KEYCODE_DPAD_UP -> {if(down)tracksFocus.requestFocus();true}
+                                AndroidKey.KEYCODE_DPAD_UP -> {if(down) {remote.cancelSeek();onVisibility(false)};true}
                                 AndroidKey.KEYCODE_DPAD_DOWN -> {if(down) {remote.cancelSeek();playFocus.requestFocus()};true}
                                 else -> false
                             }

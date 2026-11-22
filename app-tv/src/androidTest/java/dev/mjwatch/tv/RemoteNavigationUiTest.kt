@@ -74,8 +74,6 @@ class RemoteNavigationUiTest {
         timeline.assertIsFocused()
         val before=timeline.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         timeline.performKeyInput {pressKey(Key.DirectionUp)}
-        compose.onNodeWithTag("player-tracks").assertIsFocused()
-        compose.onNodeWithTag("player-tracks").performKeyInput {pressKey(Key.DirectionUp)}
         compose.waitUntil(5000){compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadDown()
         compose.waitForIdle()

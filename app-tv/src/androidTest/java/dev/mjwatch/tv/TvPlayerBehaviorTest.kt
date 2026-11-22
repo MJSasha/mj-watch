@@ -76,8 +76,6 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_DPAD_UP)
         compose.waitUntil(5000) {runCatching {compose.onNodeWithTag("player-timeline").assertIsFocused();true}.getOrDefault(false)}
         key(KeyEvent.KEYCODE_DPAD_UP)
-        compose.onNodeWithTag("player-tracks").assertIsFocused()
-        key(KeyEvent.KEYCODE_DPAD_UP)
         compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
     }
     private fun awaitReady(a:PlaybackActivity) {
@@ -123,11 +121,16 @@ class TvPlayerBehaviorTest {
         }}
         fun focused(tag:String) {try {compose.waitUntil(5000) {runCatching {compose.onNodeWithTag(tag).assertIsFocused();true}.getOrDefault(false)}}
             catch(error:Throwable) {capture("failure-$tag");java.io.File(folder,"failure.txt").writeText(compose.onRoot().printToString());throw error}}
+        fun focusHeaderTracks() {
+            key(KeyEvent.KEYCODE_DPAD_UP);focused("player-back")
+            key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-episodes")
+            key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-tracks")
+        }
         capture("00-prompt")
         key(KeyEvent.KEYCODE_BACK)
         focused("player-play");capture("01-play")
-        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline")
-        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-tracks");capture("02-tracks-button")
+        hideControlsFromPlay()
+        focusHeaderTracks();capture("02-tracks-button")
         repeat(5) {index->
             key(KeyEvent.KEYCODE_DPAD_CENTER)
             if(index==0)capture("03-tracks-open")
@@ -145,12 +148,9 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline");capture("09a-timeline-focused")
         key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("09-seek-preview")
         key(KeyEvent.KEYCODE_BACK);focused("player-timeline")
-        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-tracks")
         key(KeyEvent.KEYCODE_DPAD_UP)
         compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
-        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-back")
-        key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-episodes")
-        key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-tracks")
+        focusHeaderTracks()
         key(KeyEvent.KEYCODE_DPAD_CENTER);capture("10-tracks-reopened")
         key(KeyEvent.KEYCODE_BACK);focused("player-tracks")
         capture("11-tracks-return")
