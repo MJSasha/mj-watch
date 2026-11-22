@@ -109,26 +109,35 @@ jobs:
           gradle-home-cache-excludes: caches/*/transforms
       - run: echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - id: runtime
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           target: ${{ matrix.target }}
           arch: x86_64
           profile: ${{ matrix.profile }}
-          # The emulator action executes each input line in its own shell.
+          pre-emulator-launch-script: adb start-server
           script: >-
-            set -e;
-            echo "Emulator ready at $(date -u +%FT%TZ)";
-            if [ "${{ matrix.device }}" = "phone-offline" ]; then
-            ./gradlew --profile --build-cache :core:connectedDebugAndroidTest
-            :app-mobile:assembleDebug :app-mobile:assembleDebugAndroidTest;
-            bash scripts/check-offline-emulator.sh;
-            else
-            ./gradlew --profile --build-cache :${{ matrix.module }}:connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.numShards=${{ matrix.shards }}
-            -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }};
-            fi;
-            echo "Runtime checks passed at $(date -u +%FT%TZ)"
+            sh scripts/check-runtime-emulator.sh ${{ matrix.module }} ${{ matrix.shards }} ${{ matrix.shard }}
+      - name: Preserve failures after startup
+        if: steps.runtime.outcome == 'failure'
+        run: |
+          if [ -f "$RUNNER_TEMP/mjwatch-runtime-started" ]; then
+            echo "::error::Runtime checks failed after emulator startup"
+            exit 1
+          fi
+          adb kill-server || true
+      - name: Retry emulator startup once
+        if: steps.runtime.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          pre-emulator-launch-script: adb start-server
+          script: >-
+            sh scripts/check-runtime-emulator.sh ${{ matrix.module }} ${{ matrix.shards }} ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
