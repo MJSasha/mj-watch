@@ -22,6 +22,21 @@ class MetadataFlowTest {
     Settings(c).save(Config(demo=true,metadataProvider="tmdb"));Settings(c).destination("home")
  }}
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
+ @Test fun searchShowsCinematicTileAndOpensTitle() {
+    lateinit var model: WatchModel
+    compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+    compose.waitUntil(10000) {model.state.value.catalog.any {it.id==item.id}}
+    compose.runOnIdle {model.search(item.title)}
+    compose.waitUntil(10000) {model.state.value.metadata.any {it.id==item.id}}
+    val artwork=compose.onNodeWithTag("poster-${item.id}",useUnmergedTree=true).getUnclippedBoundsInRoot()
+    val resultTitle=hasText(item.title) and !hasTestTag("search-field")
+    val title=compose.onNode(resultTitle,useUnmergedTree=true).getUnclippedBoundsInRoot()
+    val height=artwork.bottom-artwork.top
+    Assert.assertEquals(0.82f,(artwork.right-artwork.left).value/height.value,0.02f)
+    Assert.assertTrue("Title should sit inside the artwork",title.top>artwork.top+height/2&&title.bottom<artwork.bottom)
+    compose.onNode(resultTitle and hasClickAction()).performClick()
+    compose.waitUntil(5000) {model.state.value.page=="detail"&&model.state.value.selectedMetadata?.id==item.id}
+ }
  @Test fun dismissingSourcesKeepsTheSameDetailScreenAndTab() {
     lateinit var model: WatchModel
     compose.runOnIdle { model=ViewModelProvider(compose.activity)[WatchModel::class.java] }

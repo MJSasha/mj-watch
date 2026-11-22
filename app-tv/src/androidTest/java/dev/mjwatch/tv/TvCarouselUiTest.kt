@@ -114,6 +114,7 @@ class TvCarouselUiTest {
         compose.onNodeWithTag("hero-open").assertDoesNotExist()
         compose.onNodeWithTag("hero-bookmark").assertDoesNotExist()
         val image=compose.onNodeWithTag("poster-tmdb:movie:8012",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        Assert.assertEquals(0.82f,image.width/image.height,0.02f)
         val pixels=compose.onRoot().captureToImage().toPixelMap()
         val density=compose.activity.resources.displayMetrics.density
         val frame=pixels[image.center.x.roundToInt(),(image.top-5*density).roundToInt()].luminance()
