@@ -16,6 +16,37 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35], manifest = org.robolectric.annotation.Config.NONE)
 class OfflineDownloadsTest {
+    @Test fun seasonQueuesOnlyItsVideosAndKeepsExistingItems() = runBlocking {
+        val app = RuntimeEnvironment.getApplication()
+        val config = Config(torrServer = "http://127.0.0.1:8090", localHttp = true)
+        Settings(app).save(config)
+        val store = OfflineDownloads.get(app)
+        val hash = "2".repeat(40)
+        val release = Release("season", "Сериал Season 2", "Тест", hash)
+        val first = TorrentFile(1, "Сериал/01.mp4", 100)
+        val second = TorrentFile(2, "Сериал/S02E02.mkv", 200)
+        val handle = TorrentHandle(hash, listOf(first, second, TorrentFile(3, "Сериал/sample/S02E03.mp4", 20),
+            TorrentFile(4, "Сериал/S02E03.srt", 20)))
+        val existing = store.enqueue(config, release, handle, first, season = 2)
+        val ids = store.enqueueSeason(config, release, handle, 2)
+        assertEquals(existing, ids.first())
+        assertEquals(listOf(1, 2), store.observe(config).first().mapNotNull { it.episode }.sorted())
+        assertTrue(store.observe(config, readyOnly = true).first().isEmpty())
+        val mixed = handle.files + TorrentFile(5, "Сериал/S03E01.mp4", 100)
+        assertEquals(listOf(second), seasonDownloadFiles(mixed, release.title, 2))
+        ids.forEach { store.remove(config, it) }
+    }
+
+    @Test fun savedSkipTimelineKeepsSegmentTypeAndMatchAccuracy() {
+        val segments = listOf(
+            SkipSegment(SegmentKind.INTRO, 5_000, 65_000),
+            SkipSegment(SegmentKind.OUTRO, 95_000, 110_000, allowAutoSkip = false),
+            SkipSegment(SegmentKind.PREVIEW, 110_000, 130_000)
+        )
+        assertEquals(segments, decodeSegments(encodeSegments(segments)))
+        assertTrue(decodeSegments(null).isEmpty())
+    }
+
     @Test fun cancelActiveStreamRetryRemoveAndRejectMissingMedia() = runBlocking {
         MockWebServer().use { server ->
             val app = RuntimeEnvironment.getApplication()

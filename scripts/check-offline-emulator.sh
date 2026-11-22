@@ -13,7 +13,7 @@ run_phase() {
   echo "$result"
   grep -Eq '^OK \(1 test\)' <<< "$result"
 }
-run_phase downloadMovieAndIndividualEpisodes
+run_phase downloadMovieAndSeason
 adb shell am force-stop "$app"
 test -z "$(adb shell pidof "$app" || true)"
 trap 'adb shell cmd connectivity airplane-mode disable; adb shell svc wifi enable; adb shell svc data enable' EXIT

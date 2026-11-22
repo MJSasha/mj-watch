@@ -235,7 +235,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         }
     }
     fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title,releasesOnly=true)}
-    fun findEpisodeReleases(item:Metadata,season:Int,episode:Int,targetId:String?=null,download:Boolean=false) {
+    fun findSeriesReleases(item:Metadata,season:Int,episode:Int?,targetId:String?=null,download:Boolean=false) {
         search(item.title,releasesOnly=true)
         update {it.copy(selectedMetadata=item,releaseSeason=season,releaseEpisode=episode,episodeTargetId=targetId,episodeDownload=download,resumePath=null)}
     }
@@ -360,10 +360,12 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     fun clearUndo() {update {it.copy(removed=null)}}
     fun playRelease(release:Release,season:Int?,onTv:Boolean=false,download:Boolean=false,fromDetailTab:Boolean=false) {
         if(onTv&&(!remote.value.canLaunch||remote.value.profileKey!=state.value.config.profileKey))return
-        val origin=if(fromDetailTab) DetailOrigin(state.value.selected,state.value.focusKey) else null
-        if(state.value.selected?.id!=release.id)open(release)
+        val selection=state.value
+        val origin=if(fromDetailTab) DetailOrigin(selection.selected,selection.focusKey) else null
+        val episode=selection.releaseEpisode.takeIf { season==selection.releaseSeason }
+        if(selection.selected?.id!=release.id)open(release)
         detailOrigin=origin
-        update {it.copy(remotePlayback=onTv,downloadSelection=download,releaseSeason=season,releaseEpisode=it.releaseEpisode.takeIf {_->season==it.releaseSeason})}
+        update {it.copy(remotePlayback=onTv,downloadSelection=download,releaseSeason=season,releaseEpisode=episode)}
         prepare()
     }
     fun prepare() {

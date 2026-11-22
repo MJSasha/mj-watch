@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package dev.mjwatch.playback
 
+import dev.mjwatch.core.SegmentKind
+import dev.mjwatch.core.SkipSegment
 import androidx.compose.animation.core.updateTransition
 
 import android.os.SystemClock

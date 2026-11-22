@@ -3,7 +3,6 @@ package dev.mjwatch.mobile
 
 import android.app.Notification
 import android.app.NotificationManager
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Uri
 import androidx.compose.ui.test.*
@@ -67,7 +66,7 @@ class OfflinePlaybackUiTest {
         }
     }
 
-    @Test fun downloadMovieAndIndividualEpisodes() {
+    @Test fun downloadMovieAndSeason() {
         val bytes=fileIds.associateWith {id ->
             // A valid trailing MP4 free box distinguishes the three server responses.
             video+Buffer().writeInt(12).writeUtf8("free").writeInt(id).readByteArray()
@@ -115,12 +114,12 @@ class OfflinePlaybackUiTest {
             }
             ActivityScenario.launch(MainActivity::class.java).use {scenario ->
                 awaitTag("app-content")
-                for(media in listOf(film,series))for((id,_) in media.files) {
+                for(media in listOf(film,series)) {
                     scenario.onActivity { activity ->
                         val model=ViewModelProvider(activity)[WatchModel::class.java]
                         model.open(Release("offline-fixture:${media.hash}","${media.title} 720p","Тестовый TorrServer",
                             hash=media.hash,magnet="magnet:?xt=urn:btih:${media.hash}"),
-                            metadata=Metadata("tmdb:${if(media===film)"movie" else "tv"}:$id",media.title,null,null,
+                            metadata=Metadata("tmdb:${if(media===film)"movie" else "tv"}:${media.files.first().first}",media.title,null,null,
                                 kind=if(media===film)"movie" else "tv"))
                     }
                     ui.onNodeWithTag("detail-sources").performClick()
@@ -130,48 +129,57 @@ class OfflinePlaybackUiTest {
                     ui.onNode(release).performClick()
                     ui.onNodeWithTag("source-download").performClick()
                     awaitTag("file-list")
-                    ui.waitUntil(5000){
-                        runCatching {ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-$id"))}.isSuccess
-                    }
-                    ui.onNodeWithTag("file-$id").performClick()
-                    ui.onNodeWithTag("file-download").performClick()
-                    awaitTag("offline-list")
-                    val store=OfflineDownloads.get(context)
-                    if(id==31) {
-                        runBlocking {withTimeout(12000) {
-                            store.observe(config).first {list -> list.any {
-                                it.fileId==id&&it.state==OfflineState.DOWNLOADING&&it.bytesDownloaded>it.totalBytes/4
-                            }}
-                        }}
-                        capture("$viewport-downloading")
-                        assertTrue(device.pressHome())
+                    if (media === film) {
+                        val id = media.files.single().first
                         ui.waitUntil(5000) {
-                            var background = false
-                            instrumentation.runOnMainSync {
-                                background = ActivityLifecycleMonitorRegistry.getInstance()
-                                    .getActivitiesInStage(Stage.RESUMED).none { it is MainActivity }
-                            }
-                            background
+                            runCatching { ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-$id")) }.isSuccess
                         }
-                        val manager = context.getSystemService(NotificationManager::class.java)
-                        val ongoing = manager.activeNotifications.single {
-                            it.notification.channelId == "offline-downloads"
-                        }.notification
-                        assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains("Серия 2"))
-                        assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("%"))
-                        if (android.os.Build.VERSION.SDK_INT >= 36) {
-                            assertEquals("android.app.Notification\$ProgressStyle", ongoing.extras.getString(Notification.EXTRA_TEMPLATE))
-                        }
-                        if (device.openNotification()) capture("$viewport-download-notification")
+                        ui.onNodeWithTag("file-$id").performClick()
+                        ui.onNodeWithTag("file-download").performClick()
+                    } else {
+                        awaitTag("file-download-season")
+                        ui.onNodeWithTag("file-download-season").performClick()
+                        ui.onNodeWithTag("confirm-season-download").performClick()
                     }
-                    val item=runBlocking {withTimeout(30000) {
-                        store.observe(config).first {list -> list.any {it.fileId==id&&it.state in setOf(OfflineState.READY,OfflineState.FAILED)}}
-                            .single {it.fileId==id}
-                    }}
-                    assertEquals(item.error,OfflineState.READY,item.state)
-                    assertFalse("Downloading must not start the player",PlaybackActivity.hasActivePlayback())
-                    val local=runBlocking {store.localFile(config,item.id)} ?: error("Download is not readable")
-                    assertArrayEquals("Downloaded bytes for #$id",bytes.getValue(id),local.readBytes())
+                    awaitTag("offline-list")
+                    val store = OfflineDownloads.get(context)
+                    for ((id, _) in media.files) {
+                        if(id==31) {
+                            runBlocking {withTimeout(12000) {
+                                store.observe(config).first {list -> list.any {
+                                    it.fileId==id&&it.state==OfflineState.DOWNLOADING&&it.bytesDownloaded>it.totalBytes/4
+                                }}
+                            }}
+                            capture("$viewport-downloading")
+                            assertTrue(device.pressHome())
+                            ui.waitUntil(5000) {
+                                var background = false
+                                instrumentation.runOnMainSync {
+                                    background = ActivityLifecycleMonitorRegistry.getInstance()
+                                        .getActivitiesInStage(Stage.RESUMED).none { it is MainActivity }
+                                }
+                                background
+                            }
+                            val manager = context.getSystemService(NotificationManager::class.java)
+                            val ongoing = manager.activeNotifications.single {
+                                it.notification.channelId == "offline-downloads"
+                            }.notification
+                            assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains("Серия 2"))
+                            assertTrue(ongoing.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("%"))
+                            if (android.os.Build.VERSION.SDK_INT >= 36) {
+                                assertEquals("android.app.Notification\$ProgressStyle", ongoing.extras.getString(Notification.EXTRA_TEMPLATE))
+                            }
+                            if (device.openNotification()) capture("$viewport-download-notification")
+                        }
+                        val item=runBlocking {withTimeout(30000) {
+                            store.observe(config).first {list -> list.any {it.fileId==id&&it.state in setOf(OfflineState.READY,OfflineState.FAILED)}}
+                                .single {it.fileId==id}
+                        }}
+                        assertEquals(item.error,OfflineState.READY,item.state)
+                        assertFalse("Downloading must not start the player",PlaybackActivity.hasActivePlayback())
+                        val local=runBlocking {store.localFile(config,item.id)} ?: error("Download is not readable")
+                        assertArrayEquals("Downloaded bytes for #$id",bytes.getValue(id),local.readBytes())
+                    }
                 }
             }
             assertEquals(fileIds.toSet(),streamed.toSet())
@@ -188,27 +196,12 @@ class OfflinePlaybackUiTest {
         assertEquals(fileIds.toSet(),downloads.map {it.fileId}.toSet())
         assertTrue(downloads.all {it.state==OfflineState.READY})
         assertEquals(listOf(1,2),downloads.filter {it.title==series.title}.mapNotNull {it.episode}.sorted())
-        val openDownloads = Intent(context, MainActivity::class.java).setAction(OfflineDownloads.OPEN_DOWNLOADS)
-        ActivityScenario.launch<MainActivity>(openDownloads).use { scenario ->
+        ActivityScenario.launch(MainActivity::class.java).use {
             awaitTag("offline-list")
-            // Open from metadata alone, as if the movie had been selected in the catalogue.
-            val movie = downloads.single { it.fileId == 17 }
-            scenario.onActivity { activity ->
-                ViewModelProvider(activity)[WatchModel::class.java].metadata(
-                    Metadata(requireNotNull(movie.metadataId), movie.title, null, null)
-                )
-            }
-            awaitTag("detail-offline")
-            ui.onNodeWithTag("detail-offline").assertIsDisplayed().performClick()
-            awaitPlaying(movie.fileId, checkNotNull(runBlocking { store.localFile(config, movie.id) }))
-            assertNull(connectivity.activeNetwork)
-            leavePlayer()
-            awaitTag("detail-offline")
-            ui.onNode((hasText("Моё") or hasContentDescription("Моё")) and hasClickAction()).performClick()
-            ui.onNodeWithText("Загрузки").performClick()
-            awaitTag("offline-list")
-            ui.onNode(hasText("Моё") and !hasClickAction()).assertIsDisplayed()
-            ui.onNodeWithText("Загрузки").assertIsSelected()
+            ui.onNodeWithTag("offline-home").assertIsDisplayed()
+            ui.onNodeWithText("Без сети").assertIsDisplayed()
+            ui.onNodeWithText("Поиск").assertDoesNotExist()
+            ui.onNodeWithText("Настройки").assertDoesNotExist()
             ui.waitUntil(8000) {ui.onAllNodesWithText(series.title).fetchSemanticsNodes().isNotEmpty()}
             capture("$viewport-ready")
             for(id in fileIds) {

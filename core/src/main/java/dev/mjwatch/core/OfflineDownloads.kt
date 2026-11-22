@@ -7,13 +7,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
+import android.media.MediaMetadataRetriever
 import androidx.room.Room
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -34,7 +38,8 @@ class OfflineDownloads private constructor(private val app: Context) {
 
     private val supported get() = !app.packageName.endsWith(".tv") &&
         (app.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) != Configuration.UI_MODE_TYPE_TELEVISION
-    private val dao by lazy { Room.databaseBuilder(app, OfflineDatabase::class.java, "offline.db").build().downloads() }
+    private val dao by lazy { Room.databaseBuilder(app, OfflineDatabase::class.java, "offline.db")
+        .addMigrations(OfflineDatabase.MIGRATION_1_2).build().downloads() }
     private val secrets=SecretStore(app)
     private val directory get() = File(app.noBackupFilesDir, "offline-media")
     private val commands = Mutex()
@@ -44,9 +49,11 @@ class OfflineDownloads private constructor(private val app: Context) {
     // JobScheduler may still report a finished job until it processes jobFinished.
     private var finishedJob = false
 
-    fun observe(config: Config): Flow<List<OfflineDownload>> =
+    fun observe(config: Config, readyOnly: Boolean = false): Flow<List<OfflineDownload>> =
         if (!eligible(config)) flowOf(emptyList())
-        else dao.observe(profile(config)).map { rows -> rows.map { it.item } }
+        else dao.observe(profile(config)).map { rows ->
+            rows.map { it.item }.filter { !readyOnly || (it.state == OfflineState.READY && verifiedFile(it) != null) }
+        }.flowOn(Dispatchers.IO)
 
     suspend fun resumePending() = withContext(Dispatchers.IO) {
         val config = Settings(app).config.first()
@@ -64,33 +71,46 @@ class OfflineDownloads private constructor(private val app: Context) {
     suspend fun enqueue(
         config: Config, release: Release, handle: TorrentHandle, file: TorrentFile,
         metadata: Metadata? = null, season: Int? = null, episode: Int? = null
-    ): String = withContext(Dispatchers.IO) {
-        require(supported && !config.demo) { "Загрузка доступна для реального источника на мобильном устройстве" }
-        require(!config.managed || config.scope.isNotBlank())
-        require(file.video && file.size > 0 && file.serverFileId > 0 && handle.files.singleOrNull { it.serverFileId == file.serverFileId } == file) {
-            "Выберите видеофайл с известным размером"
-        }
-        val key = contentKey(if (config.managed) requireNotNull(handle.contentHash) else handle.hash, file.path, file.size)
+    ): String = enqueueFiles(config, release, handle, listOf(file), metadata, season, episode).single()
+
+    suspend fun enqueueSeason(config: Config, release: Release, handle: TorrentHandle, season: Int,
+        metadata: Metadata? = null
+    ): List<String> = enqueueFiles(config, release, handle, seasonDownloadFiles(handle.files, release.title, season), metadata, season)
+
+    private suspend fun enqueueFiles(
+        config: Config, release: Release, handle: TorrentHandle, files: List<TorrentFile>,
+        metadata: Metadata?, season: Int?, episode: Int? = null
+    ): List<String> = withContext(Dispatchers.IO) {
+        require(eligible(config)) { "Загрузка доступна для реального источника на мобильном устройстве" }
+        val byId = handle.files.groupBy { it.serverFileId }
+        require(files.isNotEmpty() && files.all { it.video && it.size > 0 && it.serverFileId > 0 &&
+            byId[it.serverFileId]?.singleOrNull() == it }) { "Выберите видеофайлы с известным размером" }
         require(handle.hash.matches(Regex("[a-zA-Z0-9_-]+")))
+        val hash = if (config.managed) requireNotNull(handle.contentHash) else handle.hash
         val profile = profile(config)
         val source = source(config)
-        val id = MessageDigest.getInstance("SHA-256").digest("$profile\u0000$key".toByteArray())
-            .joinToString("") { "%02x".format(it) }
-        commands.withLock {
-            val previous = dao.get(profile, id)
-            if (previous?.item?.state == OfflineState.READY && verifiedFile(previous.item) != null) return@withLock
-            if (previous?.item?.state in pending) {
-                schedule()
-                return@withLock
-            }
+        val posterPath = metadata?.poster?.let { posterPath(config, it) }
+        val createdAt = System.currentTimeMillis()
+        val records = files.map { file ->
+            val key = contentKey(hash, file.path, file.size)
+            val id = MessageDigest.getInstance("SHA-256").digest("$profile\u0000$key".toByteArray())
+                .joinToString("") { "%02x".format(it) }
             val number = episodeNumber(file.path)
             val item = OfflineDownload(id, release.id, metadata?.title ?: release.title, metadata?.id,
-                file.serverFileId, file.path, if (config.managed) key else "", season ?: number.season,
-                number.episode ?: episode, partial(id).length(), file.size, OfflineState.QUEUED, null)
-            dao.put(OfflineRecord(item, profile, source, handle.hash, System.currentTimeMillis()))
-            schedule()
+                file.serverFileId, file.path, if (config.managed) key else "", number.season ?: season,
+                number.episode ?: episode, 0, file.size, OfflineState.QUEUED, null)
+            OfflineRecord(item, profile, source, handle.hash, createdAt, posterPath)
+        }.distinctBy { it.item.id }
+        commands.withLock {
+            val queue = records.filterNot { row ->
+                val previous = dao.get(profile, row.item.id)?.item
+                previous != null && (previous.state in pending ||
+                    previous.state == OfflineState.READY && verifiedFile(previous) != null)
+            }.map { row -> row.copy(item = row.item.copy(bytesDownloaded = partial(row.item.id).length())) }
+            if (queue.isNotEmpty()) dao.put(queue)
+            if (dao.next(profile) != null) schedule()
         }
-        id
+        records.map { it.item.id }
     }
 
     suspend fun retry(config: Config, id: String) = withContext(Dispatchers.IO) {
@@ -112,6 +132,8 @@ class OfflineDownloads private constructor(private val app: Context) {
             if (entry(config, id)?.item?.state == OfflineState.READY) return@withLock
             deleteFile(partial(id))
             deleteFile(media(row.item))
+            deleteFile(poster(id))
+            deleteFile(posterPart(id))
             dao.update(id, OfflineState.CANCELLED, 0)
         }
     }
@@ -122,6 +144,8 @@ class OfflineDownloads private constructor(private val app: Context) {
             stopTransfer(id)
             deleteFile(partial(id))
             deleteFile(media(row.item))
+            deleteFile(poster(id))
+            deleteFile(posterPart(id))
             dao.delete(id)
         }
     }
@@ -136,6 +160,17 @@ class OfflineDownloads private constructor(private val app: Context) {
         }
     }
 
+    suspend fun localPoster(config: Config, id: String): File? = withContext(Dispatchers.IO) {
+        if (entry(config, id)?.item?.state == OfflineState.READY) poster(id).takeIf { it.isFile } else null
+    }
+
+    suspend fun localSegments(config: Config, id: String): List<SkipSegment> = withContext(Dispatchers.IO) {
+        val row = entry(config, id)?.takeIf { it.item.state == OfflineState.READY }
+        decodeSegments(row?.segments)
+    }
+
+    private fun poster(id: String) = File(directory, "$id.poster")
+    private fun posterPart(id: String) = File(directory, "$id.poster.part")
     private fun media(item: OfflineDownload) = File(directory, "${item.id}.${item.path.substringAfterLast('.').lowercase()}")
     private fun partial(id: String) = File(directory, "$id.part")
     private fun verifiedFile(item: OfflineDownload) = media(item).takeIf { it.isFile && it.length() == item.totalBytes }
@@ -240,7 +275,12 @@ class OfflineDownloads private constructor(private val app: Context) {
                 }
                 Files.move(part.toPath(), media(item).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             }
-            dao.update(item.id, OfflineState.READY, item.totalBytes)
+            val config = Settings(app).config.first()
+            val segments = if (matches(config, row)) {
+                optionalOfflineMetadata { savePoster(config, row) }
+                optionalOfflineMetadata { downloadSegments(config, item, media(item)) }
+            } else null
+            dao.ready(item.id, segments)
         } catch (_:DownloadServerChanged) {
             dao.update(item.id,OfflineState.QUEUED,part.length())
         } catch (e: CancellationException) {
@@ -257,6 +297,44 @@ class OfflineDownloads private constructor(private val app: Context) {
             }
             dao.update(item.id, OfflineState.FAILED, part.length(), message)
         }
+    }
+
+    private fun posterPath(config: Config, raw: String): String? {
+        val url = raw.toHttpUrlOrNull() ?: return null
+        val base = endpoint(if (config.managed) config.managedUrl else "https://image.tmdb.org")
+        val prefix = if (config.managed) base.child("api/v1/metadata/images/").encodedPath else "/t/p/"
+        return url.encodedPath.takeIf { url.origin() == base.origin() && it.startsWith(prefix) }
+            ?.removePrefix(prefix)?.takeIf { posterImagePath.matches(it) }
+    }
+
+    private suspend fun savePoster(config: Config, row: OfflineRecord) {
+        val path = row.posterPath ?: return
+        val id = row.item.id
+        if (poster(id).isFile) return
+        val url = if (config.managed) endpoint(config.managedUrl).child("api/v1/metadata/images/$path")
+            else endpoint("https://image.tmdb.org").child("t/p/$path")
+        val client = if (config.managed) managedClient(config, secrets) else guardedClient(config)
+        val bytes = client.bytes(Request.Builder().url(url).build(), limit = 512 * 1024L)
+        val part = posterPart(id)
+        try {
+            part.writeBytes(bytes)
+            Files.move(part.toPath(), poster(id).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            part.delete()
+        }
+    }
+
+    private suspend fun downloadSegments(config: Config, item: OfflineDownload, file: File): String? {
+        val metadataId = item.metadataId?.takeIf { it.startsWith("tmdb:tv:") } ?: return null
+        val retriever = MediaMetadataRetriever()
+        val duration = try {
+            retriever.setDataSource(file.absolutePath)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } finally {
+            retriever.release()
+        } ?: return null
+        val segments = loadSkipSegments(config, secrets, metadataId, item.path, duration, item.season, item.episode)
+        return encodeSegments(segments)
     }
 
     internal suspend fun fetch(config: Config, row: OfflineRecord, part: File, progress: suspend (Long) -> Unit) {
@@ -312,6 +390,35 @@ class OfflineDownloads private constructor(private val app: Context) {
 }
 
 // Keep existing download IDs and source isolation after a verified managed-server move.
+private val posterImagePath = Regex("[a-zA-Z0-9_-]+/[a-zA-Z0-9._-]+\\.(jpg|jpeg|png|webp)", RegexOption.IGNORE_CASE)
+
+private suspend fun <T> optionalOfflineMetadata(load: suspend () -> T): T? = withTimeoutOrNull(8_000) {
+    try {
+        load()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+}
+
+internal fun encodeSegments(segments: List<SkipSegment>): String? =
+    segments.takeIf { it.isNotEmpty() }?.let {
+        JSONArray(it.map { segment ->
+            JSONObject().put("kind", segment.kind.apiKey).put("startMs", segment.startMs)
+                .put("endMs", segment.endMs).put("auto", segment.allowAutoSkip)
+        }).toString()
+    }
+
+internal fun decodeSegments(encoded: String?): List<SkipSegment> = if (encoded == null) emptyList() else runCatching {
+    val rows = JSONArray(encoded)
+    (0 until rows.length()).mapNotNull { index ->
+        val row = rows.getJSONObject(index)
+        val kind = SegmentKind.entries.firstOrNull { it.apiKey == row.optString("kind") } ?: return@mapNotNull null
+        SkipSegment(kind, row.getLong("startMs"), row.getLong("endMs"), row.getBoolean("auto"))
+    }
+}.getOrDefault(emptyList())
+
 internal fun downloadSourceKey(url:HttpUrl,scope:String)="download-source:$url:$scope"
 
 /** A re-added torrent may assign different file IDs. Only resume the same torrent and file. */

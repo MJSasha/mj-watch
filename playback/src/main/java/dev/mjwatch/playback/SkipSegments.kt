@@ -1,31 +1,18 @@
 package dev.mjwatch.playback
 
+import dev.mjwatch.core.SegmentKind
+import dev.mjwatch.core.SkipSegment
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
 
-internal enum class SegmentKind(val apiKey: String, val label: String, val action: String) {
-    INTRO("intro", "Опенинг", "Пропустить опенинг"),
-    RECAP("recap", "В предыдущих сериях", "Пропустить «В предыдущих сериях»"),
-    OUTRO("outro", "Титры", "Пропустить титры"),
-    PREVIEW("preview", "Анонс следующей серии", "Пропустить анонс"),
-}
-
 internal const val AUTO_SKIP = "auto-skip"
 private const val SKIP_DELAY_MS = 5_000L
 
 internal fun SegmentKind.preferenceKey() = "skip-segment-$apiKey"
 internal fun SharedPreferences.segmentEnabled(kind: SegmentKind) = getBoolean(kind.preferenceKey(), true)
-
-internal data class SkipSegment(
-    val kind: SegmentKind, val startMs: Long, val endMs: Long, val allowAutoSkip: Boolean = true,
-) {
-    fun isValidFor(duration: Long) = startMs >= 0 && endMs > startMs && endMs <= duration
-
-    fun contains(position: Long, duration: Long) = isValidFor(duration) && position in startMs until endMs
-}
 
 internal fun PlaybackEpisode.legacySegments(): List<SkipSegment> = buildList {
     if (openingStartMs != null && openingEndMs != null) add(SkipSegment(SegmentKind.INTRO, openingStartMs, openingEndMs))

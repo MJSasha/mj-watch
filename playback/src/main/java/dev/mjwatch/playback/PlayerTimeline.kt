@@ -1,5 +1,6 @@
 package dev.mjwatch.playback
 
+import dev.mjwatch.core.SkipSegment
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height

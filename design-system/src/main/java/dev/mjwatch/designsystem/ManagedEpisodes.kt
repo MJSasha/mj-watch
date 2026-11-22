@@ -121,7 +121,7 @@ private fun episodeStill(path: String, config: Config): String? {
     fun releases(episode: Episode, targetId: String? = null, download: Boolean = false) {
         val number = season ?: return
         menu = null
-        model.findEpisodeReleases(item, number, episode.number, targetId, download)
+        model.findSeriesReleases(item, number, episode.number, targetId, download)
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = tv || maxWidth >= 600.dp
@@ -151,6 +151,12 @@ private fun episodeStill(path: String, config: Config): String? {
                                 color=if (selected) colors.primary else colors.onSurface, style=MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+            }
+            if (!tv && !config.demo && season != null) item("download-season") {
+                Action("Скачать сезон", false, Modifier.fillMaxWidth().padding(horizontal = inset)
+                    .testTag("detail-download-season"), secondary = true, icon = Icons.Outlined.FileDownload) {
+                    season?.let { model.findSeriesReleases(item, it, episode = null, download = true) }
                 }
             }
             if (groups.isNotEmpty()) item("episode-count") {

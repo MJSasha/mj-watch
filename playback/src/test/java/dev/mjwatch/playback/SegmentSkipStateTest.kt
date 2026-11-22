@@ -1,5 +1,7 @@
 package dev.mjwatch.playback
 
+import dev.mjwatch.core.SegmentKind
+import dev.mjwatch.core.SkipSegment
 import org.junit.Assert.*
 import org.junit.Test
 

@@ -70,3 +70,13 @@ fun sortedVideoFiles(files:List<TorrentFile>):List<TorrentFile> = files
     .sortedWith(compareBy<Triple<TorrentFile,EpisodeNumber,String>> {it.second.season ?: Int.MAX_VALUE}
         .thenBy {it.second.episode ?: Int.MAX_VALUE}.thenBy {it.third})
     .map {it.first}
+
+fun seasonDownloadFiles(files: List<TorrentFile>, releaseTitle: String, season: Int): List<TorrentFile> {
+    val videos = files.filter { it.video && !it.sample && it.size > 0 && it.serverFileId > 0 }
+    val indexed = videos.map { it to episodeNumber(it.path) }
+    val namedSeasons = seasonNumbers(releaseTitle) + indexed.mapNotNull { it.second.season }
+    val singleSeason = namedSeasons.singleOrNull()
+    return indexed.filter { (_, number) ->
+        number.season == season || (number.season == null && singleSeason == season && number.episode != null)
+    }.map { it.first }
+}

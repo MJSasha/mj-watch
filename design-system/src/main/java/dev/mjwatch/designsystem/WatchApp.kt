@@ -78,6 +78,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 
 @Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
     val state by model.state.collectAsStateWithLifecycle()
+    val online = tv || rememberNetworkAvailable()
+    val onlineState = rememberSaveableStateHolder()
     var startupShown by rememberSaveable {mutableStateOf(false)}
     var revealing by remember {mutableStateOf(false)}
     val entrance=remember {Animatable(0f)}
@@ -96,7 +98,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(!state.initializing&&(startupShown||revealing)) Box(Modifier.fillMaxSize().testTag("app-content").graphicsLayer {
             alpha=if(startupShown) 1f else reveal.value
             scaleX=.97f+.03f*alpha;scaleY=scaleX
-        }) {WatchAppContent(model,tv,scanQr)}
+        }) {
+            if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }
+            else OfflineHome(state.config)
+        }
         if(!startupShown||state.initializing) WatchTheme(state.config.theme) {
             StartupBanner(Modifier.pointerInput(Unit) {
                 awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}
@@ -720,7 +725,7 @@ private class ReleaseOptions(
                         Action("Повторить поиск",tv,secondary=true) {
                             val seasonNumber=s.releaseSeason
                             val episodeNumber=s.releaseEpisode
-                            if(seasonNumber!=null&&episodeNumber!=null) model.findEpisodeReleases(s.selectedMetadata,seasonNumber,episodeNumber,s.episodeTargetId,s.episodeDownload)
+                            if(seasonNumber!=null) model.findSeriesReleases(s.selectedMetadata,seasonNumber,episodeNumber,s.episodeTargetId,s.episodeDownload)
                             else model.findReleases()
                         }
                     }
@@ -738,7 +743,7 @@ private class ReleaseOptions(
             if (s.episodeDownload || s.episodeTargetId != null) {
                 val download = s.episodeDownload
                 val available = if (download) !s.config.demo else target?.id == s.episodeTargetId && remote.canLaunch
-                Action(if (download) "Скачать" else "Смотреть на ТВ", false, Modifier.fillMaxWidth().testTag("source-continue"),
+                Action(if (download && s.releaseEpisode == null) "Скачать сезон" else if (download) "Скачать" else "Смотреть на ТВ", false, Modifier.fillMaxWidth().testTag("source-continue"),
                     enabled=selected!=null && available, icon=if (download) Icons.Outlined.FileDownload else Icons.Outlined.Cast) {
                     val current = model.remote.value
                     if (selected!=null && (download || current.canLaunch && current.profileKey==s.config.profileKey && current.target?.id==s.episodeTargetId))
@@ -785,6 +790,8 @@ private class ReleaseOptions(
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var downloadError by remember {mutableStateOf("")}
+    var queueing by remember { mutableStateOf(false) }
+    var confirmSeason by remember { mutableStateOf(false) }
     val handle=s.handle
     val release=s.selected
     var launching by remember(handle?.hash) {mutableStateOf(false)}
@@ -797,14 +804,18 @@ private class ReleaseOptions(
     val progress=if(scoped.context==s.config.profileKey)scoped.positions else emptyList()
     val allFiles=handle?.files.orEmpty()
     val indexed=backgroundValue(allFiles) {sortedVideoFiles(allFiles).map {it to episodeNumber(it.path)}}
-    val seasons=remember(indexed) {
-        indexed.orEmpty().mapNotNull {(file,number)->number.season.takeIf {file.video&&!file.sample}}.distinct().sorted()
+    val seasons = remember(indexed, release?.title) {
+        (seasonNumbers(release?.title.orEmpty()) + indexed.orEmpty().mapNotNull { (file, number) ->
+            number.season.takeIf { file.video && !file.sample }
+        }).sorted()
     }
+    val implicitSeason = seasons.singleOrNull()
     var season by rememberSaveable(s.handle?.hash) {mutableStateOf(s.releaseSeason)}
     var episode by rememberSaveable(s.handle?.hash) {mutableStateOf(s.releaseEpisode)}
-    val visibleFiles=remember(indexed,showAll,season,episode) {
+    val visibleFiles=remember(indexed,showAll,season,episode,implicitSeason) {
         indexed.orEmpty().filter {(file,number)->
-            (showAll||file.video&&!file.sample)&&(season==null||number.season==season)&&(episode==null||number.episode==episode)
+            (showAll||file.video&&!file.sample)&&(season==null||(number.season ?: implicitSeason.takeIf { number.episode != null })==season)&&
+                (episode==null||number.episode==episode)
         }.map {it.first}
     }
     val videos=remember(visibleFiles) {visibleFiles.filter {it.video&&!it.sample}}
@@ -895,6 +906,60 @@ private class ReleaseOptions(
         if(s.resumePath!=null) {if(target==null) selection=null;model.consumeResume(target==null)}
     }
     val file=visibleFiles.firstOrNull {it.serverFileId==selection&&it.video}
+    val seasonToDownload = (season ?: implicitSeason).takeIf { episode == null }
+    val seasonFiles = remember(indexed, release, seasonToDownload, s.downloadSelection, tv) {
+        if (!tv && s.downloadSelection && seasonToDownload != null && release != null && indexed != null)
+            seasonDownloadFiles(allFiles, release.title, seasonToDownload)
+        else emptyList()
+    }
+    fun enqueue(download: suspend (OfflineDownloads) -> Unit) {
+        if (queueing || !model.isFileSelectionActive(handle?.hash, release?.id)) return
+        queueing = true
+        downloadError = ""
+        scope.launch {
+            try {
+                download(OfflineDownloads.get(context))
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    val permission = android.Manifest.permission.POST_NOTIFICATIONS
+                    val prefs = context.getSharedPreferences("offline-notifications", 0)
+                    if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                        !prefs.getBoolean("requested", false)) {
+                        prefs.edit().putBoolean("requested", true).apply()
+                        notificationPermission.launch(permission)
+                    }
+                }
+                model.openDownloads()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                downloadError = safeError(e)
+            } finally {
+                queueing = false
+            }
+        }
+    }
+    if (confirmSeason && seasonToDownload != null && handle != null && release != null) {
+        val expected = s.selectedMetadata?.let { model.episodeCatalog(it.id, s.config).episodes.get(seasonToDownload) }
+        val found = seasonFiles.mapNotNull { episodeNumber(it.path).episode }.toSet()
+        val missing = expected.orEmpty().count { it.number !in found }
+        AlertDialog(
+            onDismissRequest = { confirmSeason = false },
+            title = { Text(if (seasonToDownload == 0) "Скачать спецвыпуски?" else "Скачать сезон $seasonToDownload?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Файлов из выбранной раздачи: ${seasonFiles.size} · ${sizeLabel(seasonFiles.sumOf { it.size })}")
+                    if (missing > 0) Text("Серий из каталога, которые не удалось сопоставить: $missing")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmSeason = false
+                    enqueue { it.enqueueSeason(s.config, release, handle, seasonToDownload, s.selectedMetadata) }
+                }, modifier = Modifier.testTag("confirm-season-download")) { Text("Скачать") }
+            },
+            dismissButton = { TextButton(onClick = { confirmSeason = false }) { Text("Отмена") } }
+        )
+    }
     val controls:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         if(tv) {
             Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(1.3f).clip(RoundedCornerShape(18.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)
@@ -910,20 +975,12 @@ private class ReleaseOptions(
                     tv,Modifier.fillMaxWidth().testTag("file-continue"),enabled=!onTv||remote.canLaunch&&remote.profileKey==s.config.profileKey,
                     icon=Icons.Outlined.PlayArrow,loading=launching) {launch(file)}
             }
-            if(!tv&&s.downloadSelection) Action("Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),enabled=!s.config.demo,icon=Icons.Outlined.FileDownload) {
-                scope.launch {try {
-                    OfflineDownloads.get(context).enqueue(s.config,s.selected!!,s.handle!!,file,s.selectedMetadata,episodeNumber(file.path).season,episodeNumber(file.path).episode)
-                    if (android.os.Build.VERSION.SDK_INT >= 33) {
-                        val permission = android.Manifest.permission.POST_NOTIFICATIONS
-                        val prefs = context.getSharedPreferences("offline-notifications", 0)
-                        if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
-                            !prefs.getBoolean("requested", false)) {
-                            prefs.edit().putBoolean("requested", true).apply()
-                            notificationPermission.launch(permission)
-                        }
-                    }
-                    model.openDownloads()
-                } catch(e:kotlinx.coroutines.CancellationException) {throw e} catch(e:Exception) {downloadError=safeError(e)}}
+            if(!tv && s.downloadSelection && release != null && handle != null) {
+                Action("Скачать", false, Modifier.fillMaxWidth().testTag("file-download"),
+                    enabled = !s.config.demo && !queueing && file.size > 0 && file.serverFileId > 0,
+                    icon = Icons.Outlined.FileDownload) {
+                    enqueue { it.enqueue(s.config, release, handle, file, s.selectedMetadata, implicitSeason, episode) }
+                }
             }
         } else Text(if(s.downloadSelection)"Выберите файл для загрузки" else "Выберите файл для просмотра",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
@@ -942,6 +999,14 @@ private class ReleaseOptions(
             }
             if(tv)SettingsGroup(true){Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){seasonChoices()}}
             else SettingsCard("Сезоны и серии",Icons.Outlined.Layers,false){seasonChoices()}
+        }
+        if (seasonFiles.isNotEmpty() && seasonToDownload != null && !s.config.demo) {
+            Action(if (seasonToDownload == 0) "Скачать спецвыпуски" else "Скачать сезон $seasonToDownload",
+                false, Modifier.fillMaxWidth().testTag("file-download-season"),
+                enabled = !queueing, icon = Icons.Outlined.FileDownload) { confirmSeason = true }
+        } else if (!tv && s.downloadSelection && indexed != null && seasonToDownload != null && !s.config.demo) {
+            Text("В раздаче не удалось определить файлы сезона. Выберите другую раздачу или скачайте нужные файлы по одному.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(tv)SettingsGroup(true){SettingsCheckbox("Все файлы и sample",showAll){showAll=it}}
         else SettingsDisclosure("Дополнительные файлы","Sample и служебные файлы",Icons.Outlined.FolderOpen,false) {
@@ -1064,7 +1129,7 @@ private class ReleaseOptions(
     }
     Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         WatchTabs(if(tv) listOf("Продолжить","Буду смотреть","История") else listOf("Продолжить","Загрузки","Буду смотреть","История"),tab,tv) {if(it=="Загрузки"&&libraryState.page=="history") model.openDownloads() else tab=it}
-        if(tab=="Загрузки"&&!tv) OfflineScreen(model,false) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        if(tab=="Загрузки"&&!tv) OfflineScreen(libraryState.config) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(library==null) item {LoadingIndicator("Загружаем библиотеку…")}
             else if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
             items(filtered,key={it.entry.id}) {e->LibraryCard(e,library?.latestProgress.orEmpty(),libraryState,model,tv,showMenu=tab!="Продолжить",bookmarkOnly=tab=="Буду смотреть",restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})}

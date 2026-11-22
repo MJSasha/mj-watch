@@ -1,5 +1,7 @@
 package dev.mjwatch.playback
 
+import dev.mjwatch.core.SegmentKind
+import dev.mjwatch.core.SkipSegment
 import androidx.compose.runtime.*
 
 /** Remote interaction state, independent of the video engine and clock. All times are milliseconds. */

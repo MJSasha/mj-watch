@@ -1,7 +1,6 @@
-package dev.mjwatch.playback
+package dev.mjwatch.core
 
 import android.util.LruCache
-import dev.mjwatch.core.*
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -22,7 +21,7 @@ private suspend fun cachedSkipResponse(key: String, read: suspend () -> JSONObje
     return read().also { skipCache.put(key, CachedSkipResponse(it, now + TimeUnit.HOURS.toMillis(12))) }
 }
 
-internal suspend fun loadSkipSegments(
+suspend fun loadSkipSegments(
     config: Config, secrets: SecretStore, metadataId: String?, path: String, durationMs: Long,
     seasonHint: Int?, episodeHint: Int?,
 ): List<SkipSegment> {
@@ -84,4 +83,19 @@ internal fun parseSkipSegments(response: JSONObject, durationMs: Long): List<Ski
         else if (preview.startMs > segment.startMs) segment.copy(endMs = preview.startMs)
         else null
     }.sortedBy { it.startMs }
+}
+
+enum class SegmentKind(val apiKey: String, val label: String, val action: String) {
+    INTRO("intro", "Опенинг", "Пропустить опенинг"),
+    RECAP("recap", "В предыдущих сериях", "Пропустить «В предыдущих сериях»"),
+    OUTRO("outro", "Титры", "Пропустить титры"),
+    PREVIEW("preview", "Анонс следующей серии", "Пропустить анонс"),
+}
+
+data class SkipSegment(
+    val kind: SegmentKind, val startMs: Long, val endMs: Long, val allowAutoSkip: Boolean = true,
+) {
+    fun isValidFor(duration: Long) = startMs >= 0 && endMs > startMs && endMs <= duration
+
+    fun contains(position: Long, duration: Long) = isValidFor(duration) && position in startMs until endMs
 }

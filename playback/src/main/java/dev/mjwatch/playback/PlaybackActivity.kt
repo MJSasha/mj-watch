@@ -495,6 +495,19 @@ class PlaybackActivity : ComponentActivity() {
     }
 
     private fun fetchSkipSegments(config:Config, initial:Boolean) {
+        if (offline) {
+            val id = intent.getStringExtra("offlineDownloadId") ?: return
+            segmentLookup = scope.launch {
+                try {
+                    skipSegments = OfflineDownloads.get(applicationContext).localSegments(config, id)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Local video is playable without markers.
+                }
+            }
+            return
+        }
         val metadataId=intent.getStringExtra("metadataId")?.takeIf {it.startsWith("tmdb:tv:")} ?: return
         if(config.demo)return
         val currentPath=path
