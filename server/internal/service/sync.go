@@ -126,6 +126,10 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request, i identity) {
 	current.Deleted = m.Operation == "delete"
 	if current.Deleted {
 		current.Value = json.RawMessage(`{}`)
+		if (m.Kind == "opening" || m.Kind == "progress") && redactHistory(tx, i.User, m.Kind, m.Key) != nil {
+			fail(w, 503, "database_unavailable")
+			return
+		}
 	}
 	if _, e = tx.Exec(`INSERT INTO entities VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,kind,key) DO UPDATE SET value=excluded.value,revision=excluded.revision,deleted=excluded.deleted,play_session=excluded.play_session,sequence=excluded.sequence`, i.User, m.Kind, m.Key, string(current.Value), current.Revision, current.Deleted, m.PlaySession, m.Sequence); e != nil {
 		fail(w, 503, "database_unavailable")
@@ -253,6 +257,29 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request, i identity, snapsh
 	tx.Commit()
 	respond(w, 200, map[string]any{"entities": out, "cursor": cursor, "more": more, "serverEpoch": epoch, "historyEpoch": i.Epoch})
 }
+
+// Keep revision markers and mutation IDs so offline clients can still catch up and retry.
+func redactHistory(tx *sql.Tx, user, kind, key string) error {
+	filter := "kind IN ('opening','progress')"
+	receiptFilter := "json_extract(result,'$.entity.kind') IN ('opening','progress')"
+	args := []any{user}
+	if kind != "" {
+		filter = "kind=? AND key=?"
+		receiptFilter = "json_extract(result,'$.entity.kind')=? AND json_extract(result,'$.entity.entityKey')=?"
+		args = append(args, kind, key)
+	}
+	for _, query := range []string{
+		"UPDATE changes SET value='{}',deleted=1 WHERE user_id=? AND deleted=0 AND " + filter,
+		"UPDATE snapshot_entities SET value='{}',deleted=1 WHERE snapshot_id IN (SELECT id FROM snapshots WHERE user_id=?) AND deleted=0 AND " + filter,
+		"UPDATE mutations SET result=json_set(result,'$.entity.value',json('{}'),'$.entity.deleted',json('true')) WHERE user_id=? AND json_extract(result,'$.entity.deleted')=0 AND " + receiptFilter,
+	} {
+		if _, err := tx.Exec(query, args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) clearHistory(w http.ResponseWriter, r *http.Request, i identity) {
 	if !s.limit("clear-history:"+i.User, 5, time.Minute) {
 		fail(w, 429, "rate_limited")
@@ -267,6 +294,9 @@ func (s *Server) clearHistory(w http.ResponseWriter, r *http.Request, i identity
 	_, e = tx.Exec("UPDATE users SET epoch=epoch+1 WHERE id=?", i.User)
 	if e == nil {
 		_, e = tx.Exec("DELETE FROM snapshots WHERE user_id=?", i.User)
+	}
+	if e == nil {
+		e = redactHistory(tx, i.User, "", "")
 	}
 	if e == nil {
 		_, e = tx.Exec("UPDATE entities SET deleted=1,value='{}',revision=revision+1 WHERE user_id=? AND deleted=0 AND kind IN ('opening','progress')", i.User)

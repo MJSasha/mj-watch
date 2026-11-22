@@ -118,8 +118,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     LaunchedEffect(state.page,state.message) {
         if(state.page in setOf("detail","home","library","history")&&state.message.isNotBlank()) snackbar.showSnackbar(state.message,duration=SnackbarDuration.Long)
     }
-    LaunchedEffect(state.removed) {state.removed?.let {entry->
-        if(snackbar.showSnackbar("Удалено из локальной библиотеки","Отменить",duration=SnackbarDuration.Long)==SnackbarResult.ActionPerformed) model.undo(entry,state.removedBookmarks) else model.clearUndo()
+    LaunchedEffect(state.removed) {state.removed?.let {removal->
+        if(snackbar.showSnackbar(if(removal.bookmarks) "Убрано из подборки" else "Удалено из истории","Отменить",duration=SnackbarDuration.Long)==SnackbarResult.ActionPerformed) model.undo(removal) else model.clearUndo()
     }}
     val snapshot by model.scopedLibrary.collectAsStateWithLifecycle()
     val currentLibrary=snapshot.takeIf {it.context==state.config.profileKey}
@@ -818,10 +818,24 @@ private class ReleaseOptions(
         if(s.downloadSelection||launching||handle==null||release==null||!model.isFileSelectionActive(handle.hash,release.id)) return
         if(!tv&&s.remotePlayback) {
             val target=remote.target ?: return
-            val current=model.remote.value.target
-            if(current?.id!=target.id||current.instance!=target.instance)return
-            dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(handle.hash,file.serverFileId,s.selectedMetadata?.title ?: release.displayTitle(),release.id,"${handle.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),progress.firstOrNull {it.releaseId==release.id&&it.path==file.path&&!it.completed}?.positionMs ?: 0))
-            model.playerClosed();return
+            launching=true
+            scope.launch {
+                try {
+                    val key=contentKey(requireNotNull(handle.contentHash),file.path,file.size)
+                    val position=model.playbackPosition(s.config,release.id,key)
+                    val current=model.remote.value.target
+                    if(current?.id!=target.id||current.instance!=target.instance||!model.isFileSelectionActive(handle.hash,release.id))return@launch
+                    dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(handle.hash,file.serverFileId,s.selectedMetadata?.title ?: release.displayTitle(),release.id,"${handle.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),position))
+                    model.playerClosed()
+                } catch(e:kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch(e:Exception) {
+                    launchError="Не удалось открыть видео. ${safeError(e)}"
+                } finally {
+                    launching=false
+                }
+            }
+            return
         }
         if(!tv) dev.mjwatch.playback.RemotePlaybackService.disconnect(context)
         launching=true
@@ -845,6 +859,7 @@ private class ReleaseOptions(
                         .putExtra("recoveryRelease",recovery.toString()).putExtra("torrentHandle",handle.hash)
                         .putExtra("remoteContentId","${handle.contentHash}:${file.serverFileId}")
                         .putExtra("metadataId",metadata?.id).putExtra("artMetadataId",metadata?.id)
+                        .putExtra("segmentSeason",season ?: -1).putExtra("segmentEpisode",episode ?: -1)
                         .putExtra("artBackdrop",metadata?.backdrop).putExtra("artPoster",metadata?.poster).putExtra("artLogo",metadata?.logo)
                         .putExtra("trackerSeeders",release.seeds ?: -1).putExtra(PlaybackQueue.EXTRA,queue.token)
                         .putExtra("contentKey",identity(file)).putExtra("uri",request.uri).putExtra("releaseId",release.id)

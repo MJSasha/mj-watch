@@ -120,6 +120,43 @@ class ContractsTest {
             assertEquals(12345L,dao.progress().first().single().positionMs)
         } finally {db.close()}
     }
+    @Test fun historyRemovalDeletesAllPositionsAndCanBeUndone()=runBlocking {
+        val context=org.robolectric.RuntimeEnvironment.getApplication()
+        val config=dev.mjwatch.core.Config(connectionMode="managed",managedUrl="https://server.example",
+            serverId="server",userId="viewer")
+        val db=androidx.room.Room.inMemoryDatabaseBuilder(context,WatchDatabase::class.java).build()
+        try {
+            val dao=db.syncDao()
+            val scope=config.scope
+            val engine=SyncEngine(ManagedApi(config,SecretStore(context)),dao)
+            val opening=LibraryEntry("release","Film","fixture",openedAt=1).syncJson().toString()
+            val progress=Progress("episode-1","release",1,"episode-1.mkv",12345,90000,5,false)
+            val positions=listOf(progress,progress.copy(key="episode-2",fileId=2),progress.copy(key="other",releaseId="other"))
+            dao.put(SyncCursor(scope,"epoch",1))
+            dao.put(SyncEntity(scope,"opening","release",opening,2))
+            dao.put(SyncEntity(scope,"favorite","release",opening,3))
+            positions.forEach {dao.put(SyncEntity(scope,"progress",it.key,it.syncJson().toString(),4))}
+
+            val removed=engine.removeHistory(setOf("release"))
+            assertEquals(setOf("release","episode-1","episode-2"),removed.map {it.entityKey}.toSet())
+            assertNull(dao.resumeProgress(scope,"release","episode-1"))
+            assertNull(dao.resumeProgress(scope,"release","episode-2"))
+            assertEquals(12345L,dao.resumeProgress(scope,"other","other")!!.positionMs)
+            assertFalse(dao.entity(scope,"favorite","release")!!.deleted)
+            assertTrue(dao.pending(scope).all {it.operation=="delete"&&it.json=="{}"})
+
+            engine.restoreHistory(removed)
+            assertEquals(12345L,dao.resumeProgress(scope,"release","episode-1")!!.positionMs)
+            assertTrue(dao.pending(scope).takeLast(3).all {it.operation=="restore"})
+
+            // An older client deleted only the opening. Reopening must not bring back its positions.
+            dao.put(SyncEntity(scope,"opening","release","{}",3,deleted=true))
+            assertNull(dao.resumeProgress(scope,"release","episode-1"))
+            engine.enqueue("opening","release",org.json.JSONObject(opening))
+            assertFalse(dao.entity(scope,"opening","release")!!.deleted)
+            assertNull(dao.resumeProgress(scope,"release","episode-1"))
+        } finally {db.close()}
+    }
     @Test fun handoffConfigSchemaAndPaths() {
         val c=decodeConfig(fixture("config.example.json"))
         assertEquals("https://jackett.example.invalid",c.jackett)

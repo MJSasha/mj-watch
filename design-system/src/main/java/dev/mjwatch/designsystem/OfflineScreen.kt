@@ -144,4 +144,6 @@ internal suspend fun offlinePlaybackIntent(context: Context, config: Config, ite
         ?: error("Файл недоступен. Удалите запись и загрузите видео снова.")
     val episode = PlaybackEpisode(Uri.fromFile(file).toString(), item.path, item.fileId, item.contentKey)
     return PlaybackActivity.offlineIntent(context, episode, item.title, item.releaseId, mobile)
+        .putExtra("metadataId",item.metadataId)
+        .putExtra("segmentSeason",item.season ?: -1).putExtra("segmentEpisode",item.episode ?: -1)
 }

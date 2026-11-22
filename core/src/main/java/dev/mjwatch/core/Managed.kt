@@ -23,6 +23,7 @@ data class OutboxEntry(@PrimaryKey val id:String,val scope:String,val kind:Strin
 data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val historyEpoch:Long,val cursor:Long=0)
 @Dao interface SyncDao {
  @Query("SELECT * FROM syncEntity WHERE scope=:scope AND deleted=0") fun entities(scope:String):Flow<List<SyncEntity>>
+ @Query("SELECT * FROM syncEntity WHERE scope=:scope AND kind='progress' AND deleted=0") suspend fun activeProgress(scope:String):List<SyncEntity>
  @Query("SELECT * FROM syncEntity WHERE scope=:scope AND kind=:kind AND entityKey=:key") suspend fun entity(scope:String,kind:String,key:String):SyncEntity?
  @Query("SELECT * FROM outbox WHERE scope=:scope ORDER BY rowid") suspend fun pending(scope:String):List<OutboxEntry>
  @Query("SELECT * FROM outbox WHERE scope=:scope ORDER BY rowid") fun observePending(scope:String):Flow<List<OutboxEntry>>
@@ -41,6 +42,16 @@ data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val hi
   entities.forEach {e->if(pending.none {it.kind==e.kind&&it.entityKey==e.entityKey}) put(e)}
   put(cursor)
  }
+ @Transaction suspend fun stage(events:List<OutboxEntry>,entities:List<SyncEntity>) {
+  events.forEach {put(it)}
+  entities.forEach {put(it)}
+ }
+ @Transaction suspend fun resumeProgress(scope:String,releaseId:String,key:String):Progress? {
+  // The opening may still be deleted if playback starts before the library has reopened it.
+  return if(entity(scope,"opening",releaseId)?.deleted==true) null
+  else entity(scope,"progress",key)?.takeUnless {it.deleted}?.progress()
+ }
+
  @Transaction suspend fun acknowledged(event:OutboxEntry,server:SyncEntity) {
   acknowledge(event.id)
   val newest=pending(server.scope).lastOrNull {it.kind==server.kind && it.entityKey==server.entityKey}
@@ -178,12 +189,47 @@ class SyncEngine(private val api:ManagedApi,private val dao:SyncDao) {
  companion object {val mutex=Mutex();private val lastPush=mutableMapOf<String,Long>()}
  private val scope=api.config.scope
  suspend fun enqueue(kind:String,key:String,json:JSONObject,operation:String="put",playSession:String="",sequence:Long=0)=mutex.withLock {
-  require(scope.isNotBlank());val cursor=dao.cursor(scope) ?: return@withLock
-  val old=dao.entity(scope,kind,key);val pending=dao.pending(scope).filter {it.kind==kind&&it.entityKey==key}
-  val base=(pending.lastOrNull()?.baseRevision?.plus(1)) ?: old?.revision ?: 0
-  val effectiveOperation=if(operation=="put"&&old?.deleted==true) "restore" else operation
-  val event=OutboxEntry(UUID.randomUUID().toString(),scope,kind,key,json.toString(),base,effectiveOperation,cursor.serverEpoch,cursor.historyEpoch,playSession,sequence)
-  dao.put(event);dao.put(SyncEntity(scope,kind,key,json.toString(),old?.revision ?: 0,operation=="delete"))
+  val old=dao.entity(scope,kind,key)
+  val row=SyncEntity(scope,kind,key,json.toString(),old?.revision ?: 0)
+  // Older clients deleted the opening alone. Remove any remaining positions before reopening it.
+  val orphaned=if(kind=="opening"&&operation=="put"&&old?.deleted==true) progressFor(setOf(key)) else emptyList()
+  stage(orphaned.map {it.copy(deleted=true)}+row.copy(deleted=operation=="delete"),operation,playSession,sequence)
+ }
+
+ suspend fun removeHistory(releaseIds:Set<String>):List<SyncEntity> = mutex.withLock {
+  val openings=releaseIds.mapNotNull {dao.entity(scope,"opening",it)?.takeUnless {row->row.deleted}}
+  val removed=openings+progressFor(releaseIds)
+  if(stage(removed.map {it.copy(deleted=true)},"delete")) removed else emptyList()
+ }
+
+ suspend fun restoreHistory(removed:List<SyncEntity>)=mutex.withLock {
+  val restore=removed.filter {it.scope==scope&&dao.entity(scope,it.kind,it.entityKey)?.deleted==true}
+  stage(restore,"restore")
+ }
+
+ private suspend fun progressFor(releaseIds:Set<String>)=dao.activeProgress(scope).filter {
+  runCatching {it.progress().releaseId in releaseIds}.getOrDefault(false)
+ }
+
+ private suspend fun stage(rows:List<SyncEntity>,operation:String,playSession:String="",sequence:Long=0):Boolean {
+  require(scope.isNotBlank())
+  val cursor=dao.cursor(scope) ?: return false
+  val pending=dao.pending(scope).associateBy {it.kind to it.entityKey}
+  val local=rows.map {row->
+   val old=dao.entity(scope,row.kind,row.entityKey)
+   row.copy(revision=old?.revision ?: 0, json=if(row.deleted) "{}" else row.json) to old
+  }
+  val events=local.map {(row,old)->
+   val base=pending[row.kind to row.entityKey]?.baseRevision?.plus(1) ?: row.revision
+   val effectiveOperation=when {
+    row.deleted -> "delete"
+    operation=="put"&&old?.deleted==true -> "restore"
+    else -> operation
+   }
+   OutboxEntry(UUID.randomUUID().toString(),scope,row.kind,row.entityKey,row.json,base,effectiveOperation,cursor.serverEpoch,cursor.historyEpoch,playSession,sequence)
+  }
+  dao.stage(events,local.map {it.first})
+  return true
  }
  suspend fun sync(knownMe:JSONObject?=null)=mutex.withLock {
   require(scope.isNotBlank());val cursor=dao.cursor(scope)

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +141,54 @@ func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 		t.Fatal("revoked device accepted")
 	}
 }
+func TestHistoryDeletionRedactsSyncPayloads(t *testing.T) {
+	s, token := fixture(t)
+	epoch := value(s.DB, "server_epoch")
+	send := func(m Mutation) map[string]any {
+		t.Helper()
+		code, result := call(t, s, token, "POST", "mutations", m)
+		if code != http.StatusOK {
+			t.Fatal(code, result)
+		}
+		return result["entity"].(map[string]any)
+	}
+	m := Mutation{MutationID: Token(), Kind: "progress", Key: "deleted", Operation: "put", Value: json.RawMessage(`{"positionMs":12000}`), ServerEpoch: epoch, HistoryEpoch: 1}
+	send(m)
+	other := m
+	other.MutationID, other.Key = Token(), "kept"
+	send(other)
+	_, snapshot := call(t, s, token, "GET", "snapshot", nil)
+
+	deletion := m
+	deletion.MutationID, deletion.Base, deletion.Operation = Token(), 1, "delete"
+	send(deletion)
+	assertRedacted := func(entity map[string]any) {
+		t.Helper()
+		if entity["deleted"] != true || len(entity["value"].(map[string]any)) != 0 {
+			t.Fatal("history payload retained", entity)
+		}
+	}
+	assertRedacted(send(m))
+	_, page := call(t, s, token, "GET", "snapshot?snapshotId="+snapshot["snapshotId"].(string), nil)
+	for _, row := range page["entities"].([]any) {
+		entity := row.(map[string]any)
+		if entity["entityKey"] == m.Key {
+			assertRedacted(entity)
+		} else if entity["value"].(map[string]any)["positionMs"] != float64(12000) {
+			t.Fatal("unrelated progress was removed", entity)
+		}
+	}
+	code, result := call(t, s, token, "DELETE", "history", nil)
+	if code != http.StatusOK {
+		t.Fatal(code, result)
+	}
+	assertRedacted(send(other))
+	_, changes := call(t, s, token, "GET", "sync?cursor=0&serverEpoch="+epoch, nil)
+	for _, row := range changes["entities"].([]any) {
+		assertRedacted(row.(map[string]any))
+	}
+}
+
 func TestRangeOwnershipAndStreamRevocation(t *testing.T) {
 	s, owner := fixture(t)
 	// Prepare actors before playback starts its background database writer.
@@ -181,13 +230,16 @@ func TestRangeOwnershipAndStreamRevocation(t *testing.T) {
 	if code != 404 {
 		t.Fatal("unknown file", code)
 	}
-	r := httptest.NewRequest("GET", "/api/v1/playback/"+id+"/stream?file=17", nil)
-	r.Header.Set("Authorization", "Bearer "+owner)
-	r.Header.Set("Range", "bytes=100-199")
-	w := httptest.NewRecorder()
-	s.ServeHTTP(w, r)
-	if w.Code != 206 || w.Body.Len() != 100 || w.Header().Get("Content-Range") != "bytes 100-199/50000" {
-		t.Fatal(w.Code, w.Header(), w.Body.Len())
+	for _, span := range []string{"20000-20099", "100-199"} {
+		r := httptest.NewRequest("GET", "/api/v1/playback/"+id+"/stream?file=17", nil)
+		r.Header.Set("Authorization", "Bearer "+owner)
+		r.Header.Set("Range", "bytes="+span)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		start, _ := strconv.Atoi(strings.SplitN(span, "-", 2)[0])
+		if w.Code != 206 || !bytes.Equal(w.Body.Bytes(), media[start:start+100]) || w.Header().Get("Content-Range") != "bytes "+span+"/50000" {
+			t.Fatal(w.Code, w.Header(), w.Body.Len())
+		}
 	}
 	// Same user, own handles remain available across devices.
 	code, _ = call(t, s, otherID, "GET", "playback/"+id, nil)

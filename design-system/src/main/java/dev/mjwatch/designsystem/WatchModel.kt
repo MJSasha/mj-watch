@@ -12,7 +12,14 @@ import okhttp3.Credentials
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
     val episodeTargetId:String?=null,val episodeDownload:Boolean=false,
-    val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:List<LibraryEntry>?=null,val removedBookmarks:Boolean=false,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено",val checkingJackett:Boolean=false,val checkingTorr:Boolean=false)
+    val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:LibraryRemoval?=null,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено",val checkingJackett:Boolean=false,val checkingTorr:Boolean=false)
+data class LibraryRemoval(
+    val profileKey:String,
+    val entries:List<LibraryEntry>,
+    val bookmarks:Boolean,
+    val history:List<SyncEntity>,
+)
+
 class WatchModel(app:Application): AndroidViewModel(app) {
     private var cachedEpisodeCatalog: EpisodeCatalog? = null
     internal fun episodeCatalog(id: String, config: Config): EpisodeCatalog =
@@ -300,22 +307,54 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         val c=state.value.config
         viewModelScope.launch(Dispatchers.IO) {if(c.historyEnabled) {val old=scopedLibrary.value.takeIf{it.context==c.profileKey}?.entries?.firstOrNull {it.id==entry.id};managed.record(c,"favorite",entry.id,entry.copy(bookmarked=old?.bookmarked!=true).syncJson())} else {m?.let {dao.put(CachedMetadata("direct:${it.id}",it.json(),System.currentTimeMillis()))};r?.let {secrets.put("release::${it.id}",it.json())};dao.toggleBookmark(entry)}}
     }
+    suspend fun playbackPosition(config:Config,releaseId:String,key:String):Long =
+        if(config.historyEnabled) db.syncDao().resumeProgress(config.scope,releaseId,key)?.takeUnless {it.completed}?.positionMs ?: 0
+        else 0
+
     fun remove(entries:List<LibraryEntry>,bookmarkOnly:Boolean=false) {
-        val c=state.value.config;val removed=entries.filter {!bookmarkOnly||it.bookmarked}
-        viewModelScope.launch(Dispatchers.IO) {
-            for(entry in removed) {
-                if(c.historyEnabled) managed.record(c,if(bookmarkOnly) "favorite" else "opening",entry.id,entry.syncJson(),"delete")
-                else if(bookmarkOnly) dao.put((dao.entry(entry.id) ?: entry).copy(bookmarked=false))
-                else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id)
-            }
-            if(state.value.config.profileKey==c.profileKey)update {it.copy(removed=removed,removedBookmarks=bookmarkOnly)}
-        }
-    }
-    fun undo(entries:List<LibraryEntry>,bookmarks:Boolean) {
-        val c=state.value.config;update {it.copy(removed=null)}
+        val c=state.value.config
+        val removed=entries.filter {!bookmarkOnly||it.bookmarked}
         viewModelScope.launch(Dispatchers.IO) {
             if(state.value.config.profileKey!=c.profileKey)return@launch
-            for(entry in entries) if(c.historyEnabled) managed.record(c,if(bookmarks) "favorite" else "opening",entry.id,entry.syncJson(),"restore") else dao.put(entry)
+            try {
+                val history=if(c.historyEnabled&&!bookmarkOnly) {
+                    SyncEngine(ManagedApi(c,secrets),db.syncDao()).removeHistory(removed.mapTo(mutableSetOf()) {it.id})
+                } else {
+                    for(entry in removed) {
+                        if(c.historyEnabled) managed.record(c,"favorite",entry.id,entry.syncJson(),"delete")
+                        else if(bookmarkOnly) dao.put((dao.entry(entry.id) ?: entry).copy(bookmarked=false))
+                        else if(entry.bookmarked) dao.put(entry.copy(openedAt=0)) else dao.delete(entry.id)
+                    }
+                    emptyList()
+                }
+                if(state.value.config.profileKey==c.profileKey&&(!c.historyEnabled||bookmarkOnly||history.isNotEmpty())) {
+                    update {it.copy(removed=LibraryRemoval(c.profileKey,removed,bookmarkOnly,history))}
+                }
+            } catch(e:CancellationException) {
+                throw e
+            } catch(e:Exception) {
+                if(state.value.config.profileKey==c.profileKey)update {it.copy(message=safeError(e))}
+            }
+        }
+    }
+    fun undo(removal:LibraryRemoval) {
+        val c=state.value.config
+        update {it.copy(removed=null)}
+        viewModelScope.launch(Dispatchers.IO) {
+            if(c.profileKey!=removal.profileKey||state.value.config.profileKey!=c.profileKey)return@launch
+            try {
+                if(c.historyEnabled&&!removal.bookmarks) {
+                    SyncEngine(ManagedApi(c,secrets),db.syncDao()).restoreHistory(removal.history)
+                } else {
+                    for(entry in removal.entries) if(c.historyEnabled) {
+                        managed.record(c,"favorite",entry.id,entry.syncJson(),"restore")
+                    } else dao.put(entry)
+                }
+            } catch(e:CancellationException) {
+                throw e
+            } catch(e:Exception) {
+                if(state.value.config.profileKey==c.profileKey)update {it.copy(message=safeError(e))}
+            }
         }
     }
     fun clearUndo() {update {it.copy(removed=null)}}

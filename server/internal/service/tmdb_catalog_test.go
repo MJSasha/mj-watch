@@ -77,7 +77,7 @@ func TestCatalogCategoriesAreBoundedTypedAndCachedSeparately(t *testing.T) {
 	}
 }
 
-func TestTitleLogoDetailsUseScopedImagePathsAndSeparateCache(t *testing.T) {
+func TestTitleLogoAndExternalIDsDetailsUseSeparateCache(t *testing.T) {
 	s, owner := fixture(t)
 	s.Config.SecretKey = filepath.Join(t.TempDir(), "key")
 	if err := os.WriteFile(s.Config.SecretKey, bytes.Repeat([]byte("k"), 32), 0600); err != nil {
@@ -94,7 +94,13 @@ func TestTitleLogoDetailsUseScopedImagePathsAndSeparateCache(t *testing.T) {
 		calls++
 		q := r.URL.Query()
 		body := `{"id":42}`
-		if q.Get("append_to_response") != "" {
+		if r.URL.Path == "/3/tv/42" {
+			if q.Get("append_to_response") == "external_ids" {
+				body = `{"id":42,"number_of_seasons":1,"external_ids":{"imdb_id":"tt1234567"}}`
+			} else if q.Get("append_to_response") != "" {
+				t.Fatalf("unexpected upstream request %s", r.URL)
+			}
+		} else if q.Get("append_to_response") != "" {
 			if r.URL.Path != "/3/movie/42" || q.Get("append_to_response") != "images" || q.Get("include_image_language") != "ru,en,null" || q.Get("artwork") != "" {
 				t.Fatalf("unexpected upstream request %s", r.URL)
 			}
@@ -116,7 +122,18 @@ func TestTitleLogoDetailsUseScopedImagePathsAndSeparateCache(t *testing.T) {
 			t.Fatal(logos)
 		}
 	}
-	if calls != 2 {
-		t.Fatalf("got %d TMDB requests, want 2", calls)
+	code, series := call(t, s, owner, "GET", "metadata/tv/42", nil)
+	if code != 200 || series["external_ids"] != nil {
+		t.Fatal(code, series)
+	}
+	for range 2 {
+		code, series = call(t, s, owner, "GET", "metadata/tv/42?external=1", nil)
+		external, _ := series["external_ids"].(map[string]any)
+		if code != 200 || external["imdb_id"] != "tt1234567" {
+			t.Fatal(code, series)
+		}
+	}
+	if calls != 4 {
+		t.Fatalf("got %d TMDB requests, want 4", calls)
 	}
 }

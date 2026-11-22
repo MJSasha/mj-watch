@@ -270,6 +270,13 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 				q.Set("append_to_response", "images")
 				q.Set("include_image_language", "ru,en,null")
 			}
+			if strings.HasPrefix(api, "tv/") && strings.Count(api, "/") == 1 && r.URL.Query().Get("external") == "1" {
+				appendToResponse := "external_ids"
+				if withLogos {
+					appendToResponse = "images," + appendToResponse
+				}
+				q.Set("append_to_response", appendToResponse)
+			}
 		default:
 			fail(w, 404, "not_found")
 			return

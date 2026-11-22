@@ -14,7 +14,7 @@ internal class TvPlaybackState {
         private set
     private var previousPosition: Long? = null
     private var nextDismissed = false
-    private var openingDismissed = false
+    val skip = SegmentSkipState()
     private var advancing = false
 
     fun interact(now: Long) { lastInteraction = now }
@@ -27,22 +27,25 @@ internal class TvPlaybackState {
     fun confirmSeek(): Long? = preview.also { preview = null }
     fun dismissPrompt() {
         if (prompt == "next") nextDismissed = true
-        if (prompt == "opening") openingDismissed = true
+        if (prompt != "next") skip.dismiss()
         prompt = null
     }
-    fun discontinuity() { previousPosition = null }
+    fun discontinuity() { previousPosition = null; skip.discontinuity() }
     fun reset() {
         preview = null; prompt = null; nextElapsed = 0; previousPosition = null
-        nextDismissed = false; openingDismissed = false; advancing = false
+        nextDismissed = false; skip.reset(); advancing = false
     }
-    fun update(position: Long, duration: Long, playing: Boolean, episode: PlaybackEpisode?, hasNext: Boolean, blocked: Boolean, autoNext: Boolean): Boolean {
-        if (duration <= 0 || advancing) { prompt = null; previousPosition = null; return false }
-        val opening = episode?.openingTarget(position, duration)
-        val inTail = position >= nextThreshold(episode?.endingStartMs, duration)
-        if (opening == null) openingDismissed = false
+    fun update(
+        position: Long, duration: Long, playing: Boolean, episode: PlaybackEpisode?, hasNext: Boolean,
+        blocked: Boolean, autoNext: Boolean, segments: List<SkipSegment> = episode?.legacySegments().orEmpty(),
+        autoSkip: Boolean = false, now: Long = 0, markedTail: Boolean = false, enabled: (SegmentKind) -> Boolean = { true },
+    ): Boolean {
+        if (duration <= 0 || advancing) { prompt = null; previousPosition = null; skip.reset(); return false }
+        skip.update(segments, position, duration, playing, blocked, autoSkip, now, enabled)
+        val inTail = !markedTail && position >= nextThreshold(episode?.endingStartMs, duration)
         if (!inTail) { nextDismissed = false; nextElapsed = 0 }
         val nextPrompt = when {
-            opening != null && !openingDismissed -> "opening"
+            skip.offer != null -> skip.offer?.segment?.kind?.let { if (it == SegmentKind.INTRO) "opening" else it.apiKey }
             inTail && hasNext && !nextDismissed -> "next"
             else -> null
         }
@@ -62,9 +65,3 @@ internal class TvPlaybackState {
 internal fun nextThreshold(endingStart: Long?, duration: Long): Long =
     endingStart?.takeIf { it > duration * .7 && it < duration && duration - it <= 180_000 }
         ?: (duration - 30_000).coerceAtLeast(0)
-
-internal fun PlaybackEpisode.openingTarget(position: Long, duration: Long): Long? =
-    markerTarget(openingStartMs, openingEndMs, position, duration)
-
-internal fun markerTarget(start: Long?, end: Long?, position: Long, duration: Long): Long? =
-    end?.takeIf { start != null && start >= 0 && it > start && it <= duration && position >= start && position < it }

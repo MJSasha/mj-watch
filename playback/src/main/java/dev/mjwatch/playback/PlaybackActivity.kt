@@ -101,6 +101,9 @@ class PlaybackActivity : ComponentActivity() {
     private var episodeIndex by androidx.compose.runtime.mutableIntStateOf(-1)
     private var startupJob:Job?=null
     private var episodeLoad:Job?=null
+    private var segmentLookup:Job?=null
+    private var skipSegments by androidx.compose.runtime.mutableStateOf(emptyList<SkipSegment>())
+    private var inPip by androidx.compose.runtime.mutableStateOf(false)
     private var mediaInteraction by androidx.compose.runtime.mutableIntStateOf(0)
     private var panelOpen by androidx.compose.runtime.mutableStateOf(false)
     private var tvBackHandler:(()->Unit)?=null
@@ -167,7 +170,7 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onFit={view.resizeMode=if(view.resizeMode==androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen||inPip,skipSegments=skipSegments,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
                 torrentStats,streamBytesPerSecond,intent.getIntExtra("trackerSeeders",-1).takeIf {it>=0}),progress=startupProgress)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
@@ -278,7 +281,18 @@ class PlaybackActivity : ComponentActivity() {
                         frozenFrame.onReady()
                         status=null
                     }
-                    if(state==Player.STATE_ENDED) { save(true); status=PlaybackStatus("Просмотр завершён") }
+                    if(state==Player.STATE_ENDED) {
+                        save(true)
+                        val hasMarkedTail=skipSegments.any {it.kind==SegmentKind.OUTRO||it.kind==SegmentKind.PREVIEW}
+                        if(!intent.getBooleanExtra("mobile",true)&&hasMarkedTail&&player.playWhenReady&&episodeIndex>=0&&episodeIndex<episodes.lastIndex&&
+                            preferences.getBoolean("auto-next",true)) {
+                            // Leave the listener callback before replacing the current media item.
+                            val next=episodeIndex+1
+                            val sessionId=playbackSession
+                            handler.post {if(sessionId==playbackSession&&player.playbackState==Player.STATE_ENDED)switchEpisode(next)}
+                        }
+                        status=PlaybackStatus("Просмотр завершён")
+                    }
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     stablePlayback?.cancel()
@@ -299,10 +313,11 @@ class PlaybackActivity : ComponentActivity() {
                     else showPlaybackFailure(error)
                 }
             })
-            val progress=if(config.historyEnabled) db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress() else null
+            val progress=if(config.historyEnabled) db.syncDao().resumeProgress(config.scope,releaseId,contentIdentity.ifBlank {"$releaseId|$path"}) else null
             player.setMediaItem(mediaItem(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
+            fetchSkipSegments(config, initial=true)
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
@@ -456,6 +471,7 @@ class PlaybackActivity : ComponentActivity() {
         if(!offline&&!validStreamUri(episode.uri,config))return
         save()
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
+        segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
         startupProgress=null;torrentStats=null
         frozenFrame.clear()
@@ -468,11 +484,38 @@ class PlaybackActivity : ComponentActivity() {
         intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)
         controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
         episodeLoad=scope.launch {
-            val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().entity(config.scope,"progress",contentIdentity.ifBlank {"$releaseId|$path"})?.takeUnless {it.deleted}?.progress()} else null
+            val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().resumeProgress(config.scope,releaseId,contentIdentity.ifBlank {"$releaseId|$path"})} else null
             player.setMediaItem(mediaItem(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
             startedAt=System.currentTimeMillis();player.prepare();player.play()
+            fetchSkipSegments(config, initial=false)
         }
     }
+
+    private fun fetchSkipSegments(config:Config, initial:Boolean) {
+        val metadataId=intent.getStringExtra("metadataId")?.takeIf {it.startsWith("tmdb:tv:")} ?: return
+        if(config.demo)return
+        val currentPath=path
+        val season=if(initial)intent.getIntExtra("segmentSeason",-1).takeIf {it>0} else null
+        val episode=if(initial)intent.getIntExtra("segmentEpisode",-1).takeIf {it>0} else null
+        segmentLookup=scope.launch {
+            while(player.duration<=0||!player.isCurrentMediaItemSeekable) {
+                if(terminalError||player.playbackState==Player.STATE_ENDED||
+                    (player.duration>0&&player.playbackState==Player.STATE_READY))return@launch
+                delay(250)
+            }
+            val duration=player.duration
+            try {
+                skipSegments=withContext(Dispatchers.IO) {
+                    loadSkipSegments(config,SecretStore(applicationContext),metadataId,currentPath,duration,season,episode)
+                }
+            } catch(e:CancellationException) {
+                throw e
+            } catch(_:Exception) {
+                // A failed lookup must leave ordinary playback available.
+            }
+        }
+    }
+
     private fun retryPlayback() {
         if(!offline) {
             recoverPlayback(automatic=false)
@@ -614,7 +657,7 @@ class PlaybackActivity : ComponentActivity() {
             "${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${trackName(format.label,format.language)}${if(group.isTrackSelected(index)) " ✓" else ""}"
         }
         panelOpen=true
-        panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Дорожки").setItems(names.toTypedArray()) { _,which ->
+        panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Аудио и субтитры").setItems(names.toTypedArray()) { _,which ->
             val builder=player.trackSelectionParameters.buildUpon()
             val selected=choices.getOrNull(which-1)
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
@@ -672,24 +715,20 @@ class PlaybackActivity : ComponentActivity() {
     private fun videoSettings() {
         if(!::player.isInitialized||released)return
         val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
-        val names=arrayOf("Качество", "Скорость · ${player.playbackParameters.speed}×", "Масштаб", "Автопереход · ${if(preferences.getBoolean("auto-next",true))"Вкл" else "Выкл"}", "Автопропуск опенинга/эндинга · ${if(preferences.getBoolean("auto-skip",false))"Вкл" else "Выкл"}", "Буфер · ${bufferTargetBytes/1048576} МиБ")
-        showVideoPanel("Параметры видео",names) {which -> when(which) {
-            0 -> {
-                val heights=player.currentTracks.groups.filter {it.type==C.TRACK_TYPE_VIDEO}.flatMap {g->(0 until g.length).filter {g.isTrackSupported(it)}.map {g.getTrackFormat(it).height}}.filter {it>0}.distinct().sortedDescending()
-                showVideoPanel("Качество",(listOf("Авто")+heights.map {"${it}p"}).toTypedArray()) {selection ->
-                    save()
-                    player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).setMaxVideoSize(Int.MAX_VALUE,if(selection==0)Int.MAX_VALUE else heights[selection-1]).build()
-                    preferences.edit().putInt("max-video-height",if(selection==0)Int.MAX_VALUE else heights[selection-1]).apply()
-                }
-            }
-            1 -> {val speeds=listOf(.5f,.75f,1f,1.25f,1.5f,2f);showVideoPanel("Скорость",speeds.map {"${it}×"}.toTypedArray()) {player.setPlaybackSpeed(speeds[it]);preferences.edit().putFloat("speed",speeds[it]).apply()}}
-            2 -> showVideoPanel("Масштаб",arrayOf("Вписать","Заполнить","Растянуть")) {selection ->
+        val heights=player.currentTracks.groups.filter {it.type==C.TRACK_TYPE_VIDEO}.flatMap {group->
+            (0 until group.length).filter {group.isTrackSupported(it)}.map {group.getTrackFormat(it).height}
+        }.filter {it>0}.distinct().sortedDescending()
+        val names=listOf("Скорость · ${player.playbackParameters.speed}×", "Масштаб", "Автопереход · ${if(preferences.getBoolean("auto-next",true))"Вкл" else "Выкл"}", "Пропуск фрагментов", "Буфер · ${bufferTargetBytes/1048576} МиБ")
+        val options=if(heights.size>1) names+"Качество" else names
+        showVideoPanel("Параметры видео",options.toTypedArray()) {which -> when(which) {
+            0 -> {val speeds=listOf(.5f,.75f,1f,1.25f,1.5f,2f);showVideoPanel("Скорость",speeds.map {"${it}×"}.toTypedArray()) {player.setPlaybackSpeed(speeds[it]);preferences.edit().putFloat("speed",speeds[it]).apply()}}
+            1 -> showVideoPanel("Масштаб",arrayOf("Вписать","Заполнить","Растянуть")) {selection ->
                 view.resizeMode=listOf(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)[selection]
                 preferences.edit().putInt("resize-mode",view.resizeMode).apply()
             }
-            3 -> preferences.edit().putBoolean("auto-next",!preferences.getBoolean("auto-next",true)).apply()
-            4 -> preferences.edit().putBoolean("auto-skip",!preferences.getBoolean("auto-skip",false)).apply()
-            5 -> {
+            2 -> preferences.edit().putBoolean("auto-next",!preferences.getBoolean("auto-next",true)).apply()
+            3 -> showSkipSettings(preferences)
+            4 -> {
                 val maximum=bufferPlan.maximumBytes/1048576
                 val choices=(listOf(16,32,64,128).filter{it<=maximum}+maximum).distinct().sorted()
                 val labels=listOf("Авто · рекомендуется ${bufferPlan.recommendedBytes/1048576} МиБ")+choices.map{if(it==maximum)"$it МиБ · оценочный максимум" else "$it МиБ"}
@@ -699,7 +738,30 @@ class PlaybackActivity : ComponentActivity() {
                     Toast.makeText(this,"Буфер сохранён для следующего запуска видео",Toast.LENGTH_SHORT).show()
                 }
             }
+            5 -> {
+                showVideoPanel("Качество",(listOf("Авто")+heights.map {"До ${it}p"}).toTypedArray()) {selection ->
+                    save()
+                    player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).setMaxVideoSize(Int.MAX_VALUE,if(selection==0)Int.MAX_VALUE else heights[selection-1]).build()
+                    preferences.edit().putInt("max-video-height",if(selection==0)Int.MAX_VALUE else heights[selection-1]).apply()
+                }
+            }
         }}
+    }
+    private fun showSkipSettings(preferences:android.content.SharedPreferences) {
+        val kinds=SegmentKind.entries
+        val labels=(listOf("Автопропуск через 5 секунд")+kinds.map {it.label}).toTypedArray()
+        val checks=(listOf(preferences.getBoolean(AUTO_SKIP,true))+kinds.map(preferences::segmentEnabled)).toBooleanArray()
+        val dialog=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
+            .setTitle("Пропуск фрагментов")
+            .setMultiChoiceItems(labels,checks) {_, index, checked->
+                preferences.edit().putBoolean(if(index==0)AUTO_SKIP else kinds[index-1].preferenceKey(),checked).apply()
+            }.setPositiveButton("Готово",null)
+            .setNeutralButton("SkipDB · ODbL") {_,_->
+                runCatching {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://skipdb.tv/license")))}
+            }.create()
+        panel=dialog;panelOpen=true
+        dialog.setOnDismissListener {if(panel===dialog){panel=null;panelOpen=false}}
+        dialog.show();styleTvPanel(dialog)
     }
     private fun showVideoPanel(title:String,names:Array<String>,choose:(Int)->Unit) {
         val dialog=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle(title).setItems(names) {_,which->choose(which)}.create()
@@ -709,8 +771,8 @@ class PlaybackActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }
-    override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
-    private fun releasePlayer() {if(!released) {released=true;startupJob?.cancel();episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
+    override fun onPictureInPictureModeChanged(inPictureInPictureMode:Boolean,newConfig:Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode,newConfig); inPip=inPictureInPictureMode; overlay.visibility=if(inPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE }
+    private fun releasePlayer() {if(!released) {released=true;startupJob?.cancel();episodeLoad?.cancel();segmentLookup?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();session?.release();if(::player.isInitialized) player.release()}}
     override fun onDestroy() {
         artworkJob?.cancel()
         artwork?.loader?.shutdown()

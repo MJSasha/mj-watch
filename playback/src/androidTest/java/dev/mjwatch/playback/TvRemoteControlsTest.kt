@@ -101,6 +101,7 @@ class TvRemoteControlsTest {
         key(Key.DirectionUp);compose.onNodeWithTag("player-back").assertIsFocused()
         key(Key.DirectionDown);compose.onNodeWithTag("player-play").assertIsFocused()
         key(Key.DirectionUp);compose.onNodeWithTag("player-timeline").assertIsFocused()
+        key(Key.DirectionUp);compose.onNodeWithTag("player-tracks").assertIsFocused()
         key(Key.DirectionUp);assertFalse(visible)
         key(Key.DirectionDown);compose.onNodeWithTag("player-play").assertIsFocused()
     }
@@ -142,14 +143,14 @@ class TvRemoteControlsTest {
     }
     @Test fun lateWindowFocusCallbackCannotUndoANewRemoteMove() {
         start(true)
-        compose.onNodeWithContentDescription("Дорожки").performSemanticsAction(SemanticsActions.RequestFocus)
+        focus("player-tracks")
         key(Key.DirectionCenter)
         // Android has already returned input, but Compose may observe its window callback later.
         compose.runOnIdle {compose.activity.window.decorView.dispatchWindowFocusChanged(false);panel=false}
-        key(Key.DirectionDown)
-        compose.onNodeWithTag("player-play").assertIsFocused()
+        key(Key.DirectionRight)
+        compose.onNodeWithTag("player-video").assertIsFocused()
         compose.runOnIdle {compose.activity.window.decorView.dispatchWindowFocusChanged(true)}
-        compose.onNodeWithTag("player-play").assertIsFocused()
+        compose.onNodeWithTag("player-video").assertIsFocused()
     }
     @Test fun anAlreadyVisibleOfferDoesNotStealFocusWhenTracksClose() {
         position=970_000;start(true)
@@ -161,7 +162,7 @@ class TvRemoteControlsTest {
     @Test fun explicitDownRestoresPlaybackWhileAnUnchangedNextEpisodeOfferIsVisible() {
         position=970_000;start(true)
         compose.onNodeWithTag("player-prompt").assertIsFocused()
-        focus("player-play");key(Key.DirectionUp);key(Key.DirectionUp)
+        focus("player-play");key(Key.DirectionUp);key(Key.DirectionUp);key(Key.DirectionUp)
         compose.onNodeWithTag("player-play").assertDoesNotExist()
         compose.onNodeWithTag("player-prompt").assertExists()
         key(Key.DirectionDown)
@@ -215,10 +216,18 @@ class TvRemoteControlsTest {
         compose.onNodeWithTag("player-prompt").assertDoesNotExist()
         assertEquals(50_000L,position)
     }
-    @Test fun automaticSkipUsesOnlyMarkersAndDoesNotFlashAnOpeningOffer() {
-        InstrumentationRegistry.getInstrumentation().targetContext.getSharedPreferences("playback-preferences",0).edit().putBoolean("auto-skip",true).commit()
+    @Test fun automaticSkipOffersAnOpeningThenSeeksAfterTheCountdown() {
         queue=listOf(queue.first().copy(openingStartMs=40_000,openingEndMs=90_000),queue.last())
-        start(true);assertEquals(90_000L,position)
+        start(true)
+        compose.onNodeWithText("Пропустить опенинг · 5").assertIsDisplayed()
+        repeat(19) {
+            compose.runOnIdle {clock+=250}
+            compose.mainClock.advanceTimeBy(250)
+        }
+        assertEquals(50_000L,position)
+        compose.runOnIdle {clock+=250}
+        compose.mainClock.advanceTimeBy(350)
+        assertEquals(90_000L,position)
         compose.onNodeWithTag("player-prompt").assertDoesNotExist()
     }
 
@@ -262,7 +271,7 @@ class TvRemoteControlsTest {
         status=bufferingStatus(firstFrame=true)
         compose.setContent {
             PlayerControls(player={fake},title="Test",visible=true,mobile=true,keepVisible=false,status=status,
-                onRetry={},onVisibility={},onBack={exits++},onTracks={},onFit={},onPip={})
+                onRetry={},onVisibility={},onBack={exits++},onTracks={},onPip={})
             BackHandler {exits++}
         }
         compose.mainClock.advanceTimeBy(500)

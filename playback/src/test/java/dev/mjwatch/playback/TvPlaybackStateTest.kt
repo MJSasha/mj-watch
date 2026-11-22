@@ -30,11 +30,12 @@ class TvPlaybackStateTest {
         assertFalse(s.shouldHide(15_999,false))
     }
     @Test fun markersAreValidatedAndEndingFallsBackToThirtySeconds() {
-        assertNull(markerTarget(null,null,20_000,100_000))
-        assertNull(markerTarget(10_000,200_000,20_000,100_000))
-        assertNull(markerTarget(30_000,10_000,20_000,100_000))
-        assertEquals(30_000L,markerTarget(10_000,30_000,20_000,100_000))
-        assertNull(markerTarget(10_000,30_000,30_000,100_000))
+        fun contains(start:Long,end:Long,position:Long)=
+            SkipSegment(SegmentKind.INTRO,start,end).contains(position,100_000)
+        assertFalse(contains(10_000,200_000,20_000))
+        assertFalse(contains(30_000,10_000,20_000))
+        assertTrue(contains(10_000,30_000,20_000))
+        assertFalse(contains(10_000,30_000,30_000))
         assertEquals(970_000L,nextThreshold(null,1_000_000))
         assertEquals(900_000L,nextThreshold(900_000,1_000_000))
         assertEquals(970_000L,nextThreshold(700_000,1_000_000))

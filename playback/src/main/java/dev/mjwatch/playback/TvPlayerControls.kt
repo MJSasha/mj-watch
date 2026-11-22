@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
     startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, metrics:PlaybackLoadingMetrics?=null, progress:Float?=null,
+    skipSegments:List<SkipSegment> = emptyList(),
 ) {
     val statusRipple=LocalRippleConfiguration.current
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -57,7 +58,7 @@ import kotlinx.coroutines.delay
     val remote=remember {TvPlaybackState()}
     val rootFocus=remember {FocusRequester()}; val backFocus=remember {FocusRequester()}
     val playFocus=remember {FocusRequester()}; val timelineFocus=remember {FocusRequester()}
-    val topTracksFocus=remember {FocusRequester()}; val tracksFocus=remember {FocusRequester()}; val videoFocus=remember {FocusRequester()}
+    val tracksFocus=remember {FocusRequester()}; val videoFocus=remember {FocusRequester()}
     val episodesFocus=remember {FocusRequester()}; val promptFocus=remember {FocusRequester()}; val stayFocus=remember {FocusRequester()}
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
     var position by remember {mutableLongStateOf(0)}; var duration by remember {mutableLongStateOf(0)}
@@ -85,7 +86,7 @@ import kotlinx.coroutines.delay
     val splash=updateTransition(startup,label="Playback splash")
     val splashBlocking=startup!=null||splash.currentState!=null
     val blockingStatus=splashBlocking||status!=null&&!status.compact
-    val blocked=modal||remote.preview!=null||status!=null
+    val blocked=splashBlocking||modal||remote.preview!=null||status!=null
     val currentBlocked by rememberUpdatedState(blocked)
     val currentIndex by rememberUpdatedState(episodeIndex)
     val currentStatus by rememberUpdatedState(status)
@@ -93,12 +94,17 @@ import kotlinx.coroutines.delay
     val currentModal by rememberUpdatedState(modal)
     val currentKeepVisible by rememberUpdatedState(keepVisible)
     val currentEpisodes by rememberUpdatedState(episodes)
+    val episodeSegments=remember(episodes,episodeIndex,skipSegments) {
+        skipSegments.ifEmpty {episodes.getOrNull(episodeIndex)?.legacySegments().orEmpty()}
+    }
+    val currentSegments by rememberUpdatedState(episodeSegments)
+    val markedTail by rememberUpdatedState(skipSegments.any {it.kind==SegmentKind.OUTRO||it.kind==SegmentKind.PREVIEW})
     val selectEpisode by rememberUpdatedState(onEpisode)
     fun interact() {remote.interact(now())}
     fun openPanel(target:FocusRequester,action:()->Unit) {
         modalReturn=target;modalNavigationVersion=navigationVersion;modalEpisodeIndex=episodeIndex;action()
     }
-    fun focusPlayback() {requestedFocus=playFocus;onVisibility(true);interact();playFocus.requestFocus()}
+    fun focusPlayback() {requestedFocus=playFocus;onVisibility(true);interact()}
     fun dismissPrompt() {remote.dismissPrompt();focusPlayback()}
     fun back() {
         interact()
@@ -125,25 +131,22 @@ import kotlinx.coroutines.delay
         while(true) {
             player()?.let {p ->
                 position=p.currentPosition.coerceAtLeast(0);duration=p.duration.coerceAtLeast(0)
-                playing=p.isPlaying;ready=p.playbackState==Player.STATE_READY||p.duration>0
+                playing=p.playWhenReady;ready=p.playbackState==Player.STATE_READY||p.duration>0
                 seekable=p.isCurrentMediaItemSeekable
                 val index=currentIndex
                 val queue=currentEpisodes
                 val episode=queue.getOrNull(index)
-                val autoSkip=preferences.getBoolean("auto-skip",false)
-                if(autoSkip&&!currentBlocked) {
-                    val target=episode?.openingTarget(position,duration)
-                        ?: if(index==queue.lastIndex) markerTarget(episode?.endingStartMs,episode?.endingEndMs,position,duration) else null
-                    if(target!=null) {p.seekTo(target);position=target}
-                }
-                if(remote.update(position,duration,playing,episode,index>=0&&index<queue.lastIndex,currentBlocked,
-                        preferences.getBoolean("auto-next",true))) selectEpisode(index+1)
+                if(remote.update(position,duration,p.isPlaying,episode,index>=0&&index<queue.lastIndex,currentBlocked,
+                        preferences.getBoolean("auto-next",true),currentSegments,preferences.getBoolean(AUTO_SKIP,true),
+                        now(),markedTail,preferences::segmentEnabled)) selectEpisode(index+1)
+                if(remote.skip.offer?.remainingMs==0L&&p.isPlaying) remote.skip.seek(p)
+
             }
             if(currentVisible&&!currentKeepVisible&&currentStatus==null&&remote.shouldHide(now(),currentModal)) onVisibility(false)
             delay(250)
         }
     }
-    val prompt=remote.prompt.takeIf {!blocked}
+    val prompt=remote.prompt.takeIf {!blocked&&(it=="next"||remote.skip.offer!=null)}
     var offeredPrompt by remember {mutableStateOf<String?>(null)}
     LaunchedEffect(windowFocused) {if(windowFocused)inputMode.requestInputMode(InputMode.Keyboard)}
     LaunchedEffect(visible,ready,requestedFocus,blockingStatus,modal,windowFocused,inputMode.inputMode,startup?.loading) {
@@ -215,15 +218,27 @@ import kotlinx.coroutines.delay
                 true
             } else false
         }.then(controlFocus(rootFocus)).focusable()) {
-            if(!splashBlocking) PlayerChrome(visible,Modifier.align(Alignment.TopCenter)) {
+            if(!splashBlocking) PlayerChrome(visible&&!blockingStatus,Modifier.align(Alignment.TopCenter)) {
                 Box(Modifier.fillMaxWidth().fillMaxHeight(.24f).background(Brush.verticalGradient(0f to Color(0xAA000000),.45f to Color(0x44000000),1f to Color.Transparent)))
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=28.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(0.dp)) {
                     IconButton(modifier=Modifier.size(48.dp).testTag("player-back").then(controlFocus(backFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else FocusRequester.Cancel}.tvPlayerFocus(!modal),onClick=onBack) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                     Column(Modifier.weight(1f)) {Text(title,fontSize=18.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(episodes.getOrNull(episodeIndex)?.path ?: "MJWatch",maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=12.sp,color=Color(0xFFB3C6DE))}
-                    IconButton(modifier=Modifier.size(48.dp).then(controlFocus(topTracksFocus)).focusProperties {up=FocusRequester.Cancel;down=if(ready)playFocus else backFocus}.tvPlayerFocus(!modal),onClick={interact();openPanel(topTracksFocus,onTracks)}) {Icon(Icons.Outlined.Tune,"Дорожки")}
+                    if(ready) {
+                        @Composable fun headerButton(target:FocusRequester)=Modifier.size(48.dp).then(controlFocus(target))
+                            .focusProperties {down=playFocus}
+                            .onPreviewKeyEvent {event->
+                                if(event.nativeKeyEvent.keyCode!=AndroidKey.KEYCODE_DPAD_UP) false else {
+                                    if(event.type==KeyEventType.KeyDown)onVisibility(false)
+                                    true
+                                }
+                            }.tvPlayerFocus(!modal)
+                        if(episodes.isNotEmpty()) IconButton(modifier=Modifier.testTag("player-episodes").then(headerButton(episodesFocus)),onClick={interact();openPanel(episodesFocus){episodePanel=true}}) {Icon(Icons.Outlined.List,"Выбор серии")}
+                        IconButton(modifier=Modifier.testTag("player-tracks").then(headerButton(tracksFocus)),onClick={interact();openPanel(tracksFocus,onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
+                        IconButton(modifier=Modifier.testTag("player-video").focusProperties {right=FocusRequester.Cancel}.then(headerButton(videoFocus)),onClick={interact();openPanel(videoFocus,onVideo)}) {Icon(Icons.Outlined.Settings,"Параметры видео")}
+                    }
                 }
             }
-            if(!splashBlocking) PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
+            if(!splashBlocking) PlayerChrome(visible&&ready&&!blockingStatus,Modifier.align(Alignment.BottomCenter)) {
                 Box(contentAlignment=Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
                     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
@@ -239,7 +254,7 @@ import kotlinx.coroutines.delay
                                     true
                                 }
                                 AndroidKey.KEYCODE_DPAD_CENTER,AndroidKey.KEYCODE_ENTER,AndroidKey.KEYCODE_NUMPAD_ENTER -> {if(down&&event.nativeKeyEvent.repeatCount==0)remote.confirmSeek()?.let {player()?.seekTo(it)};true}
-                                AndroidKey.KEYCODE_DPAD_UP -> {if(down) {remote.cancelSeek();onVisibility(false)};true}
+                                AndroidKey.KEYCODE_DPAD_UP -> {if(down)tracksFocus.requestFocus();true}
                                 AndroidKey.KEYCODE_DPAD_DOWN -> {if(down) {remote.cancelSeek();playFocus.requestFocus()};true}
                                 else -> false
                             }
@@ -260,17 +275,13 @@ import kotlinx.coroutines.delay
                         })
                         Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF0F2EC),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                     }
-                    Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         @Composable fun buttonModifier(target:FocusRequester=remember {FocusRequester()})=Modifier.size(48.dp).then(controlFocus(target)).focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal)
                         if(episodes.size>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.testTag("player-previous-episode").focusProperties {left=FocusRequester.Cancel}.then(buttonModifier()),onClick={interact();onEpisode(episodeIndex-1)}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
                         IconButton(modifier=Modifier.focusProperties {if(episodeIndex<=0)left=FocusRequester.Cancel}.then(buttonModifier()),enabled=seekable,onClick={interact();seek(-1)}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
                         IconButton(onClick={interact();player()?.let {if(it.playWhenReady)it.pause() else it.play()}},modifier=Modifier.size(width=52.dp,height=48.dp).testTag("player-play").then(buttonModifier(playFocus))) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
                         IconButton(modifier=buttonModifier(),enabled=seekable,onClick={interact();seek(1)}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
                         if(episodes.size>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodes.lastIndex,modifier=Modifier.testTag("player-next-episode").then(buttonModifier()),onClick={interact();onEpisode(episodeIndex+1)}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
-                        Spacer(Modifier.weight(1f))
-                        if(episodes.isNotEmpty()) IconButton(modifier=Modifier.testTag("player-episodes").then(buttonModifier(episodesFocus)),onClick={interact();openPanel(episodesFocus){episodePanel=true}}) {Icon(Icons.Outlined.List,"Выбор серии")}
-                        IconButton(modifier=Modifier.testTag("player-tracks").then(buttonModifier(tracksFocus)),onClick={interact();openPanel(tracksFocus,onTracks)}) {Icon(Icons.Outlined.Subtitles,"Аудио и субтитры")}
-                        IconButton(modifier=Modifier.testTag("player-video").focusProperties {right=FocusRequester.Cancel}.then(buttonModifier(videoFocus)),onClick={interact();openPanel(videoFocus,onVideo)}) {Icon(Icons.Outlined.Fullscreen,"Параметры видео")}
                     }
                     }
                 }
@@ -278,13 +289,19 @@ import kotlinx.coroutines.delay
             if(prompt!=null) Row(Modifier.align(Alignment.CenterEnd).padding(28.dp).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
                 Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).tvPlayerFocus(!modal),onClick={
                     interact()
-                    if(prompt=="opening") {episodes.getOrNull(episodeIndex)?.openingTarget(position,duration)?.let {player()?.seekTo(it)};dismissPrompt()}
-                    else onEpisode(episodeIndex+1)
-                }) {Text(if(prompt=="opening")"Пропустить опенинг" else if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}" else "Следующая серия")}
+                    if(prompt=="next") onEpisode(episodeIndex+1)
+                    else {player()?.let(remote.skip::seek);focusPlayback()}
+                }) {
+                    val label=if(prompt=="next") {
+                        if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}"
+                        else "Следующая серия"
+                    } else remote.skip.offer?.label.orEmpty()
+                    Text(label)
+                }
                 TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
             }
             PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
-            if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 110.dp else 20.dp)) {
+            if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready&&!blockingStatus) 110.dp else 20.dp)) {
                 CompositionLocalProvider(LocalRippleConfiguration provides statusRipple) {
                     PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,metrics=metrics)
                 }

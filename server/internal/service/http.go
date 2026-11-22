@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.11"
+var Version = "0.1.12"
 
 type Server struct {
 	maxStreams         int

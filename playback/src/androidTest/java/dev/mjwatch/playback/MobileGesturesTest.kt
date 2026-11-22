@@ -31,7 +31,7 @@ class MobileGesturesTest {
         "getCurrentPosition"->position
         "getDuration"->100_000L
         "getPlaybackState"->Player.STATE_READY
-        "isPlaying"->false
+        "isPlaying","getPlayWhenReady"->false
         "isCurrentMediaItemSeekable"->seekable
         "seekTo"->{position=args!![0] as Long;null}
         "equals"->proxy===args?.get(0)
@@ -40,7 +40,7 @@ class MobileGesturesTest {
     }} as Player
 
     @Test fun timelineSitsBetweenBothTimes() {
-        compose.setContent {Box(Modifier.width(360.dp).fillMaxHeight().background(Color.Black).testTag("mobile-timeline-preview")) {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},{})}}
+        compose.setContent {Box(Modifier.width(360.dp).fillMaxHeight().background(Color.Black).testTag("mobile-timeline-preview")) {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{})}}
         compose.waitForIdle()
         val start=compose.onNodeWithTag("player-position").fetchSemanticsNode().boundsInRoot
         val timeline=compose.onNodeWithTag("player-timeline").fetchSemanticsNode().boundsInRoot
@@ -84,8 +84,35 @@ class MobileGesturesTest {
         assertEquals(1f, brightness(), .01f)
     }
 
+    @Test fun skipDbSegmentsOfferManualSkipWithAutomaticDisabled() {
+        val raw=org.json.JSONObject("""{"segments":{
+            "recap":{"start_ms":0,"end_ms":20000,"match":"exact","confidence":0.9},
+            "intro":{"start_ms":40000,"end_ms":60000,"match":"exact","confidence":0.9},
+            "outro":{"start_ms":70000,"end_ms":100000,"match":"exact","confidence":0.9},
+            "preview":{"start_ms":90000,"end_ms":100000,"match":"exact","confidence":0.9}
+        }}""")
+        val markers=parseSkipSegments(raw,100_000)
+        assertEquals(listOf(SegmentKind.RECAP,SegmentKind.INTRO,SegmentKind.OUTRO,SegmentKind.PREVIEW),markers.map {it.kind})
+        assertEquals(90_000L,markers[2].endMs)
+        raw.getJSONObject("segments").getJSONObject("recap").put("match","out-of-range")
+        assertFalse(parseSkipSegments(raw,100_000).any {it.kind==SegmentKind.RECAP})
+
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs=context.getSharedPreferences("playback-preferences",0)
+        prefs.edit().putBoolean(AUTO_SKIP,false).commit()
+        try {
+            compose.setContent {
+                PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},skipSegments=markers)
+            }
+            compose.onNodeWithText("Пропустить опенинг").assertIsDisplayed().performClick()
+            compose.runOnIdle {assertEquals(60_000L,position)}
+        } finally {
+            prefs.edit().remove(AUTO_SKIP).commit()
+        }
+    }
+
     @Test fun doubleTapSeeksWithVisibleAndHiddenControlsAndClampsToVideo() {
-        compose.setContent {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},{})}
+        compose.setContent {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{})}
         val video=compose.onNodeWithTag("player-gestures")
         video.performTouchInput {doubleClick(Offset(width*.8f,height*.5f))}
         compose.runOnIdle {assertEquals(60_000L,position);assertTrue(shown)}
