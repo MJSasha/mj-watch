@@ -18,7 +18,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -246,7 +245,7 @@ import kotlinx.coroutines.delay
                     Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Text(playerTime(shown),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
-                        modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").then(controlFocus(timelineFocus)).onFocusChanged {timelineFocused=it.isFocused;if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
+                        modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").describeSkipSegments(episodeSegments,duration).then(controlFocus(timelineFocus)).onFocusChanged {timelineFocused=it.isFocused;if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
                             val down=event.type==KeyEventType.KeyDown
                             when(event.nativeKeyEvent.keyCode) {
                                 AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT -> {
@@ -259,19 +258,7 @@ import kotlinx.coroutines.delay
                                 else -> false
                             }
                         },thumb={},track={
-                            Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
-                                val y=size.height/2
-                                val x=size.width*(shown.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
-                                val focused=timelineFocused&&!modal
-                                val thickness=(if(focused)3.dp else 2.dp).toPx()
-                                drawLine(Color(0xFF78818A),Offset(0f,y),Offset(size.width,y),thickness,StrokeCap.Round)
-                                drawLine(TvPlayerLime,Offset(0f,y),Offset(x,y),thickness,StrokeCap.Round)
-                                if(focused) {
-                                    drawCircle(Color(0xFF101722),7.5.dp.toPx(),Offset(x,y))
-                                    drawCircle(Color(0xFFF0F2EC),7.5.dp.toPx(),Offset(x,y),style=Stroke(1.5.dp.toPx()))
-                                }
-                                drawCircle(TvPlayerLime,(if(focused)4.5.dp else 3.5.dp).toPx(),Offset(x,y))
-                            })
+                            PlayerTimelineTrack(shown,duration,episodeSegments,TvPlayerLime,focused=timelineFocused&&!modal)
                         })
                         Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF0F2EC),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                     }

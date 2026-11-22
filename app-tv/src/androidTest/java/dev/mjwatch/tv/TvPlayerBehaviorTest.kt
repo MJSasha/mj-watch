@@ -258,6 +258,31 @@ class TvPlayerBehaviorTest {
         compose.waitUntil(5000) {var gone=false;instrumentation.runOnMainSync {gone=activity()==null};gone}
     }
 
+    @Test fun styledPlaybackMenusKeepDpadFocusAndToggleSkipInPlace() {
+        val activity=launch()
+        focus(compose.onNodeWithTag("player-video"))
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        instrumentation.runOnMainSync {
+            val dialog=field(activity,"panel") as android.app.AlertDialog
+            val list=dialog.listView
+            Assert.assertEquals("Скорость",list.adapter.getItem(0))
+            val row=list.adapter.getView(0,null,list) as android.view.ViewGroup
+            Assert.assertNotNull((row.getChildAt(0) as android.widget.ImageView).drawable)
+        }
+        selectDialog(3)
+        lateinit var skipPanel:android.app.AlertDialog
+        instrumentation.runOnMainSync {skipPanel=field(activity,"panel") as android.app.AlertDialog}
+        selectDialog(0)
+        instrumentation.runOnMainSync {
+            Assert.assertSame(skipPanel,field(activity,"panel"))
+            Assert.assertFalse(activity.getSharedPreferences("playback-preferences",0).getBoolean("auto-skip",true))
+        }
+        key(KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(5000) {
+            runCatching {compose.onNodeWithTag("player-video").assertIsFocused();true}.getOrDefault(false)
+        }
+    }
+
     @Test fun approvedDesignSemanticsTargetsAndFocusEvidenceWithRealVideo() {
         val largeFont=InstrumentationRegistry.getArguments().getString("evidenceDir")=="font200"
         launch(series=true,title=if(largeFont)"Тихая орбита · Очень длинное русское название фильма для проверки крупного шрифта" else "Тихая орбита",

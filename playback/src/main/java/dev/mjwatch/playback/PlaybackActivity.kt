@@ -21,6 +21,9 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -652,12 +655,15 @@ class PlaybackActivity : ComponentActivity() {
     private fun tracks() {
         if(!::player.isInitialized||released)return
         val choices=player.currentTracks.playbackTracks().toList()
-        val names=listOf("Субтитры выключены")+choices.map {(group,index)->
-            val format=group.getTrackFormat(index)
-            "${if(group.type==C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"}: ${trackName(format.label,format.language)}${if(group.isTrackSelected(index)) " ✓" else ""}"
-        }
-        panelOpen=true
-        panel=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle("Аудио и субтитры").setItems(names.toTypedArray()) { _,which ->
+        val rows=listOf(PlaybackMenuRow("Субтитры выключены",Icons.Outlined.SubtitlesOff,
+            selected=choices.none {(group,index)->group.type==C.TRACK_TYPE_TEXT&&group.isTrackSelected(index)}))+
+            choices.map {(group,index)->
+                val format=group.getTrackFormat(index)
+                val audio=group.type==C.TRACK_TYPE_AUDIO
+                val label="${if(audio) "Аудио" else "Субтитры"}: ${trackName(format.label,format.language)}"
+                PlaybackMenuRow(label,if(audio)Icons.Outlined.VolumeUp else Icons.Outlined.Subtitles,selected=group.isTrackSelected(index))
+            }
+        showPlaybackMenu("Аудио и субтитры",Icons.Outlined.Subtitles,rows) {which,_ ->
             val builder=player.trackSelectionParameters.buildUpon()
             val selected=choices.getOrNull(which-1)
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
@@ -688,17 +694,7 @@ class PlaybackActivity : ComponentActivity() {
                 val value=org.json.JSONObject().put("quality",preferences.getString("quality","Все")).put("audioLanguage",preferences.getString("audio-language",null)).put("subtitleLanguage",if(preferences.getBoolean("subtitles-off",false))"off" else preferences.getString("subtitle-language",null))
                 runCatching {val engine=SyncEngine(ManagedApi(c,SecretStore(applicationContext)),db.syncDao());engine.enqueue("preferences","profile",value);if(!offline)engine.sync()}
             }
-        }.setOnDismissListener { panel=null; panelOpen=false; if(intent.getBooleanExtra("mobile",true))overlay.requestFocus() }.show().also {styleTvPanel(it)}
-    }
-    private fun styleTvPanel(dialog:android.app.AlertDialog) {
-        if(intent.getBooleanExtra("mobile",true))return
-        val density=resources.displayMetrics.density
-        val focus=android.graphics.drawable.GradientDrawable().apply {
-            setColor(android.graphics.Color.argb(102,42,48,58))
-            cornerRadius=11*density
-            setStroke(kotlin.math.round(1.5f*density).toInt(),android.graphics.Color.rgb(240,242,236))
         }
-        dialog.listView.selector=android.graphics.drawable.InsetDrawable(focus,(2*density).toInt())
     }
     private fun handlePlaybackBack() {
         panel?.let { it.dismiss(); return }
@@ -718,56 +714,92 @@ class PlaybackActivity : ComponentActivity() {
         val heights=player.currentTracks.groups.filter {it.type==C.TRACK_TYPE_VIDEO}.flatMap {group->
             (0 until group.length).filter {group.isTrackSupported(it)}.map {group.getTrackFormat(it).height}
         }.filter {it>0}.distinct().sortedDescending()
-        val names=listOf("Скорость · ${player.playbackParameters.speed}×", "Масштаб", "Автопереход · ${if(preferences.getBoolean("auto-next",true))"Вкл" else "Выкл"}", "Пропуск фрагментов", "Буфер · ${bufferTargetBytes/1048576} МиБ")
-        val options=if(heights.size>1) names+"Качество" else names
-        showVideoPanel("Параметры видео",options.toTypedArray()) {which -> when(which) {
-            0 -> {val speeds=listOf(.5f,.75f,1f,1.25f,1.5f,2f);showVideoPanel("Скорость",speeds.map {"${it}×"}.toTypedArray()) {player.setPlaybackSpeed(speeds[it]);preferences.edit().putFloat("speed",speeds[it]).apply()}}
-            1 -> showVideoPanel("Масштаб",arrayOf("Вписать","Заполнить","Растянуть")) {selection ->
-                view.resizeMode=listOf(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)[selection]
+        val fitModes=listOf(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
+        val fitLabels=listOf("Вписать","Заполнить","Растянуть")
+        val autoNext=preferences.getBoolean("auto-next",true)
+        val heightLimit=preferences.getInt("max-video-height",Int.MAX_VALUE)
+        val rows=buildList {
+            add(PlaybackMenuRow("Скорость",Icons.Outlined.Speed,"${player.playbackParameters.speed}×",opensMenu=true))
+            add(PlaybackMenuRow("Масштаб",Icons.Outlined.AspectRatio,fitLabels.getOrNull(fitModes.indexOf(view.resizeMode)),opensMenu=true))
+            add(PlaybackMenuRow("Автопереход",Icons.Outlined.SkipNext,if(autoNext)"Вкл" else "Выкл"))
+            add(PlaybackMenuRow("Пропуск фрагментов",Icons.Outlined.FastForward,opensMenu=true))
+            add(PlaybackMenuRow("Буфер",Icons.Outlined.Storage,"${bufferTargetBytes/1048576} МиБ",opensMenu=true))
+            if(heights.size>1)add(PlaybackMenuRow("Качество",Icons.Outlined.HighQuality,
+                if(heightLimit==Int.MAX_VALUE)"Авто" else "До ${heightLimit}p",opensMenu=true))
+        }
+        showPlaybackMenu("Параметры видео",Icons.Outlined.Settings,rows) {which,_ -> when(which) {
+            0 -> {
+                val speeds=listOf(.5f,.75f,1f,1.25f,1.5f,2f)
+                showPlaybackMenu("Скорость",Icons.Outlined.Speed,speeds.map {
+                    PlaybackMenuRow("${it}×",selected=player.playbackParameters.speed==it)
+                }) {selection,_ ->
+                    val speed=speeds[selection]
+                    player.setPlaybackSpeed(speed)
+                    preferences.edit().putFloat("speed",speed).apply()
+                }
+            }
+            1 -> showPlaybackMenu("Масштаб",Icons.Outlined.AspectRatio,fitLabels.mapIndexed {index,label->
+                PlaybackMenuRow(label,selected=view.resizeMode==fitModes[index])
+            }) {selection,_ ->
+                view.resizeMode=fitModes[selection]
                 preferences.edit().putInt("resize-mode",view.resizeMode).apply()
             }
-            2 -> preferences.edit().putBoolean("auto-next",!preferences.getBoolean("auto-next",true)).apply()
+            2 -> preferences.edit().putBoolean("auto-next",!autoNext).apply()
             3 -> showSkipSettings(preferences)
             4 -> {
                 val maximum=bufferPlan.maximumBytes/1048576
                 val choices=(listOf(16,32,64,128).filter{it<=maximum}+maximum).distinct().sorted()
-                val labels=listOf("Авто · рекомендуется ${bufferPlan.recommendedBytes/1048576} МиБ")+choices.map{if(it==maximum)"$it МиБ · оценочный максимум" else "$it МиБ"}
+                val saved=preferences.getInt("buffer-mib",0)
+                val options=listOf(PlaybackMenuRow("Авто",value="${bufferPlan.recommendedBytes/1048576} МиБ",selected=saved==0))+
+                    choices.map {PlaybackMenuRow("$it МиБ",value=if(it==maximum)"Максимум" else null,selected=it==saved)}
                 val buffered=((player.bufferedPosition-player.currentPosition).coerceAtLeast(0)/1000)
-                showVideoPanel("Буфер: загружено $buffered с · для следующего видео",labels.toTypedArray()){selected->
-                    preferences.edit().putInt("buffer-mib",if(selected==0)0 else choices[selected-1]).apply()
+                showPlaybackMenu("Буфер",Icons.Outlined.Storage,options,
+                    subtitle="Загружено $buffered с. Размер применяется при следующем запуске видео.") {selection,_ ->
+                    preferences.edit().putInt("buffer-mib",if(selection==0)0 else choices[selection-1]).apply()
                     Toast.makeText(this,"Буфер сохранён для следующего запуска видео",Toast.LENGTH_SHORT).show()
                 }
             }
             5 -> {
-                showVideoPanel("Качество",(listOf("Авто")+heights.map {"До ${it}p"}).toTypedArray()) {selection ->
+                val options=listOf(PlaybackMenuRow("Авто",selected=heightLimit==Int.MAX_VALUE))+
+                    heights.map {PlaybackMenuRow("До ${it}p",selected=heightLimit==it)}
+                showPlaybackMenu("Качество",Icons.Outlined.HighQuality,options) {selection,_ ->
+                    val limit=if(selection==0)Int.MAX_VALUE else heights[selection-1]
                     save()
-                    player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).setMaxVideoSize(Int.MAX_VALUE,if(selection==0)Int.MAX_VALUE else heights[selection-1]).build()
-                    preferences.edit().putInt("max-video-height",if(selection==0)Int.MAX_VALUE else heights[selection-1]).apply()
+                    player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).setMaxVideoSize(Int.MAX_VALUE,limit).build()
+                    preferences.edit().putInt("max-video-height",limit).apply()
                 }
             }
         }}
     }
+
     private fun showSkipSettings(preferences:android.content.SharedPreferences) {
         val kinds=SegmentKind.entries
-        val labels=(listOf("Автопропуск через 5 секунд")+kinds.map {it.label}).toTypedArray()
-        val checks=(listOf(preferences.getBoolean(AUTO_SKIP,true))+kinds.map(preferences::segmentEnabled)).toBooleanArray()
-        val dialog=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert))
-            .setTitle("Пропуск фрагментов")
-            .setMultiChoiceItems(labels,checks) {_, index, checked->
-                preferences.edit().putBoolean(if(index==0)AUTO_SKIP else kinds[index-1].preferenceKey(),checked).apply()
-            }.setPositiveButton("Готово",null)
-            .setNeutralButton("SkipDB · ODbL") {_,_->
-                runCatching {startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://skipdb.tv/license")))}
-            }.create()
-        panel=dialog;panelOpen=true
-        dialog.setOnDismissListener {if(panel===dialog){panel=null;panelOpen=false}}
-        dialog.show();styleTvPanel(dialog)
+        val icons=listOf(Icons.Outlined.Movie,Icons.Outlined.History,Icons.Outlined.Subtitles,Icons.Outlined.SkipNext)
+        val options=listOf(PlaybackMenuRow("Автопропуск через 5 секунд",Icons.Outlined.Timer,
+            selected=preferences.getBoolean(AUTO_SKIP,true)))+
+            kinds.mapIndexed {index,kind->PlaybackMenuRow(kind.label,icons[index],selected=preferences.segmentEnabled(kind))}
+        showPlaybackMenu("Пропуск фрагментов",Icons.Outlined.FastForward,options,toggleRows=true,onCredits={
+            runCatching {startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://skipdb.tv/license")))}
+        }) {index,checked->
+            preferences.edit().putBoolean(if(index==0)AUTO_SKIP else kinds[index-1].preferenceKey(),checked).apply()
+        }
     }
-    private fun showVideoPanel(title:String,names:Array<String>,choose:(Int)->Unit) {
-        val dialog=android.app.AlertDialog.Builder(android.view.ContextThemeWrapper(this,android.R.style.Theme_Material_Dialog_Alert)).setTitle(title).setItems(names) {_,which->choose(which)}.create()
+
+    private fun showPlaybackMenu(
+        title:String, icon:ImageVector, rows:List<PlaybackMenuRow>, subtitle:String?=null,
+        toggleRows:Boolean=false, onCredits:(()->Unit)?=null, choose:(Int,Boolean)->Unit,
+    ) {
+        val mobile=intent.getBooleanExtra("mobile",true)
+        val dialog=createPlaybackMenu(this,title,icon,rows,!mobile,subtitle,toggleRows,onCredits,choose)
         panel=dialog;panelOpen=true
-        dialog.setOnDismissListener {if(panel===dialog){panel=null;panelOpen=false}}
-        dialog.show();styleTvPanel(dialog)
+        dialog.setOnDismissListener {
+            if(panel===dialog){
+                panel=null;panelOpen=false
+                if(mobile)overlay.requestFocus()
+            }
+        }
+        dialog.show()
     }
     override fun onSaveInstanceState(outState: Bundle) { if(::player.isInitialized&&!released) { outState.putLong("position",player.currentPosition); outState.putBoolean("playing",player.playWhenReady); outState.putFloat("speed",player.playbackParameters.speed);outState.putInt("resize-mode",view.resizeMode) }; super.onSaveInstanceState(outState) }
     override fun onStop() { if(::player.isInitialized&&!released&&!isInPictureInPictureMode) { player.pause(); save() }; super.onStop() }

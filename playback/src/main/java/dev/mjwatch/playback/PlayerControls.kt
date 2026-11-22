@@ -120,13 +120,17 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
-                        Slider(value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={scrubbing=true;position=it.toLong();interaction++},onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").playerFocus(),thumb={},track={Box(Modifier.fillMaxWidth().height(7.dp).drawBehind {
-                            val y=size.height/2
-                            val x=size.width*(position.toFloat()/duration.coerceAtLeast(1)).coerceIn(0f,1f)
-                            drawLine(Color(0xFF78818A),androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
-                            drawLine(PlayerLime,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(x,y),2.dp.toPx(),androidx.compose.ui.graphics.StrokeCap.Round)
-                            drawCircle(PlayerLime,3.5.dp.toPx(),androidx.compose.ui.geometry.Offset(x,y))
-                        })})
+                            Slider(
+                                value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),
+                                onValueChange={scrubbing=true;position=it.toLong();interaction++},
+                                onValueChangeFinished={player()?.seekTo(position);scrubbing=false;interaction++},
+                                valueRange=0f..duration.coerceAtLeast(1).toFloat(),
+                                enabled=duration>0&&player()?.isCurrentMediaItemSeekable==true,
+                                modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline")
+                                    .describeSkipSegments(segments,duration).playerFocus(),
+                                thumb={},
+                                track={PlayerTimelineTrack(position,duration,segments,PlayerLime)},
+                            )
                             Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
                         FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {

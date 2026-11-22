@@ -55,6 +55,12 @@ class MobilePlayerDesignTest {
             catch(error:AssertionError) {throw AssertionError("Target: $label",error)}
             ui.onAllNodesWithText(label,useUnmergedTree=true).assertCountEquals(0)
         }
+        ui.onNodeWithContentDescription("Параметры видео").performClick()
+        val device=UiDevice.getInstance(instrumentation)
+        Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Скорость")),5000))
+        capture("video-menu")
+        device.pressBack()
+        ui.waitUntil(5000) {device.findObject(androidx.test.uiautomator.By.text("Скорость"))==null}
         // Start visual evidence in touch mode even if the previous test used a TV remote.
         ui.onNodeWithTag("player-gestures").performTouchInput {click(center)}
         ui.waitUntil(5000) {ui.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}

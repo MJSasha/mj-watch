@@ -20,8 +20,9 @@ internal fun SegmentKind.preferenceKey() = "skip-segment-$apiKey"
 internal fun SharedPreferences.segmentEnabled(kind: SegmentKind) = getBoolean(kind.preferenceKey(), true)
 
 internal data class SkipSegment(val kind: SegmentKind, val startMs: Long, val endMs: Long) {
-    fun contains(position: Long, duration: Long) =
-        startMs >= 0 && endMs > startMs && endMs <= duration && position in startMs until endMs
+    fun isValidFor(duration: Long) = startMs >= 0 && endMs > startMs && endMs <= duration
+
+    fun contains(position: Long, duration: Long) = isValidFor(duration) && position in startMs until endMs
 }
 
 internal fun PlaybackEpisode.legacySegments(): List<SkipSegment> = buildList {

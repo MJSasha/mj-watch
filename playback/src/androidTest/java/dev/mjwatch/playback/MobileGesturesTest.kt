@@ -55,6 +55,41 @@ class MobileGesturesTest {
         file.outputStream().use {compose.onNodeWithTag("mobile-timeline-preview").captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
     }
 
+    @Test fun timelineDrawsSkipRangesAtTheirTimestampsOnPhoneAndTv() {
+        var mobile by mutableStateOf(true)
+        var segments by mutableStateOf(listOf(
+            SkipSegment(SegmentKind.RECAP,0,10_000),
+            SkipSegment(SegmentKind.INTRO,20_000,30_000),
+            SkipSegment(SegmentKind.OUTRO,65_000,75_000),
+            SkipSegment(SegmentKind.PREVIEW,90_000,100_000),
+        ))
+        compose.setContent {
+            PlayerControls({player},"Test",shown,mobile,false,null,{}, {shown=it},{},{},{},skipSegments=segments)
+        }
+        val timeline=compose.onNodeWithTag("player-timeline")
+        fun assertRanges() {
+            compose.mainClock.advanceTimeBy(300)
+            timeline.assertContentDescriptionContains("Опенинг, 0:20 – 0:30",substring=true)
+            val pixels=compose.onNodeWithTag("player-timeline-track",useUnmergedTree=true).captureToImage().toPixelMap()
+            fun isBlue(fraction:Float):Boolean {
+                val x=(pixels.width*fraction).toInt()
+                return (pixels.height/2-3..pixels.height/2+3).any {y->
+                    val color=pixels[x,y]
+                    color.red<.5f&&color.green>.65f&&color.blue>.8f
+                }
+            }
+            for(fraction in listOf(.05f,.25f,.70f,.95f))assertTrue("Missing range at $fraction",isBlue(fraction))
+            for(fraction in listOf(.15f,.35f,.80f))assertFalse("Range leaked into gap at $fraction",isBlue(fraction))
+        }
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-timeline").fetchSemanticsNodes().isNotEmpty()}
+        assertRanges()
+        compose.runOnIdle {mobile=false}
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-timeline").fetchSemanticsNodes().isNotEmpty()}
+        assertRanges()
+        compose.runOnIdle {segments=emptyList()}
+        compose.onNodeWithContentDescription("Опенинг, 0:20 – 0:30",substring=true).assertDoesNotExist()
+    }
+
     @Test fun controlsFadeThroughAnIntermediateFrameInBothDirections() {
         compose.setContent {
             Box(Modifier.size(80.dp).background(Color.Black).testTag("chrome")) {

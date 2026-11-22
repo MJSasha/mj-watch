@@ -65,7 +65,11 @@ class PlayerResizeUiTest {
    ui.onNodeWithTag("player-play").assertWidthIsAtLeast(androidx.compose.ui.unit.Dp(56f)).assertHeightIsAtLeast(androidx.compose.ui.unit.Dp(56f))
    val view=field(a,"view")!!;var before=0
    i.runOnMainSync{before=view.javaClass.getMethod("getResizeMode").invoke(view) as Int}
-   ui.onNodeWithContentDescription("Масштаб").performClick()
+   ui.onNodeWithContentDescription("Параметры видео").performClick()
+   checkNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Масштаб")),5000)).click()
+   val mode=if(before==0)"Заполнить" else "Вписать"
+   checkNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(mode)),5000)).click()
+   ui.waitForIdle()
    i.runOnMainSync{Assert.assertNotEquals(before,view.javaClass.getMethod("getResizeMode").invoke(view));Assert.assertSame(a,current());Assert.assertSame(player,field(a,"player"));Assert.assertFalse(player.playWhenReady);Assert.assertFalse(player.isPlaying);Assert.assertEquals(position,player.currentPosition)}
    val dir=File(i.targetContext.getExternalFilesDir(null),"player-resize").apply{mkdirs()}
    Assert.assertTrue(device.takeScreenshot(File(dir,"$index-${size.first}x${size.second}.png")))
