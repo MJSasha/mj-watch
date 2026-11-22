@@ -165,7 +165,7 @@ class TvRemoteControlsTest {
     @Test fun explicitDownRestoresPlaybackWhileAnUnchangedNextEpisodeOfferIsVisible() {
         position=970_000;start(true)
         compose.onNodeWithTag("player-prompt").assertIsFocused()
-        focus("player-play");key(Key.DirectionUp);key(Key.DirectionUp);key(Key.DirectionUp)
+        focus("player-play");key(Key.DirectionUp);key(Key.DirectionUp)
         compose.onNodeWithTag("player-play").assertDoesNotExist()
         compose.onNodeWithTag("player-prompt").assertExists()
         key(Key.DirectionDown)
