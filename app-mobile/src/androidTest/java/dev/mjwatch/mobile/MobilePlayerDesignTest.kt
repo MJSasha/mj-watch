@@ -1,6 +1,7 @@
 package dev.mjwatch.mobile
 
 import android.content.Intent
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.unit.dp
@@ -55,9 +56,10 @@ class MobilePlayerDesignTest {
             catch(error:AssertionError) {throw AssertionError("Target: $label",error)}
             ui.onAllNodesWithText(label,useUnmergedTree=true).assertCountEquals(0)
         }
-        ui.onNodeWithContentDescription("Параметры видео").performClick()
+        ui.onNodeWithContentDescription("Параметры видео").performSemanticsAction(SemanticsActions.OnClick)
         val device=UiDevice.getInstance(instrumentation)
-        Assert.assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Скорость")),5000))
+        Assert.assertNotNull("Video menu should show the speed option",
+            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Скорость")),5000))
         capture("video-menu")
         device.pressBack()
         ui.waitUntil(5000) {device.findObject(androidx.test.uiautomator.By.text("Скорость"))==null}
