@@ -48,7 +48,6 @@ import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
@@ -416,7 +415,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         }
                         "catalog"->{
                             Box(Modifier.padding(horizontal=inset)) {SectionTitle("Ваши подборки")}
-                            val cardWidth = tvUnit(240f)
+                            val cardWidth = tvUnit(200f)
                             TvCarousel(inset,up=if(continuing.isEmpty()&&hasCategories)tabsFocus else null) {items(s.catalog,key={it.id}) {m->
                                 Box(Modifier.width(cardWidth)) {
                                     MetadataCard(m,s.config,true,restoreCard=="metadata:${m.id}",onFocus={lastCard="metadata:${m.id}";featured=m.id}) {model.metadata(m)}
@@ -593,6 +592,8 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
 
 private fun titleSubtitle(metadata:Metadata) = listOfNotNull(metadata.year?.toString(),titleKind(metadata)).joinToString(" · ")
 
+private const val PosterAspectRatio = 2f / 3f
+
 @Composable private fun CinematicTitleTile(
     metadata:Metadata?,
     config:Config,
@@ -604,31 +605,27 @@ private fun titleSubtitle(metadata:Metadata) = listOfNotNull(metadata.year?.toSt
     progress:(@Composable ()->Unit)?=null
 ) {
     val captionBackground = Color(0xFF161B24)
-    Box(Modifier.fillMaxWidth().aspectRatio(0.82f).clip(RoundedCornerShape(16.dp))) {
-        Artwork(
-            metadata,config,
-            Modifier.matchParentSize().testTag(artworkTag),
-            backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
-        )
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(captionBackground)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(PosterAspectRatio)) {
+            Artwork(
+                metadata,config,
+                Modifier.matchParentSize().testTag(artworkTag),
+                backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
+            )
+            action?.invoke(this)
+        }
         Column(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                .background(Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    0.32f to captionBackground.copy(alpha=0.92f),
-                    1f to captionBackground
-                ))
-                .padding(start=12.dp,end=12.dp,top=28.dp,bottom=12.dp),
+            Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=10.dp),
             verticalArrangement=Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 title,color=Color.White,fontSize=16.sp,lineHeight=20.sp,fontWeight=FontWeight.Bold,
-                maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                minLines=2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             if(subtitle.isNotBlank()) Text(subtitle,color=Color(0xFFBDC7D3),fontSize=13.sp,lineHeight=16.sp,
                 maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             progress?.invoke()
         }
-        action?.invoke(this)
     }
 }
 @Composable private fun <T:Any> backgroundValue(vararg inputs:Any?,calculate:suspend CoroutineScope.()->T):T? {
@@ -1110,8 +1107,7 @@ private class ReleaseOptions(
     val surface=if(dark) androidx.compose.ui.graphics.Color(0xFF1F2732) else colors.surface
     val secondary=if(dark) androidx.compose.ui.graphics.Color(0xFFB3BDC8) else colors.onSurfaceVariant
     val track=if(dark) androidx.compose.ui.graphics.Color(0xFF3C4551) else colors.outline.copy(alpha=.32f)
-    val artWidth=if(tv) tvUnit(200f) else 84.dp
-    val minHeight=if(tv) maxOf(tvUnit(160f),artWidth/1.14f) else 96.dp
+    val artHeight=if(tv) tvUnit(176f) else 96.dp
     val demoArt=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null
     val playbackProgress:(@Composable ()->Unit)? = if(position!=null&&duration!=null) {{
         val fraction by animateFloatAsState(
@@ -1139,9 +1135,9 @@ private class ReleaseOptions(
                         }
                     }} else null)
             }
-        } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=minHeight).background(surface),
+        } else Row(Modifier.fillMaxWidth().background(surface),
             verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.width(artWidth).fillMaxHeight().testTag("library-poster-${e.id}")) {
+            Box(Modifier.size(width=artHeight*PosterAspectRatio,height=artHeight).testTag("library-poster-${e.id}")) {
                 Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,demo=demoArt,posterFirst=true)
             }
             Column(Modifier.weight(1f).padding(

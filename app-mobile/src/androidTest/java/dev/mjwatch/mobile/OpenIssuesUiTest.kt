@@ -45,8 +45,8 @@ class OpenIssuesUiTest {
         Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
         val poster=ui.onNodeWithTag("library-poster-demo:series",useUnmergedTree=true).getUnclippedBoundsInRoot()
         Assert.assertEquals(series.left.value,poster.left.value,1f)
-        Assert.assertEquals(series.height.value,poster.height.value,1f)
-        Assert.assertEquals(84f,poster.width.value,1f)
+        Assert.assertEquals(96f,poster.height.value,1f)
+        Assert.assertEquals(2f/3f,poster.width.value/poster.height.value,0.02f)
         Assert.assertEquals("Artwork must not inflate the history row",96f,series.height.value,1f)
         capture("cards")
         ui.onNodeWithTag("library-demo:series").performTouchInput {longClick()}

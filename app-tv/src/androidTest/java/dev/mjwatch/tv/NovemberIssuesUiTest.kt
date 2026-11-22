@@ -58,12 +58,13 @@ class NovemberIssuesUiTest {
         compose.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-fixture:film"))
         val film=compose.onNodeWithTag("library-fixture:film").getUnclippedBoundsInRoot()
         val series=compose.onNodeWithTag("library-fixture:series").getUnclippedBoundsInRoot()
-        val expectedHeight=(200f/1.14f)*compose.activity.resources.configuration.screenWidthDp/1280f
+        val expectedHeight=176f*compose.activity.resources.configuration.screenWidthDp/1280f
         Assert.assertEquals(expectedHeight,film.height.value,1f)
         Assert.assertEquals(expectedHeight,series.height.value,1f)
         val artwork=compose.onNodeWithTag("library-poster-fixture:series",useUnmergedTree=true).getUnclippedBoundsInRoot()
         Assert.assertEquals(series.left.value,artwork.left.value,1f)
         Assert.assertEquals(series.height.value,artwork.height.value,1f)
+        Assert.assertEquals(2f/3f,artwork.width.value/artwork.height.value,0.02f)
         Assert.assertTrue("Artwork shares the row with the caption",artwork.width < series.width/2f)
         capture("equal-continue-cards")
     }

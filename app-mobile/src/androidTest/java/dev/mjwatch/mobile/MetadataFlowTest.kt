@@ -1,7 +1,9 @@
 @file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.net.Uri
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
@@ -28,11 +30,16 @@ class MetadataFlowTest {
     Settings(c).save(Config(demo=true,metadataProvider="tmdb"));Settings(c).destination("home")
  }}
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
- @Test fun portraitPosterFillsCardWidth() {
+ @Test fun portraitPosterFillsCardWidthWithoutLosingItsEdges() {
     val context=InstrumentationRegistry.getInstrumentation().targetContext
     val poster=File.createTempFile("fixture-poster",".png",context.cacheDir)
     try {
         val bitmap=Bitmap.createBitmap(120,180,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.MAGENTA)}
+        val canvas=Canvas(bitmap)
+        val paint=Paint().apply {color=Color.CYAN}
+        canvas.drawRect(0f,0f,120f,12f,paint)
+        paint.color=Color.GREEN
+        canvas.drawRect(0f,168f,120f,180f,paint)
         poster.outputStream().use {Assert.assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}
         bitmap.recycle()
         val model=compose.runOnIdle {ViewModelProvider(compose.activity)[WatchModel::class.java]}
@@ -43,13 +50,16 @@ class MetadataFlowTest {
         }
         compose.runOnIdle {model.search(item.title)}
         compose.waitUntil(10000) {model.state.value.metadata.any {it.id==item.id&&it.poster!=null}}
-        val artwork=compose.onNodeWithTag("poster-${item.id}",useUnmergedTree=true)
+        val artwork=compose.onNodeWithTag("poster-${item.id}",useUnmergedTree=true).performScrollTo()
         compose.waitUntil(5000) {
             val image=artwork.captureToImage().asAndroidBitmap()
             val inset=image.width/20
             val y=image.height/4
             image.getPixel(inset,y)==Color.MAGENTA&&image.getPixel(image.width-1-inset,y)==Color.MAGENTA
         }
+        val image=artwork.captureToImage().asAndroidBitmap()
+        Assert.assertEquals("Top of the poster",Color.CYAN,image.getPixel(image.width/2,image.height/40))
+        Assert.assertEquals("Bottom of the poster",Color.GREEN,image.getPixel(image.width/2,image.height-1-image.height/40))
     } finally {
         poster.delete()
     }
@@ -64,8 +74,8 @@ class MetadataFlowTest {
     val resultTitle=hasText(item.title) and !hasTestTag("search-field")
     val title=compose.onNode(resultTitle,useUnmergedTree=true).getUnclippedBoundsInRoot()
     val height=artwork.bottom-artwork.top
-    Assert.assertEquals(0.82f,(artwork.right-artwork.left).value/height.value,0.02f)
-    Assert.assertTrue("Title should sit inside the artwork",title.top>artwork.top+height/2&&title.bottom<artwork.bottom)
+    Assert.assertEquals(2f/3f,(artwork.right-artwork.left).value/height.value,0.02f)
+    Assert.assertTrue("Title should sit below the poster",title.top>=artwork.bottom)
     compose.onNode(resultTitle and hasClickAction()).performClick()
     compose.waitUntil(5000) {model.state.value.page=="detail"&&model.state.value.selectedMetadata?.id==item.id}
  }
