@@ -131,6 +131,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val columns = if (wide) 3 else 2
         val tileWidth = (contentWidth - inset * 2 - gap * (columns - 1)) / columns
         val groups = remember(episodes, columns) { episodes.orEmpty().chunked(columns) }
+        val downloadSeason = season?.takeIf { !tv && !config.demo }
         val listState = rememberLazyListState()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
             contentPadding = PaddingValues(bottom = if (wide) 48.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -153,19 +154,31 @@ private fun episodeStill(path: String, config: Config): String? {
                     }
                 }
             }
-            if (!tv && !config.demo && season != null) item("download-season") {
-                Action("Скачать сезон", false, Modifier.fillMaxWidth().padding(horizontal = inset)
-                    .testTag("detail-download-season"), secondary = true, icon = Icons.Outlined.FileDownload) {
-                    season?.let { model.findSeriesReleases(item, it, episode = null, download = true) }
-                }
-            }
-            if (groups.isNotEmpty()) item("episode-count") {
+            if (groups.isNotEmpty() || downloadSeason != null) item("episode-count") {
                 Row(Modifier.width(contentWidth).padding(horizontal = inset).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Эпизоды", style = MaterialTheme.typography.titleLarge, fontSize = if (wide) 24.sp else 22.sp)
-                    val count = episodes.orEmpty().size
-                    Text(if (catalog.demo) "В демо · $count" else count.toString(), style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(Modifier.weight(1f), horizontalArrangement =
+                        if (downloadSeason == null) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp)) {
+                        Text("Эпизоды", style = MaterialTheme.typography.titleLarge, fontSize = if (wide) 24.sp else 22.sp)
+                        if (groups.isNotEmpty()) {
+                            val count = episodes.orEmpty().size
+                            Text(if (catalog.demo) "В демо · $count" else count.toString(),
+                                modifier = Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (downloadSeason != null) {
+                        TextButton(
+                            onClick = { model.findSeriesReleases(item, downloadSeason, episode = null, download = true) },
+                            modifier = Modifier.widthIn(max = (contentWidth - inset * 2) / 2).heightIn(min = 48.dp)
+                                .testTag("detail-download-season"),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (downloadSeason == 0) "Скачать спецвыпуски" else "Скачать сезон")
+                        }
+                    }
                 }
             }
             when {
