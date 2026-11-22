@@ -26,6 +26,26 @@ class TorrSettingsTest {
   assertEquals(512L*1048576,torrFieldAdvice(s,draft,field).maximum);assertTrue(torrSettingsValid(s,draft))
   draft.put("CacheSize","invalid");assertFalse(torrSettingsValid(s,draft))
  }
+ @Test fun refreshedSettingsShowActualCacheModeAndKeepOnlyPendingEdits(){
+  val previous=snapshot()
+  previous.getJSONObject("settings").put("UseDisk",false).put("TorrentsSavePath","/var/lib/torrserver-mjwatch/cache")
+  val draft=JSONObject(previous.getJSONObject("settings").toString()).put("PreloadCache",25)
+  val fresh=JSONObject(previous.toString()).put("revision","fresh")
+  fresh.getJSONObject("settings").put("UseDisk",true).put("CacheSize",128L*1048576)
+  val updated=refreshTorrSettingsDraft(previous,draft,fresh)
+  assertEquals(true,torrCacheUsesDisk(updated))
+  assertEquals(128L*1048576,updated.getLong("CacheSize"))
+  val changes=torrSettingsChanges(fresh,updated)
+  assertEquals(1,changes.length());assertEquals(25,changes.getInt("PreloadCache"))
+
+  fresh.put("resources",JSONObject().put("totalBytes",512L*1048576).put("maximumBytes",32L*1048576))
+  fresh.put("storage",JSONObject().put("available",true).put("maximumBytes",1024L*1048576))
+  val field=fresh.getJSONArray("fields").getJSONObject(0).put("max",8L*1073741824)
+  assertEquals(1024L*1048576,torrFieldAdvice(fresh,updated,field).maximum)
+  updated.put("TorrentsSavePath","/var/lib/torrserver-mjwatch/other")
+  assertFalse(torrFieldAdvice(fresh,updated,field).measured)
+  assertNull(torrCacheUsesDisk(JSONObject()))
+ }
  private fun snapshot()=JSONObject("""{
   "settings":{"CacheSize":67108864,"PreloadCache":50,"ResponsiveMode":false,"BTScrapeTrackers":["fixture"],"FutureObject":{"enabled":true},"EnableDLNA":false},
   "fields":[{"name":"CacheSize"},{"name":"PreloadCache"},{"name":"ResponsiveMode"}]

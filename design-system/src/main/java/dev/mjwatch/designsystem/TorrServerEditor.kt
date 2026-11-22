@@ -21,26 +21,47 @@ import org.json.JSONObject
  val fields=snapshot.getJSONArray("fields");val all=(0 until fields.length()).map{fields.getJSONObject(it)}
  fun change(name:String,value:Any)=onChange(JSONObject(draft.toString()).put(name,value))
  @Composable fun field(name:String){all.firstOrNull{it.optString("name")==name&&draft.has(name)}?.let {TorrInput(snapshot,draft,it,tv){value->change(name,value)}}}
- val memory=snapshot.optJSONObject("resources")
+ val settings=snapshot.getJSONObject("settings")
+ val savedMode=torrCacheUsesDisk(settings)
+ val selectedMode=torrCacheUsesDisk(draft)
+ val budget=torrCacheBudget(snapshot,draft)
  SettingsCard("Кэш видео",Icons.Outlined.Memory,tv){
-  if(memory!=null&&memory.optLong("totalBytes")>0){
-   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Память сервера",color=MaterialTheme.colorScheme.onSurfaceVariant);Text("${memory.optLong("availableBytes")/1048576} / ${memory.optLong("totalBytes")/1048576} МиБ свободно",style=MaterialTheme.typography.labelLarge)}
-   LinearProgressIndicator(progress={ (memory.optDouble("availableBytes")/memory.optDouble("totalBytes")).toFloat().coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+   Text("Режим по данным сервера",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text(when(savedMode){true->"Диск";false->"ОЗУ";null->"Неизвестен"},style=MaterialTheme.typography.labelLarge)
   }
   Text("Где хранить загруженные части видео",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
    for((disk,label) in listOf(false to "В памяти",true to "На диске")){
-    OutlinedButton(onClick={change("UseDisk",disk)},modifier=Modifier.weight(1f).tvFocusRing(tv).semantics{selected=draft.optBoolean("UseDisk")==disk},colors=ButtonDefaults.outlinedButtonColors(containerColor=if(draft.optBoolean("UseDisk")==disk)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)){
+    OutlinedButton(onClick={change("UseDisk",disk)},modifier=Modifier.weight(1f).tvFocusRing(tv).semantics{selected=selectedMode==disk},colors=ButtonDefaults.outlinedButtonColors(containerColor=if(selectedMode==disk)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)){
      Icon(if(disk)Icons.Outlined.Storage else Icons.Outlined.Memory,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text(label)
     }
    }
   }
-  Text(if(draft.optBoolean("UseDisk"))"Разгружает RAM. Скорость зависит от накопителя." else "Быстрый доступ. Оставьте память для MJWatch и других сервисов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  if(selectedMode!=savedMode)Text("Режим изменится после сохранения",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  if(budget!=null){
+   val free=budget.optLong("availableBytes")/1048576
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+    Text(if(selectedMode==true)"Свободно на диске" else "Свободно в ОЗУ",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(if(selectedMode==true)"$free МиБ" else "$free / ${budget.optLong("totalBytes")/1048576} МиБ",style=MaterialTheme.typography.labelLarge)
+   }
+   if(selectedMode==false)LinearProgressIndicator(progress={ (budget.optDouble("availableBytes")/budget.optDouble("totalBytes")).toFloat().coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+   budget.optLong("reserveBytes").takeIf {it>0}?.let {reserve->
+    Text(if(selectedMode==true)"Резерв на диске — ${reserve/1048576} МиБ" else "Резерв ОЗУ для системы и сервисов — ${reserve/1048576} МиБ",
+     style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   }
+  }else if(selectedMode!=null){
+   val pendingPath=selectedMode&&draft.optString("TorrentsSavePath")!=settings.optString("TorrentsSavePath")
+   Text(when {
+    pendingPath->"Доступное место для нового каталога будет проверено при сохранении"
+    selectedMode->"Свободное место на диске неизвестно"
+    else->"Свободная ОЗУ неизвестна"
+   },style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  }
   field("CacheSize")
   Text("Размер кэша — на одну раздачу. Разные раздачи используют отдельные кэши.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  memory?.optInt("plannedTorrents",0)?.takeIf{it>0}?.let{count->Text("Оценка максимума рассчитана на $count раздач с учётом лимита просмотров.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+  snapshot.optJSONObject("resources")?.optInt("plannedTorrents",0)?.takeIf{budget!=null&&it>0}?.let{count->Text("Оценка максимума рассчитана на $count раздач с учётом лимита просмотров.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}
   field("PreloadCache")
-  if(memory!=null)Text("Резерв для системы и соседних сервисов: ${memory.optLong("reserveBytes")/1048576} МиБ. Оценка обновляется при чтении сервера.",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
  }
  var network by rememberSaveable{mutableStateOf(false)}
  SettingsGroup(tv){
@@ -71,7 +92,7 @@ import org.json.JSONObject
  var text by remember(draft.opt(name)){mutableStateOf((draft.opt(name) as? Number)?.let{(it.toLong()/scale).toString()} ?: draft.optString(name))}
  val value=text.toLongOrNull()?.let{runCatching{Math.multiplyExact(it,scale)}.getOrNull()}
  val old=snapshot.getJSONObject("settings").optLong(name)
- val exceeds=value!=null&&value>advice.maximum&&(if(name=="CacheSize")value>old||snapshot.getJSONObject("settings").optBoolean("UseDisk")!=draft.optBoolean("UseDisk") else value!=old)
+ val exceeds=value!=null&&value>advice.maximum&&(if(name=="CacheSize")value>old||torrCacheUsesDisk(snapshot.getJSONObject("settings"))!=torrCacheUsesDisk(draft) else value!=old)
  val invalid=value==null||value<field.optLong("min")||value>field.optLong("max")||exceeds
  Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
   OutlinedTextField(text,{text=it;onChange(it.toLongOrNull()?.let{n->runCatching{Math.multiplyExact(n,scale)}.getOrNull()} ?: it)},label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,
@@ -82,7 +103,11 @@ import org.json.JSONObject
     Column(Modifier.padding(12.dp)){Text(if(advice.measured)"Максимум по серверу" else "Предел TorrServer",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("${advice.maximum/scale} $unit".trim(),style=MaterialTheme.typography.labelLarge)}
    }
   }
-  if(name=="PreloadCache")Text("${draft.optLong("PreloadCache")}% текущего кэша: ${draft.optLong("CacheSize")/1048576*draft.optLong("PreloadCache")/100} МиБ до старта",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  if(name=="PreloadCache"&&value!=null&&value in 0..100){
+   val cache=(draft.opt("CacheSize") as? Number)?.toLong()?.takeIf {it>=0}
+   if(cache!=null)Text("$value% выбранного кэша — ${cache/100*value/1048576} МиБ до старта",
+    style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+  }
  }
 }
 

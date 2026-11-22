@@ -263,11 +263,21 @@ import java.util.UUID
  var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
  fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=if(install)installationError(e) else safeError(e);if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
+ suspend fun refreshTorr(target:SshTarget){
+  val fresh=ssh.read(target)
+  val previous=data
+  val current=draft
+  val updated=if(previous!=null&&current!=null)refreshTorrSettingsDraft(previous,current,fresh)
+   else JSONObject(fresh.getJSONObject("settings").toString())
+  val changed=torrSettingsChanges(fresh,updated).length()>0
+  data=fresh;draft=updated;onDirty(changed)
+  message=if(changed)"Данные сервера обновлены. Проверьте несохранённые изменения." else "Данные сервера обновлены"
+ }
  LaunchedEffect(limitsRevision,busy){
   if(settings&&data!=null&&!busy&&refreshedLimits!=limitsRevision){
    refreshedLimits=limitsRevision
    data=data?.let{JSONObject(it.toString()).also{copy->copy.remove("resources");copy.remove("storage")}}
-   perform{target->val fresh=ssh.read(target);data=data?.let{previous->JSONObject(previous.toString()).put("resources",fresh.optJSONObject("resources")).put("storage",fresh.optJSONObject("storage"))}}
+   perform{target->refreshTorr(target)}
   }
  }
  fun askConfirmation(action:()->Unit){if(busy)return;busy=true;scope.launch{try{activeCount=if(install)null else withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams")};confirmation=action}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
@@ -314,17 +324,17 @@ import java.util.UUID
   Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){showProgress(InstallationProgress());checkInstallation()}
 
  }else if(settings){
-  if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));val result=ssh.apply(target,pending);data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён по фактическому состоянию"}}
+  if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));ssh.apply(target,pending);val current=ssh.read(target);data=current;draft=JSONObject(current.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён. Данные сервера обновлены."}}
   if(data==null||connectionOpen){
    if(connectionOpen)Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){
-    perform{target->val read=ssh.read(target);val status=ManagedApi(s.config,model.secrets).authorized("admin/status");read.put("activeStreams",status.getInt("activeStreams"));data=read;draft=JSONObject(read.getJSONObject("settings").toString());connectionOpen=false;onDirty(false);message="Данные сервера обновлены"}
+    perform{target->refreshTorr(target);connectionOpen=false}
    }else SettingsCard("Кэш и сеть",Icons.Outlined.Memory,tv){
     Text("Подключите доступ администратора, чтобы загрузить настройки и рекомендации вашего сервера.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
     Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
    }
   }
   data?.let{snapshot->
-   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(snapshot.optString("version"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);TextButton(onClick={perform{target->val fresh=ssh.read(target);data=JSONObject(snapshot.toString()).put("resources",fresh.optJSONObject("resources")).put("storage",fresh.optJSONObject("storage"))}},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Обновить оценки")}}
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(snapshot.optString("version"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);TextButton(onClick={perform{target->refreshTorr(target)}},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Обновить состояние")}}
    draft?.let{current->
     TorrServerEditor(snapshot,current,tv,onChange={next->draft=next;onDirty(torrSettingsChanges(snapshot,next).length()>0)},onDefaults={askConfirmation{perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Заводские настройки применены"}}})
     val changed=torrSettingsChanges(snapshot,current).length()>0
