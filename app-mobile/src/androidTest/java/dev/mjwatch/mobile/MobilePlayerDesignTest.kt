@@ -68,7 +68,7 @@ class MobilePlayerDesignTest {
             dialog?.isShowing==true&&speedLabels.any {it.isShown}
         }}
         capture("video-menu")
-        UiDevice.getInstance(instrumentation).pressBack()
+        ui.runOnUiThread {currentDialog()?.cancel()}
         ui.waitUntil(5000) {ui.runOnUiThread {currentDialog()?.isShowing!=true}}
         // Start visual evidence in touch mode even if the previous test used a TV remote.
         ui.onNodeWithTag("player-gestures").performTouchInput {click(center)}
