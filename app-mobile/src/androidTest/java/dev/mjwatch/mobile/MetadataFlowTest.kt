@@ -1,4 +1,9 @@
+@file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -11,6 +16,7 @@ import dev.mjwatch.designsystem.WatchModel
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.runner.RunWith
+import java.io.File
 /** Synthetic cached TMDB-shaped data; no real metadata credentials or network requests. */
 @RunWith(AndroidJUnit4::class)
 class MetadataFlowTest {
@@ -22,6 +28,32 @@ class MetadataFlowTest {
     Settings(c).save(Config(demo=true,metadataProvider="tmdb"));Settings(c).destination("home")
  }}
  @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
+ @Test fun portraitPosterFillsCardWidth() {
+    val context=InstrumentationRegistry.getInstrumentation().targetContext
+    val poster=File.createTempFile("fixture-poster",".png",context.cacheDir)
+    try {
+        val bitmap=Bitmap.createBitmap(120,180,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.MAGENTA)}
+        poster.outputStream().use {Assert.assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}
+        bitmap.recycle()
+        val model=compose.runOnIdle {ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(10000) {model.state.value.catalog.any {it.id==item.id}}
+        runBlocking {
+            model.dao.cacheMetadata("direct:search:${item.title}",listOf(item.copy(poster=Uri.fromFile(poster).toString())),
+                System.currentTimeMillis(),"direct")
+        }
+        compose.runOnIdle {model.search(item.title)}
+        compose.waitUntil(10000) {model.state.value.metadata.any {it.id==item.id&&it.poster!=null}}
+        val artwork=compose.onNodeWithTag("poster-${item.id}",useUnmergedTree=true)
+        compose.waitUntil(5000) {
+            val image=artwork.captureToImage().asAndroidBitmap()
+            val inset=image.width/20
+            val y=image.height/4
+            image.getPixel(inset,y)==Color.MAGENTA&&image.getPixel(image.width-1-inset,y)==Color.MAGENTA
+        }
+    } finally {
+        poster.delete()
+    }
+ }
  @Test fun searchShowsCinematicTileAndOpensTitle() {
     lateinit var model: WatchModel
     compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}

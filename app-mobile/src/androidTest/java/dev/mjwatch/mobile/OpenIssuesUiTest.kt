@@ -38,6 +38,8 @@ class OpenIssuesUiTest {
         ui.runOnIdle {model=ViewModelProvider(ui.activity)[WatchModel::class.java]}
         ui.waitUntil(10000) {model.scopedLibrary.value.entries.size==2}
         ui.onNodeWithTag("home-list").performScrollToNode(hasTestTag("library-demo:series"))
+        ui.onNodeWithText("С2 · Серия 3 · 1:00").assertExists()
+        ui.onNodeWithText("1:00").assertExists()
         val film=ui.onNodeWithTag("library-demo:film").getUnclippedBoundsInRoot()
         val series=ui.onNodeWithTag("library-demo:series").getUnclippedBoundsInRoot()
         Assert.assertEquals((film.bottom-film.top).value,(series.bottom-series.top).value,1f)
@@ -46,8 +48,6 @@ class OpenIssuesUiTest {
         Assert.assertEquals(series.height.value,poster.height.value,1f)
         Assert.assertEquals(84f,poster.width.value,1f)
         Assert.assertEquals("Artwork must not inflate the history row",96f,series.height.value,1f)
-        ui.onNodeWithText("С2 · Серия 3 · 1 из 5 мин").assertExists()
-        ui.onNodeWithText("1 из 5 мин").assertExists()
         capture("cards")
         ui.onNodeWithTag("library-demo:series").performTouchInput {longClick()}
         ui.onNodeWithText("Удалить").assertIsDisplayed()

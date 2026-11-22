@@ -138,7 +138,7 @@ import kotlinx.coroutines.launch
             if(uri!=null) {
                 val context=LocalContext.current
                 val request=remember(context,uri) {ImageRequest.Builder(context).data(uri).crossfade(220).build()}
-                AsyncImage(model=request,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(useBackdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(useBackdrop) BiasAlignment(.38f,0f) else Alignment.Center)
+                AsyncImage(model=request,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(useBackdrop) BiasAlignment(.38f,0f) else Alignment.Center)
             }
         }
     }

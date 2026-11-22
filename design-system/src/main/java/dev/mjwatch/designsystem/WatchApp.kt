@@ -1099,12 +1099,7 @@ private class ReleaseOptions(
     LaunchedEffect(Unit) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
     val duration=p?.durationMs?.takeIf {it>0}
     val position=p?.positionMs?.coerceAtLeast(0L)
-    val elapsed=when {
-        position==null -> null
-        duration==null -> time(position)
-        duration<60_000 -> "${position.coerceAtMost(duration)/1000} из ${(duration/1000).coerceAtLeast(1)} сек"
-        else -> "${position.coerceAtMost(duration)/60_000} из ${duration/60_000} мин"
-    }
+    val elapsed=position?.let {time(it.coerceAtMost(duration ?: it))}
     val number=p?.let {episodeNumber(it.path)}
     val episode=number?.episode?.let {index->listOfNotNull(number.season?.let {"С$it"},"Серия $index").joinToString(" · ")}
     val subtitle=listOfNotNull(episode,elapsed).joinToString(" · ").ifEmpty {
