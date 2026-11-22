@@ -19,7 +19,9 @@ private const val SKIP_DELAY_MS = 5_000L
 internal fun SegmentKind.preferenceKey() = "skip-segment-$apiKey"
 internal fun SharedPreferences.segmentEnabled(kind: SegmentKind) = getBoolean(kind.preferenceKey(), true)
 
-internal data class SkipSegment(val kind: SegmentKind, val startMs: Long, val endMs: Long) {
+internal data class SkipSegment(
+    val kind: SegmentKind, val startMs: Long, val endMs: Long, val allowAutoSkip: Boolean = true,
+) {
     fun isValidFor(duration: Long) = startMs >= 0 && endMs > startMs && endMs <= duration
 
     fun contains(position: Long, duration: Long) = isValidFor(duration) && position in startMs until endMs
@@ -54,18 +56,19 @@ internal class SegmentSkipState {
             dismissed = false
             discontinuity()
         }
-        if (!automatic) discontinuity()
+        val countDown = automatic && next?.allowAutoSkip == true
+        if (!countDown) discontinuity()
         if (next == null || dismissed) {
             offer = null
             return
         }
-        if (automatic && playing && !blocked) {
+        if (countDown && playing && !blocked) {
             previousTick?.let { elapsed += (now - it).coerceIn(0, 500) }
             previousTick = now
         } else {
             previousTick = null
         }
-        offer = if (blocked) null else SkipOffer(next, if (automatic) (SKIP_DELAY_MS - elapsed).coerceAtLeast(0) else null)
+        offer = if (blocked) null else SkipOffer(next, if (countDown) (SKIP_DELAY_MS - elapsed).coerceAtLeast(0) else null)
     }
 
     fun takeTarget(position: Long, duration: Long): Long? {

@@ -21,7 +21,9 @@ internal fun streamLimitScope(error:Throwable?):String? {
 
 internal class StreamLoadErrorPolicy:DefaultLoadErrorHandlingPolicy(3) {
     override fun getRetryDelayMsFor(info:LoadErrorHandlingPolicy.LoadErrorInfo):Long =
-        if(streamLimitScope(info.exception)!=null)C.TIME_UNSET else super.getRetryDelayMsFor(info)
+        if ((info.exception as? HttpDataSource.InvalidResponseCodeException)?.responseCode == 403 ||
+            streamLimitScope(info.exception) != null) C.TIME_UNSET
+        else super.getRetryDelayMsFor(info)
 }
 
 internal fun streamLimitStatus(scope:String)=PlaybackStatus(

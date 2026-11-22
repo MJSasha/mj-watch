@@ -16,6 +16,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.*
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
@@ -66,6 +67,9 @@ class BufferingUiTest {
         val calls=java.util.concurrent.atomic.AtomicInteger()
         val lost=java.util.concurrent.atomic.AtomicBoolean(true)
         val adds=java.util.concurrent.atomic.AtomicInteger()
+        val denied=java.util.concurrent.atomic.AtomicInteger()
+        val denyRequestStarted=CountDownLatch(1)
+        val sendDenial=CountDownLatch(1)
         val hash="0123456789012345678901234567890123456789"
         server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse {
@@ -77,7 +81,12 @@ class BufferingUiTest {
                     return MockResponse().setBody("""{"hash":"$hash","file_stats":[{"id":7,"path":"movie.mp4","length":${data.size}}]}""")
                 }
                 calls.incrementAndGet()
-                if(mode.get()==-1)return MockResponse().setResponseCode(403).setHeadersDelay(3,TimeUnit.SECONDS)
+                if(mode.get()==-1) {
+                    denied.incrementAndGet()
+                    denyRequestStarted.countDown()
+                    sendDenial.await(20,TimeUnit.SECONDS)
+                    return MockResponse().setResponseCode(403)
+                }
                 if(mode.getAndUpdate {if(it>0)it-1 else it}>0)return MockResponse().setResponseCode(503)
                 val start=request.getHeader("Range")?.substringAfter("bytes=")?.substringBefore('-')?.toIntOrNull() ?: 0
                 return MockResponse().setResponseCode(if(start>0)206 else 200).setHeader("Content-Type","video/mp4")
@@ -102,14 +111,20 @@ class BufferingUiTest {
             frozenFrame=frameField.get(same) as android.widget.ImageView
         }
         compose.waitUntil(5000){var playing=false;i.runOnMainSync {playing=player.currentPosition>=500};playing}
-        i.runOnMainSync {
-            player.pause();mode.set(-1)
-            player.setMediaItem(androidx.media3.common.MediaItem.fromUri(server.url("/movie.mp4").toString()),2000)
-            player.prepare()
+        try {
+            i.runOnMainSync {
+                player.pause();mode.set(-1)
+                player.setMediaItem(androidx.media3.common.MediaItem.fromUri(server.url("/movie.mp4").toString()),2000)
+                player.prepare()
+            }
+            Assert.assertTrue("Player requests the stream while buffering",denyRequestStarted.await(10,TimeUnit.SECONDS))
+            compose.onNodeWithTag("playback-buffering").assertExists()
+            i.runOnMainSync {Assert.assertTrue("The last decoded frame remains visible during buffering",frozenFrame.isShown&&frozenFrame.drawable!=null)}
+        } finally {
+            sendDenial.countDown()
         }
-        compose.onNodeWithTag("playback-buffering").assertExists()
-        i.runOnMainSync {Assert.assertTrue("The last decoded frame remains visible during buffering",frozenFrame.isShown&&frozenFrame.drawable!=null)}
-        compose.waitUntil(15000){compose.onAllNodesWithText("Повторить").fetchSemanticsNodes().isNotEmpty()}
+        compose.waitUntil(10000){compose.onAllNodesWithText("Повторить").fetchSemanticsNodes().isNotEmpty()}
+        Assert.assertEquals("Access denial must not retry the same HTTP request",1,denied.get())
         i.runOnMainSync {Assert.assertTrue("The last decoded frame remains visible after a stream failure",frozenFrame.isShown&&frozenFrame.drawable!=null)}
         mode.set(0)
         compose.onNodeWithText("Повторить").performClick()

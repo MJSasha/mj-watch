@@ -146,6 +146,26 @@ class MobileGesturesTest {
         }
     }
 
+    @Test fun walkingDeadShiftedIntroAndOutroAreAvailableForManualSkip() {
+        val response=org.json.JSONObject("""{
+            "segments":{
+                "intro":{"start_ms":230000,"end_ms":265000,"offset_ms":-5000,"match":"shifted","confidence":0.82},
+                "outro":{"start_ms":2659000,"end_ms":2694000,"offset_ms":-5000,"match":"shifted","confidence":0.82}
+            }}""")
+        val markers=parseSkipSegments(response,2_694_000)
+        assertEquals(listOf(
+            SkipSegment(SegmentKind.INTRO,230_000,265_000,allowAutoSkip=false),
+            SkipSegment(SegmentKind.OUTRO,2_659_000,2_694_000,allowAutoSkip=false),
+        ),markers)
+        val state=SegmentSkipState()
+        repeat(24) {state.update(markers,235_000,2_694_000,true,false,true,it*250L)}
+        assertEquals("Пропустить опенинг",state.offer?.label)
+        assertNull(state.offer?.remainingMs)
+        assertEquals(265_000L,state.takeTarget(235_000,2_694_000))
+        response.getJSONObject("segments").getJSONObject("intro").put("offset_ms",-16_000)
+        assertEquals(listOf(SegmentKind.OUTRO),parseSkipSegments(response,2_694_000).map {it.kind})
+    }
+
     @Test fun doubleTapSeeksWithVisibleAndHiddenControlsAndClampsToVideo() {
         compose.setContent {PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{})}
         val video=compose.onNodeWithTag("player-gestures")

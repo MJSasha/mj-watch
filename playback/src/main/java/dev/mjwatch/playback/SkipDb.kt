@@ -67,12 +67,15 @@ internal fun parseSkipSegments(response: JSONObject, durationMs: Long): List<Ski
         val marker = segments.optJSONObject(kind.apiKey) ?: return@mapNotNull null
         val start = marker.optLong("start_ms", -1)
         val end = marker.optLong("end_ms", -1)
-        if (marker.optString("match") != "exact" || !(marker.optDouble("confidence") >= 0.7) ||
+        val match = marker.optString("match")
+        val exact = match == "exact"
+        val shifted = match == "shifted" && marker.optLong("offset_ms", Long.MAX_VALUE) in -15_000L..15_000L
+        if ((!exact && !shifted) || !(marker.optDouble("confidence") >= 0.7) ||
             start !in 0 until durationMs || end <= start || end > durationMs + 2_000 ||
             minOf(end, durationMs) - start < 5_000) {
             return@mapNotNull null
         }
-        SkipSegment(kind, start, end.coerceAtMost(durationMs))
+        SkipSegment(kind, start, end.coerceAtMost(durationMs), allowAutoSkip = exact)
     }
     val preview = matches.firstOrNull { it.kind == SegmentKind.PREVIEW }
     return matches.mapNotNull { segment ->
