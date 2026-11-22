@@ -1,10 +1,14 @@
 @file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 package dev.mjwatch.playback
 
+import android.content.Intent
 import android.view.SurfaceView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ActivityScenario
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.*
 import androidx.media3.exoplayer.*
@@ -28,6 +32,86 @@ class DecoderRuntimeRecoveryTest {
     @Test fun runtimeFailureSwitchesDecoderAndPreservesPausedPosition()=verify(false)
     @Test fun runtimeFailureSwitchesDecoderAndResumesPlaying()=verify(true)
     @Test fun runtimeFailureStopsAfterOneCompatibleRestartWhenNoAlternateExists()=verify(false,true)
+    @Test fun audioFailureCanResumeTheSameVideoWithoutAudio() {
+        val context = instrumentation.targetContext
+        val intent = Intent(context, PlaybackActivity::class.java).putExtra("mobile", false)
+            .putExtra("path", "demo.mp4").putExtra("uri", "asset:///demo.mp4")
+        ActivityScenario.launch<PlaybackActivity>(intent).use { scenario ->
+            lateinit var activity: PlaybackActivity
+            scenario.onActivity { activity = it }
+            val field = PlaybackActivity::class.java.getDeclaredField("player").apply { isAccessible = true }
+            await { (field.get(activity) as? ExoPlayer)?.let { it.playbackState == Player.STATE_READY &&
+                it.audioFormat != null } == true }
+            val activityPlayer = field.get(activity) as ExoPlayer
+            var position = 0L
+            scenario.onActivity { activity ->
+                val format = checkNotNull(activityPlayer.audioFormat)
+                activityPlayer.pause()
+                activityPlayer.seekTo(3_000)
+                activityPlayer.stop()
+                position = activityPlayer.currentPosition
+                val failure = ExoPlaybackException.createForRenderer(IllegalStateException("Injected audio failure"),
+                    "MediaCodecAudioRenderer", 0, format, C.FORMAT_HANDLED, null, false,
+                    PlaybackException.ERROR_CODE_DECODING_FAILED)
+                PlaybackActivity::class.java.getDeclaredMethod("showPlaybackFailure", PlaybackException::class.java, String::class.java)
+                    .apply { isAccessible = true }.invoke(activity, failure, null)
+            }
+            compose.onNodeWithText("Аудиодорожки").performClick()
+            scenario.onActivity { activity ->
+                val panel = PlaybackActivity::class.java.getDeclaredField("panel").apply { isAccessible = true }
+                    .get(activity) as android.app.AlertDialog
+                val row = panel.listView.count - 1
+                panel.listView.performItemClick(null, row, panel.listView.getItemIdAtPosition(row))
+            }
+            await { activityPlayer.playbackState == Player.STATE_READY }
+            scenario.onActivity {
+                assertTrue(C.TRACK_TYPE_AUDIO in activityPlayer.trackSelectionParameters.disabledTrackTypes)
+                assertEquals(position, activityPlayer.currentPosition)
+                assertFalse(activityPlayer.playWhenReady)
+            }
+        }
+    }
+
+    @Test fun failedPlatformAacSwitchesToFfmpegWithoutChangingPosition() {
+        val context = instrumentation.targetContext
+        val fallback = DecoderFallback()
+        var audioDecoder = ""
+        compose.setContent { AndroidView(modifier = Modifier.fillMaxSize(), factory = ::SurfaceView) }
+        try {
+            compose.runOnIdle {
+                player = ExoPlayer.Builder(context, fallback.renderers(context)).build()
+                player.addAnalyticsListener(object : AnalyticsListener {
+                    override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String,
+                        initializedTimestampMs: Long, initializationDurationMs: Long) {
+                        audioDecoder = decoderName
+                    }
+                })
+                player.setMediaItem(MediaItem.fromUri("asset:///demo.mp4"), 3_000L)
+                player.prepare()
+            }
+            await { player.playbackState == Player.STATE_READY && audioDecoder.isNotBlank() }
+            compose.runOnIdle {
+                assertFalse(audioDecoder.startsWith("ffmpeg", ignoreCase = true))
+                val format = checkNotNull(player.audioFormat)
+                assertEquals(MimeTypes.AUDIO_AAC, format.sampleMimeType)
+                val failure = ExoPlaybackException.createForRenderer(IllegalStateException("Injected AAC decoder error"),
+                    "MediaCodecAudioRenderer", 0, format, C.FORMAT_HANDLED, null, false,
+                    PlaybackException.ERROR_CODE_DECODING_FAILED)
+                player.stop()
+                assertTrue(fallback.recover(context, player, failure))
+                assertFalse(fallback.recover(context, player, failure))
+            }
+            await { player.playbackState == Player.STATE_READY && audioDecoder.startsWith("ffmpeg", ignoreCase = true) }
+            compose.runOnIdle {
+                assertEquals(3_000L, player.currentPosition)
+                assertTrue(player.currentTracks.isTypeSelected(C.TRACK_TYPE_AUDIO))
+                assertFalse(player.playWhenReady)
+            }
+        } finally {
+            if (::player.isInitialized) instrumentation.runOnMainSync { player.release() }
+        }
+    }
+
     private fun verify(playing:Boolean,oneDecoder:Boolean=false) {
         val context=instrumentation.targetContext
         val fallback=DecoderFallback(MediaCodecSelector {mime,secure,tunnel->

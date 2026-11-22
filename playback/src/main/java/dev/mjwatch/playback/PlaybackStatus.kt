@@ -33,7 +33,7 @@ internal data class PlaybackLoadingMetrics(
     val trackerSeeders:Int?,
 )
 
-internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false,val backLabel:String="К раздаче")
+internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false,val backLabel:String="К раздаче",val audioRecovery:Boolean=false)
 
 internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus = when {
     elapsedMs>=30_000 -> PlaybackStatus(if(firstFrame)"Буферизация" else "Готовим видео","Загрузка занимает больше времени",loading=true,compact=firstFrame)
@@ -44,18 +44,24 @@ internal fun bufferingStatus(firstFrame:Boolean,elapsedMs:Long=0):PlaybackStatus
 internal fun playbackFailureStatus(code:Int?,mime:String?=null,details:String="",offline:Boolean=false):PlaybackStatus {
     val audio=mime?.startsWith("audio/")==true
     val video=mime?.startsWith("video/")==true
+    val audioRecovery=code in 5000..5999 || (audio && code in 4000..4999)
     val track=if(audio) "Аудиодорожка" else if(video) "Видеодорожка" else "Дорожка"
     val (title,message)=when(code) {
         3001,3003 -> "Не удалось прочитать контейнер" to "Попробуйте другую раздачу этого видео."
-        4001,4002 -> "Не удалось запустить декодер" to "Доступные декодеры не удалось запустить. Попробуйте другую дорожку или раздачу."
+        4001,4002 -> "Не удалось запустить декодер" to "Доступные декодеры не удалось запустить. Попробуйте другую раздачу."
         4004,4005 -> "$track не поддерживается" to if(audio) "Выберите раздачу с другой аудиодорожкой." else "Выберите раздачу с другим кодеком или меньшим разрешением."
-        in 4000..4999 -> "Ошибка декодирования" to "Попробуйте другую дорожку или раздачу."
+        in 4000..4999 -> "Ошибка декодирования" to "Попробуйте другую раздачу."
         in 5000..5999 -> "Не удалось вывести звук" to "Проверьте настройки вывода звука или выберите другую аудиодорожку."
         else -> "Видео недоступно" to "Не удалось восстановить поток. Повторите попытку или проверьте сервер."
     }
     val diagnostic=listOfNotNull(code?.let {"Код: $it"},mime,details.takeIf {it.isNotBlank()}).joinToString(" · ")
-    val guidance=if(offline) "Проверьте дорожки или выберите другую загрузку." else message
-    return PlaybackStatus(title,guidance+if(diagnostic.isBlank()) "" else "\n$diagnostic",retry=code==null||code !in 4000..5999)
+    val guidance=when {
+        audioRecovery -> "Выберите другую аудиодорожку или продолжите без звука."
+        offline -> "Попробуйте другую загрузку."
+        else -> message
+    }
+    return PlaybackStatus(title,guidance+if(diagnostic.isBlank()) "" else "\n$diagnostic",
+        retry=code==null||code !in 4000..5999,audioRecovery=audioRecovery)
 }
 
 @Composable
@@ -68,10 +74,11 @@ internal fun PlaybackStatusOverlay(
     active: Boolean = true,
     metrics: PlaybackLoadingMetrics? = null,
     progress: Float? = null,
+    onAudioRecovery: () -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
-    LaunchedEffect(focusAction, active, status.loading, status.retry, windowFocused) {
+    LaunchedEffect(focusAction, active, status.loading, status.retry, status.audioRecovery, windowFocused) {
         if (focusAction && active && !status.loading && windowFocused) {
             withFrameNanos { }
             focus.requestFocus()
@@ -154,8 +161,10 @@ internal fun PlaybackStatusOverlay(
                 val actionColors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = foreground)
                 if (status.retry) TextButton(onClick = onRetry, colors = actionColors,
                     modifier = Modifier.focusRequester(focus).playerFocus()) { Text("Повторить") }
+                if (status.audioRecovery) TextButton(onClick = onAudioRecovery, colors = actionColors,
+                    modifier = Modifier.focusRequester(focus).playerFocus()) { Text("Аудиодорожки") }
                 TextButton(onClick = onBack, colors = actionColors,
-                    modifier = (if (status.retry) Modifier else Modifier.focusRequester(focus)).playerFocus()) { Text(status.backLabel) }
+                    modifier = (if (status.retry || status.audioRecovery) Modifier else Modifier.focusRequester(focus)).playerFocus()) { Text(status.backLabel) }
             }
         }
     }

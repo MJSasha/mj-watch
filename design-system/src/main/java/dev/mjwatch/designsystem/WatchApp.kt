@@ -382,7 +382,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(continuing.isNotEmpty())add("continue")
         if(s.catalog.isNotEmpty())add("catalog")
         if(s.config.demo)add("demo")
-        if(s.catalogMessage.isNotBlank()&&s.catalogMessage!="Каталог из кеша"&&s.catalog.isNotEmpty()&&!s.config.demo)add("message")
+        if(s.catalogMessage.isNotBlank()&&s.catalog.isNotEmpty()&&!s.config.demo)add("message")
         add("updates")
     }
     WatchTheme(if(hero!=null||s.config.demo) "dark" else s.config.theme) {

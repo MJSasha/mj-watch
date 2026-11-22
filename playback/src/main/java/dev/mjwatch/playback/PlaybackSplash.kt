@@ -55,6 +55,7 @@ internal fun PlaybackSplash(
     progress: Float?,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
+    onAudioRecovery: () -> Unit,
 ) {
     transition.AnimatedContent(
         modifier = Modifier.fillMaxSize(),
@@ -62,7 +63,7 @@ internal fun PlaybackSplash(
         contentKey = { it != null },
     ) { loading ->
         if (loading != null) {
-            SplashContent(loading, title, artwork, tv, metrics, progress, transition.targetState != null, onRetry, onCancel)
+            SplashContent(loading, title, artwork, tv, metrics, progress, transition.targetState != null, onRetry, onCancel, onAudioRecovery)
         } else Spacer(Modifier.fillMaxSize())
     }
 }
@@ -78,6 +79,7 @@ private fun SplashContent(
     active: Boolean,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
+    onAudioRecovery: () -> Unit,
 ) {
     var backdropFailed by remember(artwork?.backdrop) { mutableStateOf(false) }
     val background = if (backdropFailed) artwork?.poster else artwork?.backdrop ?: artwork?.poster
@@ -151,7 +153,7 @@ private fun SplashContent(
             }
             PlaybackStatusOverlay(status,onRetry,onCancel,
                 modifier=Modifier.align(Alignment.BottomCenter).padding(bottom = if (short) 14.dp else 24.dp),
-                focusAction=tv,active=active,metrics=metrics,progress=reveal)
+                focusAction=tv,active=active,metrics=metrics,progress=reveal,onAudioRecovery=onAudioRecovery)
         }
     }
 }

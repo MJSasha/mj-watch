@@ -168,7 +168,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         update {it.copy(catalogBusy=true,catalogMessage="")}
         catalogJob=viewModelScope.launch {try {
             val result=withContext(Dispatchers.IO) {metadataRepository().home(force,state.value.catalogSection)}
-            update {it.copy(catalog=result.items,catalogBusy=false,catalogMessage=if(result.cached) "Каталог из кеша" else "")}
+            update {it.copy(catalog=result.items,catalogBusy=false,catalogMessage="")}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
     }
     fun search(query:String) = search(query,releasesOnly=false)

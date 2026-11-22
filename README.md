@@ -57,6 +57,8 @@ Kotlin · Jetpack Compose · Media3 · Go / SQLite. JDK 21, Android SDK 36, Buil
 
 [Состояние и ограничения](STATUS.md) · [Контракты](docs/contracts/README.md) · [Проверки](docs/testing/ACCEPTANCE-REPORT.md) · [Дизайн](design/README.md)
 
+Программное декодирование аудио использует FFmpeg (LGPL 2.1 или новее) через расширение AndroidX Media3. Уведомления о лицензиях входят в APK. [Исходники и инструкции по пересборке и замене библиотеки](https://repo.maven.apache.org/maven2/io/put/media3-ffmpeg-decoder/1.11.1+1/media3-ffmpeg-decoder-1.11.1+1-ffmpeg-source.tar.xz) · [Репозиторий сборки и уведомления](https://github.com/putdotio/media3-ffmpeg-decoder/tree/v1.11.1%2B1).
+
 Из семьи [MJAnime](https://github.com/MJSasha/mj-anime) и [MJReader](https://github.com/MJSasha/mj-reader). Ключи и пароли шифруются Android Keystore; внешней аналитики нет.
 
 </details>

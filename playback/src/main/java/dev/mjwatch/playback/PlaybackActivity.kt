@@ -141,6 +141,7 @@ class PlaybackActivity : ComponentActivity() {
     private var contentIdentity=""
     private var releaseId=""; private var path=""; private var fileId=0
     private var rememberedAudio:RememberedAudio?=null
+    private var lastKnownTracks = Tracks.EMPTY
     private var status by androidx.compose.runtime.mutableStateOf<PlaybackStatus?>(bufferingStatus(false))
     private var artwork by androidx.compose.runtime.mutableStateOf<PlaybackArtwork?>(null)
     private var artworkJob: Job? = null
@@ -266,7 +267,10 @@ class PlaybackActivity : ComponentActivity() {
                 }
             }).build()
             player.addListener(object: Player.Listener {
-                override fun onTracksChanged(tracks:Tracks) {restoreAudio(tracks)}
+                override fun onTracksChanged(tracks:Tracks) {
+                    if (!tracks.isEmpty) lastKnownTracks = tracks
+                    restoreAudio(tracks)
+                }
                 override fun onEvents(player:Player,events:Player.Events) {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
@@ -486,6 +490,11 @@ class PlaybackActivity : ComponentActivity() {
         frozenFrame.clear()
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
+        lastKnownTracks = Tracks.EMPTY
+        if (C.TRACK_TYPE_AUDIO in player.trackSelectionParameters.disabledTrackTypes) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
+        }
         episodeIndex=index;path=episode.path;fileId=episode.fileId;contentIdentity=episode.contentKey
         tvSessionPlayer?.episodeChanged()
         remoteContentId=remoteContentId.substringBeforeLast(':',"")+":"+fileId
@@ -659,7 +668,7 @@ class PlaybackActivity : ComponentActivity() {
         releaseId.takeIf {it.isNotBlank()}?.let {"audio-track:${config.profileKey}:$it"}
 
     private fun restoreAudio(tracks:Tracks) {
-        if(released)return
+        if(released||tracks.isEmpty)return
         val saved=rememberedAudio ?: return
         val target=tracks.playbackTracks().filter {(group,index)->
             group.type==C.TRACK_TYPE_AUDIO&&saved.matches(group.getTrackFormat(index))
@@ -674,26 +683,50 @@ class PlaybackActivity : ComponentActivity() {
 
     private fun tracks() {
         if(!::player.isInitialized||released)return
-        val choices=player.currentTracks.playbackTracks().toList()
-        val rows=listOf(PlaybackMenuRow("Субтитры выключены",Icons.Outlined.SubtitlesOff,
-            selected=choices.none {(group,index)->group.type==C.TRACK_TYPE_TEXT&&group.isTrackSelected(index)}))+
-            choices.map {(group,index)->
-                val format=group.getTrackFormat(index)
-                val audio=group.type==C.TRACK_TYPE_AUDIO
-                val label="${if(audio) "Аудио" else "Субтитры"}: ${trackName(format.label,format.language)}"
-                PlaybackMenuRow(label,if(audio)Icons.Outlined.VolumeUp else Icons.Outlined.Subtitles,selected=group.isTrackSelected(index))
-            }
-        showPlaybackMenu("Аудио и субтитры",Icons.Outlined.Subtitles,rows) {which,_ ->
+        val audioRecovery = status?.audioRecovery == true
+        val tracks = player.currentTracks.takeUnless { audioRecovery && it.isEmpty } ?: lastKnownTracks
+        val choices = tracks.playbackTracks().toList()
+        val visibleChoices = choices.withIndex().filter { (_, entry) ->
+            val (group, index) = entry
+            !audioRecovery || (group.type == C.TRACK_TYPE_AUDIO && !group.isTrackSelected(index))
+        }
+        val labels = visibleChoices.map { (_, track) ->
+            val (group, index) = track
+            val format = group.getTrackFormat(index)
+            val kind = if (group.type == C.TRACK_TYPE_AUDIO) "Аудио" else "Субтитры"
+            "$kind: ${trackName(format.label, format.language)}"
+        }
+        val labelCounts = labels.groupingBy { it }.eachCount()
+        val trackRows = visibleChoices.mapIndexed { position, (_, track) ->
+            val (group, index) = track
+            val icon = if (group.type == C.TRACK_TYPE_AUDIO) Icons.Outlined.VolumeUp else Icons.Outlined.Subtitles
+            val label = labels[position]
+            val number = (position + 1).toString().takeIf { labelCounts.getValue(label) > 1 }
+            PlaybackMenuRow(label, icon, value = number, selected = group.isTrackSelected(index))
+        }
+        val rows = if (audioRecovery) trackRows + PlaybackMenuRow("Продолжить без звука", Icons.Outlined.VolumeOff)
+            else listOf(PlaybackMenuRow("Субтитры выключены", Icons.Outlined.SubtitlesOff,
+                selected=choices.none {(group,index)->group.type==C.TRACK_TYPE_TEXT&&group.isTrackSelected(index)})) + trackRows
+        showPlaybackMenu(if (audioRecovery) "Аудиодорожки" else "Аудио и субтитры",Icons.Outlined.Subtitles,rows) {which,_ ->
             val builder=player.trackSelectionParameters.buildUpon()
-            val selected=choices.getOrNull(which-1)
+            val selected=visibleChoices.getOrNull(if (audioRecovery) which else which-1)
             val preferences=getSharedPreferences("playback-preferences",MODE_PRIVATE)
-            if(selected==null) {builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true);preferences.edit().putBoolean("subtitles-off",true).apply()} else {
-                val (group,index)=selected
+            if (audioRecovery && selected == null) {
+                player.trackSelectionParameters = builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+                restartWithAudioSelection()
+                return@showPlaybackMenu
+            }
+            if (selected == null) {
+                builder.clearOverridesOfType(C.TRACK_TYPE_TEXT).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                preferences.edit().putBoolean("subtitles-off", true).apply()
+            } else {
+                val (group,index)=selected.value
                 val format=group.getTrackFormat(index)
-                builder.setTrackTypeDisabled(group.type,false)
+                builder.setTrackTypeDisabled(group.type, false)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
                 if(group.type==C.TRACK_TYPE_AUDIO) {
                     val choice=RememberedAudio(format.language,format.label,0)
-                    val ordinal=choices.take(which-1).count {(previous,position)->
+                    val ordinal=choices.take(selected.index).count {(previous,position)->
                         previous.type==C.TRACK_TYPE_AUDIO&&choice.matches(previous.getTrackFormat(position))
                     }
                     val exactChoice=choice.copy(ordinal=ordinal)
@@ -704,10 +737,12 @@ class PlaybackActivity : ComponentActivity() {
                     builder.setPreferredAudioLanguage(format.language)
                 } else {
                     preferences.edit().putString("subtitle-language",format.language).putBoolean("subtitles-off",false).apply()
-                    builder.setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup,index))
+                    builder.setPreferredTextLanguage(format.language)
                 }
-            }; save(); player.trackSelectionParameters=builder.build()
-            restoreAudio(player.currentTracks)
+            }
+            save()
+            player.trackSelectionParameters = builder.build()
+            if (audioRecovery) restartWithAudioSelection()
             val c=playbackConfig
             if(c?.historyEnabled==true)scope.launch(Dispatchers.IO){
                 if(Settings(applicationContext).config.first().profileKey!=c.profileKey)return@launch
@@ -716,6 +751,13 @@ class PlaybackActivity : ComponentActivity() {
             }
         }
     }
+    private fun restartWithAudioSelection() {
+        decoderFallback.reset()
+        terminalError = false
+        startedAt = System.currentTimeMillis()
+        player.prepare()
+    }
+
     private fun handlePlaybackBack() {
         panel?.let { it.dismiss(); return }
         val handleTvBack = tvBackHandler

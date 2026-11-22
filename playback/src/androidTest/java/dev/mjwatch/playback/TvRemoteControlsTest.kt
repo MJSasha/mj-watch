@@ -256,6 +256,16 @@ class TvRemoteControlsTest {
         pressBack();assertEquals(1,exits)
     }
 
+    @Test fun startupAudioErrorCanOpenTracksWithTheRemote() {
+        status = playbackFailureStatus(4003, "audio/mp4a-latm")
+        startsWithSplash = true
+        start()
+        compose.onNodeWithText("Аудиодорожки").assertIsFocused()
+        key(Key.DirectionCenter)
+        assertTrue(panel)
+        assertEquals(0, exits)
+    }
+
     @Test fun prolongedBufferingKeepsStatusAndBackAvailable() {
         start(true);focus("player-tracks")
         compose.runOnIdle {status=bufferingStatus(firstFrame=true,elapsedMs=30_000)}

@@ -131,7 +131,7 @@ internal fun createPlaybackMenu(
             views.icon.visibility = if (row.icon == null) View.GONE else View.VISIBLE
             views.icon.bind(row.icon, if (checked[position]) ACCENT else MUTED)
             views.label.text = row.label
-            ViewCompat.setStateDescription(views.label, when {
+            ViewCompat.setStateDescription(view, when {
                 toggleRows -> if (checked[position]) "Включено" else "Выключено"
                 checked[position] -> "Выбрано"
                 else -> null
@@ -155,27 +155,27 @@ internal fun createPlaybackMenu(
     else builder.setAdapter(adapter) { _, index -> choose(index, true) }
     if (onCredits != null) builder.setNeutralButton("SkipDB · ODbL") { _, _ -> onCredits() }
     val dialog = builder.create()
-    dialog.setOnShowListener {
-        dialog.window?.apply {
-            setBackgroundDrawable(surface(SURFACE, 20))
-            setDimAmount(.65f)
-            setLayout(dp(minOf(if (tv) 480 else 440, context.resources.configuration.screenWidthDp - 32)),
-                ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.listView.apply {
-            divider = null
-            setPadding(dp(8), 0, dp(8), dp(10))
-            selector = InsetDrawable(surface(SURFACE_HIGH, 12).apply {
-                if (tv) setStroke(dp(2), TEXT)
-            }, dp(2))
-            if (toggleRows) setOnItemClickListener { _, _, index, _ ->
-                checked[index] = !checked[index]
-                choose(index, checked[index])
-                adapter.notifyDataSetChanged()
-            }
-        }
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(ACCENT)
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(MUTED)
+    // Install the list and set the final window bounds before the entrance animation starts.
+    dialog.create()
+    dialog.window?.apply {
+        setBackgroundDrawable(surface(SURFACE, 20))
+        setDimAmount(.65f)
+        setLayout(dp(minOf(if (tv) 480 else 440, context.resources.configuration.screenWidthDp - 32)),
+            ViewGroup.LayoutParams.WRAP_CONTENT)
     }
+    dialog.listView.apply {
+        divider = null
+        setPadding(dp(8), 0, dp(8), dp(10))
+        selector = InsetDrawable(surface(SURFACE_HIGH, 12).apply {
+            if (tv) setStroke(dp(2), TEXT)
+        }, dp(2))
+        if (toggleRows) setOnItemClickListener { _, _, index, _ ->
+            checked[index] = !checked[index]
+            choose(index, checked[index])
+            adapter.notifyDataSetChanged()
+        }
+    }
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(ACCENT)
+    dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(MUTED)
     return dialog
 }

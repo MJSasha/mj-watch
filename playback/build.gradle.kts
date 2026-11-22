@@ -27,5 +27,6 @@ dependencies {
  api(libs.media3.exoplayer)
  implementation(libs.media3.ui)
  implementation(libs.media3.session)
- implementation("androidx.media3:media3-datasource-okhttp:1.9.2")
+ implementation(libs.media3.datasource.okhttp)
+ implementation("io.put:media3-ffmpeg-decoder:1.11.1+1")
 }

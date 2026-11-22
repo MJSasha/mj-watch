@@ -301,10 +301,10 @@ import kotlinx.coroutines.delay
                     TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
                 }
             }
-            PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
+            PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack,onAudioRecovery=onTracks)
             if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready&&!blockingStatus) 110.dp else 20.dp)) {
                 CompositionLocalProvider(LocalRippleConfiguration provides statusRipple) {
-                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,metrics=metrics)
+                    PlaybackStatusOverlay(status,onRetry,onBack,focusAction=true,metrics=metrics,onAudioRecovery=onTracks)
                 }
             }
             if(episodePanel&&episodes.isNotEmpty()) AlertDialog(onDismissRequest={episodePanel=false},title={Text("Выбор серии")},text={

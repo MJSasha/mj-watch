@@ -174,8 +174,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
                     TextButton(onClick={touch(skip::dismiss)}) {Text("Скрыть")}
                 }
             }
-            PlaybackSplash(splash,title,artwork,tv=false,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
-            if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,metrics=metrics)}
+            PlaybackSplash(splash,title,artwork,tv=false,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack,onAudioRecovery=onTracks)
+            if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,metrics=metrics,onAudioRecovery=onTracks)}
 
         }
     }
