@@ -575,12 +575,15 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
 }
 }
 }
-@Composable internal fun MetadataCard(m:Metadata,c:Config,tv:Boolean,restoreFocus:Boolean=false,onFocus:(()->Unit)?=null,onClick:()->Unit) {
+@Composable internal fun MetadataCard(
+    m:Metadata,c:Config,tv:Boolean,restoreFocus:Boolean=false,onFocus:(()->Unit)?=null,
+    modifier:Modifier=Modifier,onClick:()->Unit
+) {
     val requester=remember {FocusRequester()};var focused by remember {mutableStateOf(false)}
     LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
     LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
-    val modifier=Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus}
-    NativeCard(tv,modifier,onClick=onClick,outlined=!tv) {
+    NativeCard(tv,modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus},
+        onClick=onClick,outlined=!tv) {
         val frame = if(tv) Modifier.padding(TvPosterClearance).tvPosterFocus(focused) else Modifier
         Box(frame) {
             CinematicTitleTile(m,c,m.title,titleSubtitle(m),artworkTag="poster-${m.id}")

@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,7 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
@@ -141,34 +143,23 @@ private fun ActorFilmography(
                     CreditsStatus(filmography, "Загрузка фильмографии…", "Фильмография пока недоступна.",
                         "Не удалось загрузить фильмографию.", tv) { attempt++ }
                 } else {
-                    LazyColumn(
-                        Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = PaddingValues(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(if (tv) 160.dp else 110.dp),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(if (tv) 4.dp else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(titles, key = { it.id }) { title ->
-                            FilmographyTitle(title, config, tv) { onTitle(title) }
+                            MetadataCard(title, config, tv, modifier = Modifier.testTag("filmography-title-${title.id}")) {
+                                onTitle(title)
+                            }
                         }
                     }
                 }
             }
         }
         LaunchedEffect(tv) { if (tv) closeFocus.requestFocus() }
-    }
-}
-
-@Composable
-private fun FilmographyTitle(title: Metadata, config: Config, tv: Boolean, onClick: () -> Unit) {
-    NativeCard(tv, Modifier.fillMaxWidth().testTag("filmography-title-${title.id}"), onClick = onClick) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Artwork(title, config, Modifier.size(width = 48.dp, height = 72.dp).clip(RoundedCornerShape(8.dp)))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(listOfNotNull(title.year?.toString(), titleKind(title)).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
     }
 }
 

@@ -182,9 +182,10 @@ private fun DetailContent(
                                 Empty("Похожих пока нет","Попробуйте поиск по названию",tv,onClick={model.page("search")})
                             }
                         } else item {
+                            val cardWidth = if(tv) tvUnit(240f) else 156.dp
                             val cards: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                                 items(related,key={it.id}) { item ->
-                                    Box(Modifier.width(if(tv) tvUnit(180f) else 156.dp)) {
+                                    Box(Modifier.width(cardWidth)) {
                                         MetadataCard(item,s.config,tv) {model.metadata(item)}
                                     }
                                 }
