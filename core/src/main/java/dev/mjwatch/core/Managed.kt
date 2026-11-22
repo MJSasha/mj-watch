@@ -57,7 +57,48 @@ data class SyncCursor(@PrimaryKey val scope:String,val serverEpoch:String,val hi
   val newest=pending(server.scope).lastOrNull {it.kind==server.kind && it.entityKey==server.entityKey}
   put(if(newest==null) server else server.copy(json=newest.json,deleted=newest.operation=="delete"))
  }
+
+ @Transaction suspend fun resolveConflict(events:List<OutboxEntry>,body:String):OutboxEntry? {
+  val latest=events.last()
+  val server=latest.historyConflictServer(body)
+  events.dropLast(1).forEach {acknowledge(it.id)}
+  if(server==null) {
+   put(latest.copy(conflict=body))
+   return null
+  }
+  acknowledge(latest.id)
+  val timestamp=historyTimestampField(latest.kind)
+  if(JSONObject(server.json).optLong(timestamp)>JSONObject(latest.json).optLong(timestamp)) {
+   put(server)
+   return null
+  }
+  val retry=latest.copy(id=UUID.randomUUID().toString(),baseRevision=server.revision,conflict="")
+  put(retry)
+  put(server.copy(json=latest.json))
+  return retry
+ }
 }
+
+private fun historyTimestampField(kind:String)=when(kind) {
+ "opening" -> "openedAt"
+ "progress" -> "updatedAt"
+ else -> ""
+}
+
+private fun OutboxEntry.historyConflictServer(body:String):SyncEntity? = runCatching {
+ val timestamp=historyTimestampField(kind)
+ if(timestamp.isEmpty()||operation!="put"||JSONObject(json).optLong(timestamp)<=0) return null
+ val conflict=JSONObject(body)
+ if(conflict.optString("code")!="conflict") return null
+ val server=conflict.getJSONObject("entity").syncEntity(scope)
+ server.takeIf {
+  it.kind==kind&&it.entityKey==entityKey&&!it.deleted&&it.revision>0&&JSONObject(it.json).optLong(timestamp)>0
+ }
+}.getOrNull()
+
+private fun JSONObject.syncEntity(scope:String)=SyncEntity(scope,getString("kind"),getString("entityKey"),
+ getJSONObject("value").toString(),getLong("revision"),optBoolean("deleted"))
+
 /** The private CA is scoped to the managed origin; other integrations keep system trust. */
 fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpClient {
  require(c.managed&&endpoint(c.managedUrl).scheme=="https") {"MJWatch требует HTTPS"}
@@ -237,15 +278,34 @@ class SyncEngine(private val api:ManagedApi,private val dao:SyncDao) {
   val me=knownMe ?: api.authorized("me");if(cursor.serverEpoch!=me.getString("serverEpoch")||cursor.historyEpoch!=me.getLong("historyEpoch")){snapshot();return@withLock}
   val canPush=android.os.SystemClock.elapsedRealtime()-(lastPush[scope] ?: -15000)>=15000
   for(p in if(canPush)dao.pending(scope) else emptyList()) {
-   if(p.conflict.isNotBlank()) continue
-   val json=JSONObject().put("mutationId",p.id).put("kind",p.kind).put("entityKey",p.entityKey).put("baseRevision",p.baseRevision).put("operation",p.operation).put("value",JSONObject(p.json)).put("serverEpoch",p.serverEpoch).put("historyEpoch",p.historyEpoch).put("playSession",p.playSession).put("sequence",p.sequence)
-   try {val result=api.authorized("mutations","POST",json);dao.acknowledged(p,entity(result.getJSONObject("entity")));lastPush[scope]=android.os.SystemClock.elapsedRealtime()}catch(e:HttpFailure){if(e.status==409){val related=dao.pending(scope).filter {it.kind==p.kind&&it.entityKey==p.entityKey};val latest=related.lastOrNull() ?: p;related.filter {it.id!=latest.id}.forEach {dao.acknowledge(it.id)};dao.put(latest.copy(conflict=e.responseBody ?: "{}"));break}else throw e}
+   if(p.conflict.isNotBlank()&&p.historyConflictServer(p.conflict)==null) continue
+   try {
+    push(p)
+   } catch(e:HttpFailure) {
+    if(e.status!=409) throw e
+    val related=dao.pending(scope).filter {it.kind==p.kind&&it.entityKey==p.entityKey}
+    val retry=dao.resolveConflict(related,e.responseBody ?: "{}")
+    if(retry!=null) {
+     try {
+      push(retry)
+     } catch(next:HttpFailure) {
+      if(next.status!=409) throw next
+      dao.resolveConflict(listOf(retry),next.responseBody ?: "{}")
+     }
+    }
+    break
+   }
   }
   var current=dao.cursor(scope)!!
   do {val result=api.authorized("sync?cursor=${current.cursor}&serverEpoch=${current.serverEpoch}");current=SyncCursor(scope,result.getString("serverEpoch"),result.getLong("historyEpoch"),result.getLong("cursor"));dao.pull(scope,parse(result),current,false)}while(result.optBoolean("more"))
  }
- private fun entity(j:JSONObject)=SyncEntity(scope,j.getString("kind"),j.getString("entityKey"),j.getJSONObject("value").toString(),j.getLong("revision"),j.optBoolean("deleted"))
- private fun parse(j:JSONObject):List<SyncEntity> {val a=j.getJSONArray("entities");return (0 until a.length()).map {entity(a.getJSONObject(it))}}
+ private suspend fun push(p:OutboxEntry) {
+  val json=JSONObject().put("mutationId",p.id).put("kind",p.kind).put("entityKey",p.entityKey).put("baseRevision",p.baseRevision).put("operation",p.operation).put("value",JSONObject(p.json)).put("serverEpoch",p.serverEpoch).put("historyEpoch",p.historyEpoch).put("playSession",p.playSession).put("sequence",p.sequence)
+  val result=api.authorized("mutations","POST",json)
+  dao.acknowledged(p,result.getJSONObject("entity").syncEntity(scope))
+  lastPush[scope]=android.os.SystemClock.elapsedRealtime()
+ }
+ private fun parse(j:JSONObject):List<SyncEntity> {val a=j.getJSONArray("entities");return (0 until a.length()).map {a.getJSONObject(it).syncEntity(scope)}}
  suspend fun connect(){mutex.withLock {snapshot()};sync()}
  private suspend fun completeSnapshot(fresh:Boolean=false):JSONObject {var result=api.authorized(if(fresh)"snapshot?fresh=1" else "snapshot");val all=JSONArray();while(true){val rows=result.getJSONArray("entities");for(i in 0 until rows.length())all.put(rows.getJSONObject(i));if(!result.optBoolean("more"))return result.put("entities",all);result=api.authorized("snapshot?snapshotId=${result.getString("snapshotId")}&offset=${result.getInt("nextOffset")}")}}
  private suspend fun snapshot() {val result=completeSnapshot();val old=dao.cursor(scope);if(old!=null&&(old.serverEpoch!=result.getString("serverEpoch")||old.historyEpoch!=result.getLong("historyEpoch"))){val server=parse(result);dao.pending(scope).groupBy {it.kind to it.entityKey}.values.forEach {related->val pending=related.last();if(old.serverEpoch==result.getString("serverEpoch")&&pending.kind !in setOf("opening","progress")){related.forEach {dao.put(it.copy(historyEpoch=result.getLong("historyEpoch")))};return@forEach};related.dropLast(1).forEach {dao.acknowledge(it.id)};val current=server.firstOrNull {it.kind==pending.kind&&it.entityKey==pending.entityKey};val conflict=JSONObject().put("code","resync_required");if(current!=null)conflict.put("entity",JSONObject().put("value",JSONObject(current.json)));dao.put(pending.copy(conflict=conflict.toString()))}};dao.pull(scope,parse(result),SyncCursor(scope,result.getString("serverEpoch"),result.getLong("historyEpoch"),result.getLong("cursor")),true)}

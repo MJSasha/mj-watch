@@ -608,7 +608,7 @@ private fun titleSubtitle(metadata:Metadata) = listOfNotNull(metadata.year?.toSt
         Artwork(
             metadata,config,
             Modifier.matchParentSize().testTag(artworkTag),
-            backdrop=true,demo=demo,alignment=Alignment.Center
+            backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
         )
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth()
@@ -1147,7 +1147,7 @@ private class ReleaseOptions(
         } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min=minHeight).background(surface),
             verticalAlignment=Alignment.CenterVertically) {
             Box(Modifier.width(artWidth).fillMaxHeight().testTag("library-poster-${e.id}")) {
-                Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,demo=demoArt)
+                Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,demo=demoArt,posterFirst=true)
             }
             Column(Modifier.weight(1f).padding(
                 start=if(tv) tvUnit(24f) else 12.dp,end=if(tv) tvUnit(24f) else 12.dp,

@@ -128,16 +128,17 @@ import kotlinx.coroutines.launch
     if(tv) androidx.tv.material3.Card(onClick={if(!pendingLongClick)onClick()},onLongClick=onLongClick?.let {action->{if(remoteHeld)pendingLongClick=true else action()}},modifier=modifier.then(shelfModifier).then(remoteModifier),scale=androidx.tv.material3.CardDefaults.scale(focusedScale=1f,pressedScale=1f),shape=androidx.tv.material3.CardDefaults.shape(shape=shape),colors=androidx.tv.material3.CardDefaults.colors(containerColor=if(!outlined) Color.Transparent else if(selected) colors.primaryContainer else colors.surface,focusedContainerColor=if(outlined) colors.primaryContainer else Color.Transparent),border=androidx.tv.material3.CardDefaults.border(focusedBorder=if(outlined) tvFocusBorder(16.dp) else androidx.tv.material3.Border.None)) {content()}
     else Card(modifier=modifier.combinedClickable(onClick=onClick,onLongClick=onLongClick),shape=shape,colors=CardDefaults.cardColors(containerColor=if(selected) colors.primaryContainer else colors.surface),border=if(selected) BorderStroke(1.dp,colors.primary) else null) {content()}
 }
-@Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false,alignment:Alignment?=null) {
+@Composable internal fun Artwork(metadata:Metadata?,config:Config,modifier:Modifier=Modifier,backdrop:Boolean=false,demo:Boolean=false,alignment:Alignment?=null,posterFirst:Boolean=false) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         if(demo) Image(painterResource(R.drawable.demo_orbit),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.CenterEnd)
         else {
             Icon(Icons.Outlined.Movie,null,Modifier.align(Alignment.Center).size(40.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
-            val uri=if(config.metadataProvider=="tmdb") if(backdrop) metadata?.backdrop ?: metadata?.poster else metadata?.poster else null
+            val useBackdrop=backdrop&&(!posterFirst||metadata?.poster.isNullOrBlank())
+            val uri=if(config.metadataProvider=="tmdb") if(useBackdrop) metadata?.backdrop ?: metadata?.poster else metadata?.poster else null
             if(uri!=null) {
                 val context=LocalContext.current
                 val request=remember(context,uri) {ImageRequest.Builder(context).data(uri).crossfade(220).build()}
-                AsyncImage(model=request,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(backdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(backdrop) BiasAlignment(.38f,0f) else Alignment.Center)
+                AsyncImage(model=request,imageLoader=LocalImages.current,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=if(useBackdrop) ContentScale.Crop else ContentScale.Fit,alignment=alignment ?: if(useBackdrop) BiasAlignment(.38f,0f) else Alignment.Center)
             }
         }
     }

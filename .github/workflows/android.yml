@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  # setup-gradle v4 restores separately cached transforms before applying exclusions.
+  GRADLE_BUILD_ACTION_SKIP_RESTORE: transforms
 concurrency:
   group: android-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'dry-run' || 'ci' }}
   cancel-in-progress: true
@@ -32,12 +35,26 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: actions/cache/restore@v4
+        id: test-supply
+        with:
+          path: core/src/main/assets/server
+          key: ${{ runner.os }}-test-supply-go1.26.1-${{ hashFiles('server/**/*.go', 'server/go.*', 'server/*.sh', 'server/*.py', 'server/supply.lock.json', 'server/packaging/**') }}
       - uses: actions/setup-go@v5
+        if: steps.test-supply.outputs.cache-hit != 'true'
         with:
           go-version: '1.26.1'
           cache-dependency-path: server/go.sum
       - run: sh server/prepare-ci.sh --local-test
+        if: steps.test-supply.outputs.cache-hit != 'true'
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.test-supply.outputs.cache-hit != 'true'
+        with:
+          path: core/src/main/assets/server
+          key: ${{ steps.test-supply.outputs.cache-primary-key }}
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-excludes: caches/*/transforms
       - name: Check and build debug APKs
         run: ./gradlew "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :core:testDebugUnitTest :playback:testDebugUnitTest :app-mobile:lintDebug :app-tv:lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug --build-cache --no-daemon --stacktrace
       - name: Check release APK compilation on PRs
@@ -52,18 +69,18 @@ jobs:
             **/build/reports/
   runtime:
     runs-on: ubuntu-latest
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
+        device: [phone, tv]
+        shard: [0, 1, 2]
         include:
-          - app: app-mobile
-            api: 35
-            target: default
-            profile: pixel_2
-          - app: app-tv
-            api: 36
-            target: android-tv
-            profile: tv_1080p
+          - {device: phone, api: 35, target: default, profile: pixel_2, module: app-mobile, shards: 3}
+          - {device: tv, api: 36, target: android-tv, profile: tv_1080p, module: app-tv, shards: 3}
+          - {device: phone-offline, api: 35, target: default, profile: pixel_2, module: core, shard: 0, shards: 1}
+          - {device: tv-playback, api: 36, target: android-tv, profile: tv_1080p, module: playback, shard: 0, shards: 1}
+    name: runtime (${{ matrix.device }}, ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -73,12 +90,23 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: actions/cache/restore@v4
+        id: test-supply
+        if: matrix.module != 'playback'
+        with:
+          path: core/src/main/assets/server
+          key: ${{ runner.os }}-test-supply-go1.26.1-${{ hashFiles('server/**/*.go', 'server/go.*', 'server/*.sh', 'server/*.py', 'server/supply.lock.json', 'server/packaging/**') }}
       - uses: actions/setup-go@v5
+        if: matrix.module != 'playback' && steps.test-supply.outputs.cache-hit != 'true'
         with:
           go-version: '1.26.1'
           cache-dependency-path: server/go.sum
       - run: sh server/prepare-ci.sh --local-test
+        if: matrix.module != 'playback' && steps.test-supply.outputs.cache-hit != 'true'
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' || matrix.shard != 0 }}
+          gradle-home-cache-excludes: caches/*/transforms
       - run: echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules && sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - id: runtime
         uses: reactivecircus/android-emulator-runner@v2
@@ -87,21 +115,29 @@ jobs:
           target: ${{ matrix.target }}
           arch: x86_64
           profile: ${{ matrix.profile }}
-          script: |
-            set -e
-            echo "Emulator ready at $(date -u +%FT%TZ)"
-            ./gradlew --profile --build-cache :${{ matrix.app }}:connectedDebugAndroidTest
-            if [ "${{ matrix.app }}" = "app-tv" ]; then ./gradlew --profile --build-cache :playback:connectedDebugAndroidTest; fi
-            if [ "${{ matrix.app }}" = "app-mobile" ]; then ./gradlew --profile --build-cache :core:connectedDebugAndroidTest && bash scripts/check-offline-emulator.sh; fi
+          # The emulator action executes each input line in its own shell.
+          script: >-
+            set -e;
+            echo "Emulator ready at $(date -u +%FT%TZ)";
+            if [ "${{ matrix.device }}" = "phone-offline" ]; then
+            ./gradlew --profile --build-cache :core:connectedDebugAndroidTest
+            :app-mobile:assembleDebug :app-mobile:assembleDebugAndroidTest;
+            bash scripts/check-offline-emulator.sh;
+            else
+            ./gradlew --profile --build-cache :${{ matrix.module }}:connectedDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.numShards=${{ matrix.shards }}
+            -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }};
+            fi;
             echo "Runtime checks passed at $(date -u +%FT%TZ)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: runtime-${{ matrix.app }}
+          name: runtime-${{ matrix.device }}-${{ matrix.shard }}
           path: |
             app-*/build/reports/androidTests/
             playback/build/reports/androidTests/
             core/build/reports/androidTests/
+            **/build/outputs/androidTest-results/
             build/reports/profile/
   prepare-release:
     if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
@@ -120,6 +156,9 @@ jobs:
           go-version: '1.26.1'
           cache-dependency-path: server/go.sum
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
       - name: Prepare stable server supply
         if: github.ref == 'refs/heads/main'
         run: sh server/prepare-ci.sh

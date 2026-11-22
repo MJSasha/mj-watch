@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.AdaptiveIconDrawable
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -66,9 +67,10 @@ class IssueFixesUiTest {
         compose.runOnIdle {
             if(android.os.Build.VERSION.SDK_INT>=30)compose.activity.window.insetsController?.hide(android.view.WindowInsets.Type.ime())
         }
-        compose.waitForIdle()
-        compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить"))
-        compose.onNodeWithText("Сохранить").performClick()
+        val saveButton=hasText("Сохранить") and hasClickAction()
+        compose.onNodeWithTag("settings-list").performScrollToNode(saveButton)
+        compose.waitUntil(5000) {compose.onNode(saveButton).isDisplayed()}
+        compose.onNode(saveButton).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(10000) {model.state.value.page=="settings"&&!model.state.value.busy}
         Assert.assertEquals(config.scope,model.state.value.config.scope)
         Assert.assertEquals(config.managedUrl,model.state.value.config.managedUrl)

@@ -157,6 +157,37 @@ class ContractsTest {
             assertNull(dao.resumeProgress(scope,"release","episode-1"))
         } finally {db.close()}
     }
+    @Test fun historyConflictsKeepTheMostRecentlySavedPosition()=runBlocking {
+        val db=androidx.room.Room.inMemoryDatabaseBuilder(org.robolectric.RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
+        try {
+            val dao=db.syncDao()
+            val position=Progress("episode","release",1,"Season 2/S02E03.mkv",40000,90000,20,false)
+            val first=OutboxEntry("first","scope","progress",position.key,position.syncJson().toString(),1,"put","epoch",1)
+            val newest=first.copy(id="newest",baseRevision=2,sequence=2,
+                json=position.copy(updatedAt=30,positionMs=10000).syncJson().toString())
+            fun conflict(updatedAt:Long,deleted:Boolean=false)=org.json.JSONObject("""{"code":"conflict","entity":{"kind":"progress","entityKey":"episode","revision":5}}""")
+                .apply {getJSONObject("entity").put("deleted",deleted).put("value",position.copy(updatedAt=updatedAt).syncJson())}
+                .toString()
+
+            listOf(first,newest).forEach {dao.put(it)}
+            val retry=dao.resolveConflict(listOf(first,newest),conflict(25))!!
+            assertEquals(5L,retry.baseRevision)
+            assertEquals(newest.sequence,retry.sequence)
+            assertEquals(listOf(retry),dao.pending(first.scope))
+            assertEquals(10000L,dao.resumeProgress(first.scope,position.releaseId,position.key)!!.positionMs)
+
+            val tied=dao.resolveConflict(listOf(retry),conflict(30))!!
+            assertEquals(newest.json,tied.json)
+            assertNull(dao.resolveConflict(listOf(tied),conflict(31)))
+            assertTrue(dao.pending(first.scope).isEmpty())
+            assertEquals(position.copy(updatedAt=31),dao.resumeProgress(first.scope,position.releaseId,position.key))
+
+            dao.put(first)
+            val deletion=conflict(31,deleted=true)
+            assertNull(dao.resolveConflict(listOf(first),deletion))
+            assertEquals(deletion,dao.pending(first.scope).single().conflict)
+        } finally {db.close()}
+    }
     @Test fun handoffConfigSchemaAndPaths() {
         val c=decodeConfig(fixture("config.example.json"))
         assertEquals("https://jackett.example.invalid",c.jackett)
