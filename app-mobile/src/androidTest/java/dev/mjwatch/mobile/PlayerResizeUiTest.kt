@@ -57,7 +57,7 @@ class PlayerResizeUiTest {
    resize(size.first,size.second)
    val bounds=ui.onNodeWithTag("player-controls-actions").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
    val density=a.resources.displayMetrics.density
-   for(label in listOf("Предыдущая серия","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Следующая серия","Аудио и субтитры","Масштаб","PiP")) {
+   for(label in listOf("Предыдущая серия","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Следующая серия","Аудио и субтитры","Параметры видео","Картинка в картинке")) {
     val action=ui.onNodeWithContentDescription(label).assertIsDisplayed().assertHasClickAction().fetchSemanticsNode().touchBoundsInRoot
     Assert.assertTrue("$label inside current window",action.left>=bounds.left&&action.right<=bounds.right&&action.top>=bounds.top&&action.bottom<=bounds.bottom&&action.right<=size.first*2&&action.bottom<=size.second*2)
     Assert.assertTrue("$label retains touch target: ${action.width/density} x ${action.height/density}dp",action.width/density>=47.5f&&action.height/density>=47.5f)

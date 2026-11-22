@@ -821,8 +821,10 @@ private class ReleaseOptions(
             launching=true
             scope.launch {
                 try {
-                    val key=contentKey(requireNotNull(handle.contentHash),file.path,file.size)
-                    val position=model.playbackPosition(s.config,release.id,key)
+                    val position=if(s.config.historyEnabled) {
+                        val key=handle.contentHash?.let {contentKey(it,file.path,file.size)} ?: "${release.id}|${file.path}"
+                        model.playbackPosition(s.config,release.id,key)
+                    } else 0L
                     val current=model.remote.value.target
                     if(current?.id!=target.id||current.instance!=target.instance||!model.isFileSelectionActive(handle.hash,release.id))return@launch
                     dev.mjwatch.playback.RemotePlaybackService.load(dev.mjwatch.playback.RemoteMedia(handle.hash,file.serverFileId,s.selectedMetadata?.title ?: release.displayTitle(),release.id,"${handle.contentHash}:${file.serverFileId}",s.selectedMetadata?.id.orEmpty(),position))

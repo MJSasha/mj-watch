@@ -73,6 +73,8 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_DPAD_UP)
         compose.waitUntil(5000) {runCatching {compose.onNodeWithTag("player-timeline").assertIsFocused();true}.getOrDefault(false)}
         key(KeyEvent.KEYCODE_DPAD_UP)
+        compose.onNodeWithTag("player-tracks").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_UP)
         compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
     }
     private fun awaitReady(a:PlaybackActivity) {
@@ -121,8 +123,8 @@ class TvPlayerBehaviorTest {
         capture("00-prompt")
         key(KeyEvent.KEYCODE_BACK)
         focused("player-play");capture("01-play")
-        repeat(4) {key(KeyEvent.KEYCODE_DPAD_RIGHT)}
-        focused("player-tracks");capture("02-tracks-button")
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline")
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-tracks");capture("02-tracks-button")
         repeat(5) {index->
             key(KeyEvent.KEYCODE_DPAD_CENTER)
             if(index==0)capture("03-tracks-open")
@@ -134,19 +136,21 @@ class TvPlayerBehaviorTest {
         capture("05-tracks-return")
         key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-video")
         key(KeyEvent.KEYCODE_DPAD_CENTER);capture("06-video-panel")
-        key(KeyEvent.KEYCODE_DPAD_DOWN);key(KeyEvent.KEYCODE_DPAD_CENTER)
-        capture("07-speed-panel")
+        selectDialog(0);capture("07-speed-panel")
         key(KeyEvent.KEYCODE_BACK);focused("player-video");capture("08-video-return")
+        key(KeyEvent.KEYCODE_DPAD_DOWN);focused("player-play")
         key(KeyEvent.KEYCODE_DPAD_UP);focused("player-timeline");capture("09a-timeline-focused")
         key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("09-seek-preview")
         key(KeyEvent.KEYCODE_BACK);focused("player-timeline")
+        key(KeyEvent.KEYCODE_DPAD_UP);focused("player-tracks")
         key(KeyEvent.KEYCODE_DPAD_UP)
+        compose.waitUntil(5000) {compose.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
         key(KeyEvent.KEYCODE_DPAD_UP);focused("player-back")
-        key(KeyEvent.KEYCODE_DPAD_RIGHT)
-        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("10-top-tracks")
-        key(KeyEvent.KEYCODE_BACK)
-        compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
-        capture("11-top-tracks-return")
+        key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-episodes")
+        key(KeyEvent.KEYCODE_DPAD_RIGHT);focused("player-tracks")
+        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("10-tracks-reopened")
+        key(KeyEvent.KEYCODE_BACK);focused("player-tracks")
+        capture("11-tracks-return")
         key(KeyEvent.KEYCODE_DPAD_DOWN);focused("player-play")
     }
     @Test fun remotePreviewModalFocusHiddenControlsAndSingleBackExitWithRealVideo() {
@@ -166,9 +170,8 @@ class TvPlayerBehaviorTest {
         instrumentation.runOnMainSync {Assert.assertNotNull(field(a,"panel"))}
         key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {runCatching {compose.onNodeWithTag("player-tracks").assertIsFocused();true}.getOrDefault(false)}
-        key(KeyEvent.KEYCODE_DPAD_UP);compose.onNodeWithTag("player-timeline").assertIsFocused()
-        key(KeyEvent.KEYCODE_DPAD_UP)
-        compose.onNodeWithTag("player-play").assertDoesNotExist()
+        key(KeyEvent.KEYCODE_DPAD_DOWN);compose.onNodeWithTag("player-play").assertIsFocused()
+        hideControlsFromPlay()
         key(KeyEvent.KEYCODE_DPAD_LEFT)
         compose.onNodeWithTag("player-play").assertDoesNotExist()
         key(KeyEvent.KEYCODE_DPAD_UP);compose.onNodeWithTag("player-back").assertIsFocused()
@@ -230,16 +233,20 @@ class TvPlayerBehaviorTest {
         key(KeyEvent.KEYCODE_MEDIA_NEXT)
         instrumentation.runOnMainSync {Assert.assertEquals(2,field(a,"fileId"))}
     }
-    @Test fun changingQualityAudioSpeedAndFitKeepsPausedPosition() {
+    @Test fun changingAudioSpeedAndFitKeepsPausedPosition() {
         val a=launch();val player=field(a,"player") as Player
         fun videoMenu() {
             focus(compose.onNodeWithTag("player-video"))
             key(KeyEvent.KEYCODE_DPAD_CENTER)
         }
-        videoMenu();selectDialog(0);selectDialog(1)
-        instrumentation.runOnMainSync {Assert.assertEquals(2000L,player.currentPosition);Assert.assertFalse(player.playWhenReady)}
-        videoMenu();selectDialog(1);selectDialog(4)
-        videoMenu();selectDialog(2);selectDialog(1)
+        videoMenu()
+        instrumentation.runOnMainSync {
+            val rows=(field(a,"panel") as android.app.AlertDialog).listView.adapter
+            Assert.assertFalse((0 until rows.count).any {rows.getItem(it).toString()=="Качество"})
+            Assert.assertEquals(2000L,player.currentPosition);Assert.assertFalse(player.playWhenReady)
+        }
+        selectDialog(0);selectDialog(4)
+        videoMenu();selectDialog(1);selectDialog(1)
         focus(compose.onNodeWithTag("player-tracks"))
         key(KeyEvent.KEYCODE_DPAD_CENTER);selectDialog(0)
         instrumentation.runOnMainSync {
@@ -264,7 +271,7 @@ class TvPlayerBehaviorTest {
                 Assert.assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,it))
             }
         }
-        val labels=listOf("Предыдущая серия","Следующая серия","Назад","Дорожки","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Выбор серии","Аудио и субтитры","Параметры видео")
+        val labels=listOf("Предыдущая серия","Следующая серия","Назад","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Выбор серии","Аудио и субтитры","Параметры видео")
         for(label in labels) {
             val node=compose.onNodeWithContentDescription(label)
             try {node.assertExists().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)}
@@ -277,10 +284,6 @@ class TvPlayerBehaviorTest {
             compose.onNodeWithTag(tag).assertIsFocused()
             capture(tag)
         }
-        focus(compose.onNodeWithContentDescription("Дорожки"))
-        capture("top-tracks")
-        key(KeyEvent.KEYCODE_DPAD_CENTER);capture("top-tracks-dialog");key(KeyEvent.KEYCODE_BACK)
-        compose.onNodeWithContentDescription("Дорожки").assertIsFocused()
         focus(compose.onNodeWithTag("player-timeline"))
         key(KeyEvent.KEYCODE_DPAD_RIGHT);capture("timeline-preview")
         key(KeyEvent.KEYCODE_BACK)

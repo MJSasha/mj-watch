@@ -37,13 +37,17 @@ class PhonePlaybackRouteTest {
         }
         ui.waitUntil(5000) {ui.onAllNodesWithTag("source-continue").fetchSemanticsNodes().isNotEmpty()}
     }
+    private fun chooseFirstDemoEpisode() {
+        ui.waitUntil(10000) {ui.onAllNodesWithTag("file-list").fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-3"))
+        ui.onNodeWithTag("file-3").performClick()
+        ui.onNodeWithTag("file-continue").performClick()
+    }
     @Test fun unavailableTelevisionDoesNotBlockPhonePlayback() {
         selectRelease(false)
         ui.onNodeWithTag("source-continue-tv").assertDoesNotExist()
         ui.onNodeWithTag("source-continue").assertIsDisplayed().performClick()
-        ui.waitUntil(10000) {ui.onAllNodesWithText("Сезон 1 · Серия 1").fetchSemanticsNodes().isNotEmpty()}
-        ui.onNodeWithText("Сезон 1 · Серия 1").performClick()
-        ui.onNodeWithTag("file-continue").performClick()
+        chooseFirstDemoEpisode()
         val i=InstrumentationRegistry.getInstrumentation()
         var player:PlaybackActivity?=null
         ui.waitUntil(15000) {
@@ -62,9 +66,7 @@ class PhonePlaybackRouteTest {
         ui.runOnIdle {model=ViewModelProvider(ui.activity)[WatchModel::class.java]}
         ui.waitUntil(10000) {model.state.value.page=="files"}
         Assert.assertTrue(model.state.value.remotePlayback)
-        ui.waitUntil(5000) {ui.onAllNodesWithText("Сезон 1 · Серия 1").fetchSemanticsNodes().isNotEmpty()}
-        ui.onNodeWithText("Сезон 1 · Серия 1").performClick()
-        ui.onNodeWithTag("file-continue").performClick()
+        chooseFirstDemoEpisode()
         ui.waitUntil(5000) {model.state.value.page=="detail"}
         Assert.assertFalse("TV launch must not fall back to a phone player",PlaybackActivity.hasActivePlayback())
     }

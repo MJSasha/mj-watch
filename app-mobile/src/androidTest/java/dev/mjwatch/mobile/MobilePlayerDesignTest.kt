@@ -49,7 +49,7 @@ class MobilePlayerDesignTest {
             InstrumentationRegistry.getArguments().getString("evidenceDir","phone")).apply {mkdirs()}
         fun capture(name:String) {ui.waitForIdle();Assert.assertTrue(UiDevice.getInstance(instrumentation).takeScreenshot(File(folder,"$name.png")))}
         capture("initial")
-        for(label in listOf("Назад","Дорожки","Предыдущая серия","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Следующая серия","Аудио и субтитры","Масштаб","PiP")) {
+        for(label in listOf("Назад","Предыдущая серия","Назад на 10 секунд","Воспроизвести","Вперёд на 10 секунд","Следующая серия","Аудио и субтитры","Параметры видео","Картинка в картинке")) {
             try {ui.onNodeWithContentDescription(label).assertIsDisplayed().assertHasClickAction()
                 .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)}
             catch(error:AssertionError) {throw AssertionError("Target: $label",error)}
