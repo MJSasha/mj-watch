@@ -53,6 +53,7 @@ private const val INITIAL_BUFFER_MS = 1500
 class PlaybackActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_OFFLINE="offlinePlayback"
+        const val EXTRA_SEGMENT_QUEUE_SEASON = "segmentQueueSeason"
 
         fun offlineIntent(
             context:Context,
@@ -324,7 +325,7 @@ class PlaybackActivity : ComponentActivity() {
             player.setMediaItem(mediaItem(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
-            fetchSkipSegments(config, initial=true)
+            fetchSkipSegments(config)
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
@@ -500,17 +501,19 @@ class PlaybackActivity : ComponentActivity() {
         remoteContentId=remoteContentId.substringBeforeLast(':',"")+":"+fileId
         playbackSession=java.util.UUID.randomUUID().toString()
         intent.putExtra("uri",episode.uri).putExtra("path",path).putExtra("fileId",fileId).putExtra("contentKey",contentIdentity)
+        intent.removeExtra("segmentSeason")
+        intent.removeExtra("segmentEpisode")
         controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
         episodeLoad=scope.launch {
             val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().resumeProgress(config.scope,releaseId,contentIdentity.ifBlank {"$releaseId|$path"})} else null
             player.setMediaItem(mediaItem(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
             startedAt=System.currentTimeMillis();player.prepare();player.play()
-            fetchSkipSegments(config, initial=false)
+            fetchSkipSegments(config)
         }
         return true
     }
 
-    private fun fetchSkipSegments(config:Config, initial:Boolean) {
+    private fun fetchSkipSegments(config:Config) {
         if (offline) {
             val id = intent.getStringExtra("offlineDownloadId") ?: return
             segmentLookup = scope.launch {
@@ -527,8 +530,9 @@ class PlaybackActivity : ComponentActivity() {
         val metadataId=intent.getStringExtra("metadataId")?.takeIf {it.startsWith("tmdb:tv:")} ?: return
         if(config.demo)return
         val currentPath=path
-        val season=if(initial)intent.getIntExtra("segmentSeason",-1).takeIf {it>0} else null
-        val episode=if(initial)intent.getIntExtra("segmentEpisode",-1).takeIf {it>0} else null
+        val season=intent.getIntExtra("segmentSeason",-1).takeIf {it>0}
+            ?: intent.getIntExtra(EXTRA_SEGMENT_QUEUE_SEASON,-1).takeIf {it>0}
+        val episode=intent.getIntExtra("segmentEpisode",-1).takeIf {it>0}
         segmentLookup=scope.launch {
             while(player.duration<=0||!player.isCurrentMediaItemSeekable) {
                 if(terminalError||player.playbackState==Player.STATE_ENDED||

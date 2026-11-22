@@ -8,11 +8,16 @@ import androidx.compose.animation.core.updateTransition
 import android.os.SystemClock
 import android.view.KeyEvent as AndroidKey
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.text.TextStyle
@@ -281,13 +286,16 @@ import kotlinx.coroutines.delay
                 }
             }
             if (prompt != null) {
+                val actionInteraction = remember { MutableInteractionSource() }
+                val dismissInteraction = remember { MutableInteractionSource() }
                 val placement = if (prompt == "next") Modifier.align(Alignment.CenterEnd).padding(28.dp) else {
                     val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 28.dp
                     Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(start=28.dp, end=28.dp, bottom=bottom)
                 }
                 Row(placement.background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
-                    horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).tvPlayerFocus(!modal),onClick={
+                    horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus))
+                        .tvPromptHighlight(actionInteraction, !modal), shape=CircleShape, interactionSource=actionInteraction, onClick={
                         interact()
                         if(prompt=="next") onEpisode(episodeIndex+1)
                         else {player()?.let { remote.skip.seek(it) { advanceAfterCredits(false) } };focusPlayback()}
@@ -298,7 +306,8 @@ import kotlinx.coroutines.delay
                         } else remote.skip.offer?.label.orEmpty()
                         Text(label)
                     }
-                    TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
+                    TextButton(modifier=controlFocus(stayFocus).tvPromptHighlight(dismissInteraction, !modal),
+                        shape=CircleShape, interactionSource=dismissInteraction, onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
                 }
             }
             PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack,onAudioRecovery=onTracks)
@@ -332,6 +341,19 @@ import kotlinx.coroutines.delay
 }
 
 private val TvPlayerLime=Color(0xFFB4F45B)
+
+/** Keep the highlight clear of the filled pill and aligned with its contour. */
+@Composable private fun Modifier.tvPromptHighlight(interaction:MutableInteractionSource, showHighlight:Boolean):Modifier {
+    val focused by interaction.collectIsFocusedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val color = when {
+        !showHighlight -> Color.Transparent
+        focused -> Color(0xFFF0F2EC)
+        hovered -> Color(0x99F0F2EC)
+        else -> Color.Transparent
+    }
+    return border(1.5.dp, color, CircleShape).padding(3.dp).heightIn(min=48.dp)
+}
 
 /** Draw inside the 48 dp target so the single focus outline cannot be clipped. */
 @Composable private fun Modifier.tvPlayerFocus(showFocus:Boolean):Modifier {

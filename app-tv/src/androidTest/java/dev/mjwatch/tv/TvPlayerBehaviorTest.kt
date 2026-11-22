@@ -86,10 +86,11 @@ class TvPlayerBehaviorTest {
         }
         compose.waitForIdle()
     }
-    private fun launch(series:Boolean=false,title:String="TV remote regression",label:String="1.mp4",episodeCount:Int=if(series) 2 else 1):PlaybackActivity {
+    private fun launch(series:Boolean=false,title:String="TV remote regression",label:String="1.mp4",episodeCount:Int=if(series) 2 else 1,
+        configureIntent:Intent.()->Unit={}):PlaybackActivity {
         val c=instrumentation.targetContext
         val queue=(1..episodeCount).map {PlaybackEpisode("asset:///demo.mp4",if(series&&it>1)"$it.mp4" else label,it)}
-        c.startActivity(Intent(c,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",queue.first().uri).putExtra("title",title).putExtra("mobile",false).putExtra("path",queue.first().path).putExtra("fileId",1).putExtra("episodes",PlaybackEpisode.encode(queue)))
+        c.startActivity(Intent(c,PlaybackActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("uri",queue.first().uri).putExtra("title",title).putExtra("mobile",false).putExtra("path",queue.first().path).putExtra("fileId",1).putExtra("episodes",PlaybackEpisode.encode(queue)).apply(configureIntent))
         var a:PlaybackActivity?=null
         compose.waitUntil(20000) {instrumentation.runOnMainSync {a=activity()?.takeIf {it.firstFrameSeen}};a!=null}
         instrumentation.runOnMainSync {(field(a!!,"player") as Player).apply {pause();seekTo(2000)}}
@@ -224,7 +225,11 @@ class TvPlayerBehaviorTest {
         }
     }
     @Test fun hardwareEpisodeChangeIsSingleAndRecreationPreservesPausePositionAndSpeed() {
-        var a=launch(true)
+        var a=launch(true) {
+            putExtra("segmentSeason",2)
+            putExtra("segmentEpisode",1)
+            putExtra(PlaybackActivity.EXTRA_SEGMENT_QUEUE_SEASON,2)
+        }
         // The ten-second fixture is inside the final section immediately; dismiss its offer.
         compose.waitUntil(5000) {compose.onAllNodesWithTag("player-prompt").fetchSemanticsNodes().isNotEmpty()}
         key(KeyEvent.KEYCODE_BACK)
@@ -232,7 +237,16 @@ class TvPlayerBehaviorTest {
         compose.waitUntil(10000) {var loaded=false;instrumentation.runOnMainSync {activity()?.let {a=it;loaded=field(it,"fileId")==2&&it.firstFrameSeen}};loaded}
         instrumentation.runOnMainSync {(field(a,"player") as Player).apply {pause();seekTo(3000);setPlaybackSpeed(1.5f)};a.recreate()}
         compose.waitUntil(10000) {var loaded=false;instrumentation.runOnMainSync {activity()?.let {a=it;loaded=it.firstFrameSeen}};loaded}
-        instrumentation.runOnMainSync {val p=field(a,"player") as Player;Assert.assertEquals(2,field(a,"fileId"));Assert.assertFalse(p.playWhenReady);Assert.assertEquals(3000L,p.currentPosition);Assert.assertEquals(1.5f,p.playbackParameters.speed,0f)}
+        instrumentation.runOnMainSync {
+            val p=field(a,"player") as Player
+            Assert.assertEquals(2,field(a,"fileId"))
+            Assert.assertFalse(p.playWhenReady)
+            Assert.assertEquals(3000L,p.currentPosition)
+            Assert.assertEquals(1.5f,p.playbackParameters.speed,0f)
+            Assert.assertEquals(2,a.intent.getIntExtra(PlaybackActivity.EXTRA_SEGMENT_QUEUE_SEASON,-1))
+            Assert.assertFalse(a.intent.hasExtra("segmentSeason"))
+            Assert.assertFalse(a.intent.hasExtra("segmentEpisode"))
+        }
         key(KeyEvent.KEYCODE_MEDIA_NEXT)
         instrumentation.runOnMainSync {Assert.assertEquals(2,field(a,"fileId"))}
     }

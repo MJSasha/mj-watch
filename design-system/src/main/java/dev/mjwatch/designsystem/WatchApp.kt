@@ -873,6 +873,7 @@ private class ReleaseOptions(
                         .putExtra("remoteContentId","${handle.contentHash}:${file.serverFileId}")
                         .putExtra("metadataId",metadata?.id).putExtra("artMetadataId",metadata?.id)
                         .putExtra("segmentSeason",season ?: -1).putExtra("segmentEpisode",episode ?: -1)
+                        .putExtra(PlaybackActivity.EXTRA_SEGMENT_QUEUE_SEASON,implicitSeason ?: -1)
                         .putExtra("artBackdrop",metadata?.backdrop).putExtra("artPoster",metadata?.poster).putExtra("artLogo",metadata?.logo)
                         .putExtra("trackerSeeders",release.seeds ?: -1).putExtra(PlaybackQueue.EXTRA,queue.token)
                         .putExtra("contentKey",identity(file)).putExtra("uri",request.uri).putExtra("releaseId",release.id)
