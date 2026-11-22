@@ -1,6 +1,8 @@
 package dev.mjwatch.mobile
 
+import android.app.AlertDialog
 import android.content.Intent
+import android.view.View
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -57,12 +59,17 @@ class MobilePlayerDesignTest {
             ui.onAllNodesWithText(label,useUnmergedTree=true).assertCountEquals(0)
         }
         ui.onNodeWithContentDescription("Параметры видео").performSemanticsAction(SemanticsActions.OnClick)
-        val device=UiDevice.getInstance(instrumentation)
-        Assert.assertNotNull("Video menu should show the speed option",
-            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Скорость")),5000))
+        val panelField=PlaybackActivity::class.java.getDeclaredField("panel").apply {isAccessible=true}
+        fun currentDialog()=panelField.get(activity) as? AlertDialog
+        ui.waitUntil(5000) {ui.runOnUiThread {
+            val dialog=currentDialog()
+            val speedLabels=ArrayList<View>()
+            dialog?.listView?.findViewsWithText(speedLabels,"Скорость",View.FIND_VIEWS_WITH_TEXT)
+            dialog?.isShowing==true&&speedLabels.any {it.isShown}
+        }}
         capture("video-menu")
-        device.pressBack()
-        ui.waitUntil(5000) {device.findObject(androidx.test.uiautomator.By.text("Скорость"))==null}
+        UiDevice.getInstance(instrumentation).pressBack()
+        ui.waitUntil(5000) {ui.runOnUiThread {currentDialog()?.isShowing!=true}}
         // Start visual evidence in touch mode even if the previous test used a TV remote.
         ui.onNodeWithTag("player-gestures").performTouchInput {click(center)}
         ui.waitUntil(5000) {ui.onAllNodesWithTag("player-play").fetchSemanticsNodes().isEmpty()}
