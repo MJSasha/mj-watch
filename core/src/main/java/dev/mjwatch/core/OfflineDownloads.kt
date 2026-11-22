@@ -406,7 +406,7 @@ internal fun encodeSegments(segments: List<SkipSegment>): String? =
     segments.takeIf { it.isNotEmpty() }?.let {
         JSONArray(it.map { segment ->
             JSONObject().put("kind", segment.kind.apiKey).put("startMs", segment.startMs)
-                .put("endMs", segment.endMs).put("auto", segment.allowAutoSkip)
+                .put("endMs", segment.endMs)
         }).toString()
     }
 
@@ -415,7 +415,7 @@ internal fun decodeSegments(encoded: String?): List<SkipSegment> = if (encoded =
     (0 until rows.length()).mapNotNull { index ->
         val row = rows.getJSONObject(index)
         val kind = SegmentKind.entries.firstOrNull { it.apiKey == row.optString("kind") } ?: return@mapNotNull null
-        SkipSegment(kind, row.getLong("startMs"), row.getLong("endMs"), row.getBoolean("auto"))
+        SkipSegment(kind, row.getLong("startMs"), row.getLong("endMs"))
     }
 }.getOrDefault(emptyList())
 

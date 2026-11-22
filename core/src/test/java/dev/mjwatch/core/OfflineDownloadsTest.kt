@@ -37,13 +37,16 @@ class OfflineDownloadsTest {
         ids.forEach { store.remove(config, it) }
     }
 
-    @Test fun savedSkipTimelineKeepsSegmentTypeAndMatchAccuracy() {
+    @Test fun savedSkipTimelineKeepsSegmentsFromPreviousVersions() {
         val segments = listOf(
             SkipSegment(SegmentKind.INTRO, 5_000, 65_000),
-            SkipSegment(SegmentKind.OUTRO, 95_000, 110_000, allowAutoSkip = false),
+            SkipSegment(SegmentKind.OUTRO, 95_000, 110_000),
             SkipSegment(SegmentKind.PREVIEW, 110_000, 130_000)
         )
         assertEquals(segments, decodeSegments(encodeSegments(segments)))
+        assertEquals(listOf(segments[1]), decodeSegments(
+            """[{"kind":"outro","startMs":95000,"endMs":110000,"auto":false}]"""
+        ))
         assertTrue(decodeSegments(null).isEmpty())
     }
 

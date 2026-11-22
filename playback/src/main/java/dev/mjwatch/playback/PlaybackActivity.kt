@@ -173,7 +173,7 @@ class PlaybackActivity : ComponentActivity() {
         root.addView(view,FrameLayout.LayoutParams(-1,-1))
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
-            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},episodes=episodes,externalPanel=panelOpen||inPip,skipSegments=skipSegments,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
+            PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},advanceAfterCredits=::advanceAfterCredits,episodes=episodes,externalPanel=panelOpen||inPip,skipSegments=skipSegments,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
                 torrentStats,streamBytesPerSecond,intent.getIntExtra("trackerSeeders",-1).takeIf {it>=0}),progress=startupProgress)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
@@ -467,12 +467,18 @@ class PlaybackActivity : ComponentActivity() {
         }
     }
 
-    private fun switchEpisode(index:Int) {
-        val episode=episodes.getOrNull(index) ?: return
-        val config=playbackConfig ?: return
-        if(!::player.isInitialized||released||index==episodeIndex||episodeLoad?.isActive==true)return
-        if(!offline&&!validStreamUri(episode.uri,config))return
-        save()
+    private fun advanceAfterCredits(automatic: Boolean): Boolean {
+        if (episodeIndex < 0) return false
+        if (automatic && !getSharedPreferences("playback-preferences", MODE_PRIVATE).getBoolean("auto-next", true)) return false
+        return switchEpisode(episodeIndex + 1, completed = true)
+    }
+
+    private fun switchEpisode(index:Int, completed:Boolean = false): Boolean {
+        val episode=episodes.getOrNull(index) ?: return false
+        val config=playbackConfig ?: return false
+        if(!::player.isInitialized||released||index==episodeIndex||episodeLoad?.isActive==true)return false
+        if(!offline&&!validStreamUri(episode.uri,config))return false
+        save(completed)
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
@@ -492,6 +498,7 @@ class PlaybackActivity : ComponentActivity() {
             startedAt=System.currentTimeMillis();player.prepare();player.play()
             fetchSkipSegments(config, initial=false)
         }
+        return true
     }
 
     private fun fetchSkipSegments(config:Config, initial:Boolean) {

@@ -33,6 +33,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
@@ -46,10 +48,10 @@ import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
 internal val PlayerLime=Color(0xFFC7FF68)
-@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,metrics:PlaybackLoadingMetrics?=null,progress:Float?=null,skipSegments:List<SkipSegment> = emptyList()) {
+@Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,metrics:PlaybackLoadingMetrics?=null,progress:Float?=null,skipSegments:List<SkipSegment> = emptyList(),advanceAfterCredits:(Boolean)->Boolean={false}) {
     val startup=status.takeIf {beforeFirstFrame}
     if(!mobile) {
-        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction,startup=startup,artwork=artwork,metrics=metrics,progress=progress,skipSegments=skipSegments)
+        TvPlayerControls(player,title,visible,keepVisible,status,onRetry,onVisibility,onBack,onTracks,onVideo,episodes,episodeIndex,onEpisode,externalPanel,onTvBackHandler,mediaInteraction,startup=startup,artwork=artwork,metrics=metrics,progress=progress,skipSegments=skipSegments,advanceAfterCredits=advanceAfterCredits)
         return
     }
     val splash=updateTransition(startup,label="Playback splash")
@@ -69,6 +71,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
     }
     val skipBlocked=splashBlocking||externalPanel||status!=null||scrubbing
     val latestBlocked by rememberUpdatedState(skipBlocked)
+    val latestAdvanceAfterCredits by rememberUpdatedState(advanceAfterCredits)
+    var footerHeight by remember { mutableIntStateOf(0) }
     DisposableEffect(player(),skip) {
         val p=player()
         val listener=object:Player.Listener {
@@ -88,7 +92,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
             player()?.let {p->
                 skip.update(segments,p.currentPosition,p.duration,p.isPlaying,latestBlocked,
                     preferences.getBoolean(AUTO_SKIP,true),android.os.SystemClock.uptimeMillis(),preferences::segmentEnabled)
-                if(skip.offer?.remainingMs==0L&&p.isPlaying)skip.seek(p)
+                if(skip.offer?.remainingMs==0L&&p.isPlaying)skip.seek(p) { latestAdvanceAfterCredits(true) }
             }
             delay(200)
         }
@@ -118,7 +122,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
             if(!splashBlocking) PlayerChrome(visible&&ready,Modifier.align(Alignment.BottomCenter)) {
                 Box(contentAlignment=Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
-                    Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding()
+                        .onSizeChanged { footerHeight = it.height }.padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                             Slider(
@@ -159,12 +164,13 @@ internal val PlayerLime=Color(0xFFC7FF68)
                 }
             }
             skip.offer?.takeUnless {skipBlocked}?.let {offer->
+                val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 16.dp
                 Row(
-                    Modifier.align(Alignment.CenterEnd).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                        .padding(horizontal=20.dp).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(8.dp),
+                    Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        .navigationBarsPadding().padding(start=20.dp, end=20.dp, bottom=bottom).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(8.dp),
                     verticalAlignment=Alignment.CenterVertically,
                 ) {
-                    Button(modifier=Modifier.testTag("player-skip"),onClick={touch {player()?.let(skip::seek)}}) {Text(offer.label)}
+                    Button(modifier=Modifier.testTag("player-skip"),onClick={touch {player()?.let { skip.seek(it) { advanceAfterCredits(false) } }}}) {Text(offer.label)}
                     TextButton(onClick={touch(skip::dismiss)}) {Text("Скрыть")}
                 }
             }

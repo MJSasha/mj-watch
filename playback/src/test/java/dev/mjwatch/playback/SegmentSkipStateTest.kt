@@ -29,6 +29,22 @@ class SegmentSkipStateTest {
         assertEquals(recap.endMs, state.takeTarget(10_000, 100_000))
     }
 
+    @Test fun skippingCreditsAdvancesOnceOrSeeksWhenThereIsNoNextEpisode() {
+        val state = SegmentSkipState()
+        val credits = SkipSegment(SegmentKind.OUTRO, 70_000, 90_000)
+        fun showCredits() {
+            state.update(listOf(credits), 75_000, 100_000, true, false, false, 0)
+        }
+        var advances = 0
+        showCredits()
+        assertNull(state.takeTarget(75_000, 100_000) { advances++; true })
+        assertNull(state.takeTarget(75_000, 100_000) { advances++; true })
+        assertEquals(1, advances)
+        state.reset()
+        showCredits()
+        assertEquals(90_000L, state.takeTarget(75_000, 100_000) { false })
+    }
+
     @Test fun perKindDisableDismissalAndSeeking() {
         val state = SegmentSkipState()
         fun update(position: Long, enabled: (SegmentKind) -> Boolean = { true }) =
@@ -43,6 +59,6 @@ class SegmentSkipStateTest {
         assertNull(state.offer)
         update(40_000)
         update(56_000)
-        assertEquals(preview.endMs, state.takeTarget(56_000, 100_000))
+        assertEquals(preview.endMs, state.takeTarget(56_000, 100_000) { error("Preview must not advance the queue") })
     }
 }

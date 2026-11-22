@@ -149,7 +149,31 @@ class MobileGesturesTest {
         }
     }
 
-    @Test fun walkingDeadShiftedIntroAndOutroAreAvailableForManualSkip() {
+    @Test fun creditsPromptStaysAbovePlayerControlsAndAdvancesTheQueue() {
+        position = 75_000
+        val credits = SkipSegment(SegmentKind.OUTRO, 70_000, 90_000)
+        var requestedAdvance: Boolean? = null
+        compose.setContent {
+            PlayerControls({player}, "Test", shown, true, false, null, {}, {shown=it}, {}, {}, {},
+                skipSegments = listOf(credits), advanceAfterCredits = { automatic ->
+                    requestedAdvance = automatic
+                    true
+                })
+        }
+        val skip = compose.onNodeWithTag("player-skip").assertIsDisplayed()
+        val timeline = compose.onNodeWithTag("player-timeline").fetchSemanticsNode().boundsInRoot
+        assertTrue(skip.fetchSemanticsNode().boundsInRoot.bottom <= timeline.top)
+        compose.runOnIdle { shown = false }
+        val viewport = compose.onNodeWithTag("player-gestures").fetchSemanticsNode().boundsInRoot
+        assertTrue(skip.fetchSemanticsNode().boundsInRoot.center.y > viewport.center.y)
+        skip.performClick()
+        compose.runOnIdle {
+            assertEquals(false, requestedAdvance)
+            assertEquals(75_000L, position)
+        }
+    }
+
+    @Test fun walkingDeadShiftedMarkersRespectAutomaticSkipPreference() {
         val response=org.json.JSONObject("""{
             "segments":{
                 "intro":{"start_ms":230000,"end_ms":265000,"offset_ms":-5000,"match":"shifted","confidence":0.82},
@@ -157,13 +181,15 @@ class MobileGesturesTest {
             }}""")
         val markers=parseSkipSegments(response,2_694_000)
         assertEquals(listOf(
-            SkipSegment(SegmentKind.INTRO,230_000,265_000,allowAutoSkip=false),
-            SkipSegment(SegmentKind.OUTRO,2_659_000,2_694_000,allowAutoSkip=false),
+            SkipSegment(SegmentKind.INTRO,230_000,265_000),
+            SkipSegment(SegmentKind.OUTRO,2_659_000,2_694_000),
         ),markers)
         val state=SegmentSkipState()
-        repeat(24) {state.update(markers,235_000,2_694_000,true,false,true,it*250L)}
+        state.update(markers,235_000,2_694_000,true,false,false,0)
         assertEquals("Пропустить опенинг",state.offer?.label)
         assertNull(state.offer?.remainingMs)
+        repeat(21) {state.update(markers,235_000,2_694_000,true,false,true,it*250L)}
+        assertEquals(0L,state.offer?.remainingMs)
         assertEquals(265_000L,state.takeTarget(235_000,2_694_000))
         response.getJSONObject("segments").getJSONObject("intro").put("offset_ms",-16_000)
         assertEquals(listOf(SegmentKind.OUTRO),parseSkipSegments(response,2_694_000).map {it.kind})

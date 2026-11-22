@@ -74,7 +74,7 @@ fun parseSkipSegments(response: JSONObject, durationMs: Long): List<SkipSegment>
             minOf(end, durationMs) - start < 5_000) {
             return@mapNotNull null
         }
-        SkipSegment(kind, start, end.coerceAtMost(durationMs), allowAutoSkip = exact)
+        SkipSegment(kind, start, end.coerceAtMost(durationMs))
     }
     val preview = matches.firstOrNull { it.kind == SegmentKind.PREVIEW }
     return matches.mapNotNull { segment ->
@@ -93,7 +93,7 @@ enum class SegmentKind(val apiKey: String, val label: String, val action: String
 }
 
 data class SkipSegment(
-    val kind: SegmentKind, val startMs: Long, val endMs: Long, val allowAutoSkip: Boolean = true,
+    val kind: SegmentKind, val startMs: Long, val endMs: Long,
 ) {
     fun isValidFor(duration: Long) = startMs >= 0 && endMs > startMs && endMs <= duration
 

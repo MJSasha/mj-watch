@@ -34,6 +34,8 @@ import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -51,7 +53,7 @@ import kotlinx.coroutines.delay
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
     startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, metrics:PlaybackLoadingMetrics?=null, progress:Float?=null,
-    skipSegments:List<SkipSegment> = emptyList(),
+    skipSegments:List<SkipSegment> = emptyList(), advanceAfterCredits:(Boolean)->Boolean={false},
 ) {
     val statusRipple=LocalRippleConfiguration.current
     val windowFocused=LocalWindowInfo.current.isWindowFocused
@@ -101,6 +103,8 @@ import kotlinx.coroutines.delay
     val currentSegments by rememberUpdatedState(episodeSegments)
     val markedTail by rememberUpdatedState(skipSegments.any {it.kind==SegmentKind.OUTRO||it.kind==SegmentKind.PREVIEW})
     val selectEpisode by rememberUpdatedState(onEpisode)
+    val latestAdvanceAfterCredits by rememberUpdatedState(advanceAfterCredits)
+    var footerHeight by remember { mutableIntStateOf(0) }
     fun interact() {remote.interact(now())}
     fun openPanel(target:FocusRequester,action:()->Unit) {
         modalReturn=target;modalNavigationVersion=navigationVersion;modalEpisodeIndex=episodeIndex;action()
@@ -140,7 +144,7 @@ import kotlinx.coroutines.delay
                 if(remote.update(position,duration,p.isPlaying,episode,index>=0&&index<queue.lastIndex,currentBlocked,
                         preferences.getBoolean("auto-next",true),currentSegments,preferences.getBoolean(AUTO_SKIP,true),
                         now(),markedTail,preferences::segmentEnabled)) selectEpisode(index+1)
-                if(remote.skip.offer?.remainingMs==0L&&p.isPlaying) remote.skip.seek(p)
+                if(remote.skip.offer?.remainingMs==0L&&p.isPlaying) remote.skip.seek(p) { latestAdvanceAfterCredits(true) }
 
             }
             if(currentVisible&&!currentKeepVisible&&currentStatus==null&&remote.shouldHide(now(),currentModal)) onVisibility(false)
@@ -242,7 +246,8 @@ import kotlinx.coroutines.delay
             if(!splashBlocking) PlayerChrome(visible&&ready&&!blockingStatus,Modifier.align(Alignment.BottomCenter)) {
                 Box(contentAlignment=Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth().fillMaxHeight(.38f).background(Brush.verticalGradient(0f to Color.Transparent,.55f to Color(0x44000000),1f to Color(0xAA000000))))
-                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
+                    Column(Modifier.fillMaxWidth().navigationBarsPadding()
+                        .onSizeChanged { footerHeight = it.height }.padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Text(playerTime(shown),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
@@ -275,19 +280,26 @@ import kotlinx.coroutines.delay
                     }
                 }
             }
-            if(prompt!=null) Row(Modifier.align(Alignment.CenterEnd).padding(28.dp).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).tvPlayerFocus(!modal),onClick={
-                    interact()
-                    if(prompt=="next") onEpisode(episodeIndex+1)
-                    else {player()?.let(remote.skip::seek);focusPlayback()}
-                }) {
-                    val label=if(prompt=="next") {
-                        if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}"
-                        else "Следующая серия"
-                    } else remote.skip.offer?.label.orEmpty()
-                    Text(label)
+            if (prompt != null) {
+                val placement = if (prompt == "next") Modifier.align(Alignment.CenterEnd).padding(28.dp) else {
+                    val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 28.dp
+                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(start=28.dp, end=28.dp, bottom=bottom)
                 }
-                TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
+                Row(placement.background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
+                    horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).tvPlayerFocus(!modal),onClick={
+                        interact()
+                        if(prompt=="next") onEpisode(episodeIndex+1)
+                        else {player()?.let { remote.skip.seek(it) { advanceAfterCredits(false) } };focusPlayback()}
+                    }) {
+                        val label=if(prompt=="next") {
+                            if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}"
+                            else "Следующая серия"
+                        } else remote.skip.offer?.label.orEmpty()
+                        Text(label)
+                    }
+                    TextButton(modifier=Modifier.then(controlFocus(stayFocus)).tvPlayerFocus(!modal),onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
+                }
             }
             PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack)
             if(status!=null&&!splashBlocking) Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready&&!blockingStatus) 110.dp else 20.dp)) {

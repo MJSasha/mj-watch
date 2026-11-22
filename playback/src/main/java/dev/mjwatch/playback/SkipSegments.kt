@@ -43,7 +43,7 @@ internal class SegmentSkipState {
             dismissed = false
             discontinuity()
         }
-        val countDown = automatic && next?.allowAutoSkip == true
+        val countDown = automatic && next != null
         if (!countDown) discontinuity()
         if (next == null || dismissed) {
             offer = null
@@ -58,10 +58,10 @@ internal class SegmentSkipState {
         offer = if (blocked) null else SkipOffer(next, if (countDown) (SKIP_DELAY_MS - elapsed).coerceAtLeast(0) else null)
     }
 
-    fun takeTarget(position: Long, duration: Long): Long? {
+    fun takeTarget(position: Long, duration: Long, advanceAfterCredits: () -> Boolean = { false }): Long? {
         val segment = offer?.segment?.takeIf { it.contains(position, duration) } ?: return null
         dismiss()
-        return segment.endMs
+        return segment.endMs.takeUnless { segment.kind == SegmentKind.OUTRO && advanceAfterCredits() }
     }
 
     fun dismiss() {
@@ -81,6 +81,6 @@ internal class SegmentSkipState {
     }
 }
 
-internal fun SegmentSkipState.seek(player: Player) {
-    if (player.isCurrentMediaItemSeekable) takeTarget(player.currentPosition, player.duration)?.let(player::seekTo)
+internal fun SegmentSkipState.seek(player: Player, advanceAfterCredits: () -> Boolean) {
+    if (player.isCurrentMediaItemSeekable) takeTarget(player.currentPosition, player.duration, advanceAfterCredits)?.let(player::seekTo)
 }
