@@ -64,7 +64,10 @@ class TvPlayerBehaviorTest {
             instrumentation.runOnMainSync {activity()?.let {focused=field(it,"panel")==null&&it.window.decorView.hasWindowFocus()}}
             focused
         }
-        compose.waitForIdle()
+        // Evidence capture can outlast the chrome's inactivity timeout. Down wakes it
+        // without changing playback, and gives the target a fresh interaction window.
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        compose.waitUntil(5000) {runCatching {node.assertIsDisplayed();true}.getOrDefault(false)}
         node.performSemanticsAction(SemanticsActions.RequestFocus)
         compose.waitUntil(5000) {runCatching {node.assertIsFocused();true}.getOrDefault(false)}
         instrumentation.waitForIdleSync()
@@ -304,6 +307,8 @@ class TvPlayerBehaviorTest {
             compose.onAllNodesWithText(label,useUnmergedTree=true).assertCountEquals(0)
         }
         compose.onNodeWithTag("player-previous-episode").assertIsNotEnabled()
+        focus(compose.onNodeWithTag("player-play"))
+        hideControlsFromPlay()
         for(tag in listOf("player-next-episode","player-play","player-back","player-episodes","player-tracks","player-video","player-timeline")) {
             focus(compose.onNodeWithTag(tag))
             compose.onNodeWithTag(tag).assertIsFocused()
