@@ -422,9 +422,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     key(s.catalogSection) {TvHomeShelves(rows,shelfFocus,Modifier.weight(1f)) {row->when(row) {
                         "continue"->{
                             Box(Modifier.padding(horizontal=inset)) {SectionTitle("Продолжить просмотр")}
-                            TvCarousel(inset,14.dp,up=if(hasCategories)tabsFocus else null) {items(continuing,key={it.entry.id}) {e->
+                            TvCarousel(inset,14.dp,up=if(hasCategories)tabsFocus else null) {items(continuing,key={it.key}) {e->
                                 Box(Modifier.width(tvUnit(512f))) {LibraryCard(e,library?.latestProgress.orEmpty(),s,model,true,
-                                    restoreFocus=restoreCard=="library:${e.entry.id}",onFocus={lastCard="library:${e.entry.id}";e.metadata?.let {featured=it.id}})}
+                                    restoreFocus=restoreCard=="library:${e.key}",onFocus={lastCard="library:${e.key}";e.metadata?.let {featured=it.id}})}
                             }}
                         }
                         "catalog"->{
@@ -1227,13 +1227,13 @@ private class ReleaseOptions(
         if(tab=="Загрузки"&&!tv) OfflineScreen(libraryState.config) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(library==null) item {LoadingIndicator("Загружаем библиотеку…")}
             else if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
-            items(cards,key={it.first().entry.id}) {row ->
+            items(cards,key={it.first().key}) {row ->
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     row.forEach {e ->
                         Box(Modifier.weight(1f)) {
                             LibraryCard(e,library?.latestProgress.orEmpty(),libraryState,model,tv,
                                 showMenu=tab!="Продолжить",bookmarkOnly=bookmarkOnly,
-                                restoreFocus=returnFocusId==e.entry.id,onOpen={returnFocusId=e.entry.id})
+                                restoreFocus=returnFocusId==e.key,onOpen={returnFocusId=e.key})
                         }
                     }
                     if(bookmarkOnly) repeat(columns-row.size) {Spacer(Modifier.weight(1f))}

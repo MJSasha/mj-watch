@@ -89,9 +89,12 @@ class TvCarouselUiTest {
         capture("home-two-shelves")
         wide.performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(5000) {model.state.value.page=="detail"}
+        val titleId="tmdb:movie:8001"
+        compose.waitUntil(5000) {model.scopedLibrary.value.titles.any {it.entry.id==titleId}}
         compose.runOnIdle {model.back()}
-        compose.waitUntil(5000) {runCatching {wide.assertIsFocused();true}.getOrDefault(false)}
-        wide.assertIsDisplayed()
+        val reopened=compose.onNodeWithTag("library-$titleId")
+        compose.waitUntil(5000) {runCatching {reopened.assertIsFocused();true}.getOrDefault(false)}
+        reopened.assertIsDisplayed()
     }
 
     @Test fun remoteScrollAndBackKeepTheFocusedCardVisible() {
