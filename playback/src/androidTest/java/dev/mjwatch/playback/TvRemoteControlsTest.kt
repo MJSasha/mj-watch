@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.os.SystemClock
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -161,6 +162,20 @@ class TvRemoteControlsTest {
         focus("player-tracks");key(Key.DirectionCenter)
         pressBack()
         compose.onNodeWithTag("player-tracks").assertIsFocused()
+    }
+    @Test fun nextEpisodeHoverFollowsTheButtonSurface() {
+        position=970_000
+        start(true)
+        focus("player-play")
+        compose.onNodeWithTag("player-play").assertIsFocused()
+        val prompt=compose.onNodeWithTag("player-prompt")
+        val normal=prompt.captureToImage().toPixelMap()
+        prompt.performMouseInput { moveTo(center) }
+        val hovered=prompt.captureToImage().toPixelMap()
+        val x=normal.width/2
+        val firstFill=(0 until normal.height/2).first { normal[x,it]==PlayerLime }
+        val firstHighlight=(0 until normal.height/2).first { normal[x,it]!=hovered[x,it] }
+        assertEquals(firstFill,firstHighlight)
     }
     @Test fun explicitDownRestoresPlaybackWhileAnUnchangedNextEpisodeOfferIsVisible() {
         position=970_000;start(true)

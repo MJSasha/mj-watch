@@ -7,8 +7,8 @@ import androidx.compose.animation.core.updateTransition
 
 import android.os.SystemClock
 import android.view.KeyEvent as AndroidKey
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -295,8 +295,8 @@ import kotlinx.coroutines.delay
                 Row(Modifier.align(Alignment.CenterEnd).padding(28.dp)
                     .background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
                     horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus))
-                        .tvPromptHighlight(actionInteraction, !modal), shape=CircleShape, interactionSource=actionInteraction, onClick={
+                    Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).heightIn(min=48.dp),
+                        shape=CircleShape, border=tvPromptBorder(actionInteraction), interactionSource=actionInteraction, onClick={
                         interact()
                         onEpisode(episodeIndex+1)
                     }) {
@@ -304,8 +304,9 @@ import kotlinx.coroutines.delay
                             else "Следующая серия"
                         Text(label)
                     }
-                    TextButton(modifier=controlFocus(stayFocus).tvPromptHighlight(dismissInteraction, !modal),
-                        shape=CircleShape, interactionSource=dismissInteraction, onClick={dismissPrompt()}) {Text("Остаться")}
+                    TextButton(modifier=controlFocus(stayFocus).heightIn(min=48.dp),
+                        shape=CircleShape, border=tvPromptBorder(dismissInteraction),
+                        interactionSource=dismissInteraction, onClick={dismissPrompt()}) {Text("Остаться")}
                 }
             } else if (prompt != null) {
                 remote.skip.offer?.let { offer ->
@@ -315,11 +316,10 @@ import kotlinx.coroutines.delay
                         Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
                             .padding(start=28.dp, end=28.dp, bottom=bottom),
                         skipModifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus))
-                            .focusProperties { right=stayFocus; left=FocusRequester.Cancel }
-                            .skipButtonFocus(),
+                            .focusProperties { right=stayFocus; left=FocusRequester.Cancel },
                         cancelModifier=Modifier.testTag("player-skip-cancel").then(controlFocus(stayFocus))
-                            .focusProperties { left=promptFocus; right=FocusRequester.Cancel }
-                            .skipButtonFocus(),
+                            .focusProperties { left=promptFocus; right=FocusRequester.Cancel },
+                        tv=true,
                         onSkip={
                             interact()
                             player()?.let { remote.skip.seek(it) { advanceAfterCredits(false) } }
@@ -361,23 +361,17 @@ import kotlinx.coroutines.delay
 
 private val TvPlayerLime=Color(0xFFB4F45B)
 
-@Composable private fun Modifier.skipButtonFocus():Modifier {
-    var focused by remember { mutableStateOf(false) }
-    return onFocusChanged { focused=it.isFocused }
-        .border(1.dp, if (focused) TvPlayerLime else Color.Transparent, CircleShape)
-}
-
-/** Keep the highlight clear of the filled pill and aligned with its contour. */
-@Composable private fun Modifier.tvPromptHighlight(interaction:MutableInteractionSource, showHighlight:Boolean):Modifier {
+/** Let the button draw its state border on the same shape as its surface. */
+@Composable internal fun tvPromptBorder(interaction:MutableInteractionSource, icon:Boolean=false):BorderStroke {
     val focused by interaction.collectIsFocusedAsState()
     val hovered by interaction.collectIsHoveredAsState()
     val color = when {
-        !showHighlight -> Color.Transparent
+        focused && icon -> TvPlayerLime
         focused -> Color(0xFFF0F2EC)
         hovered -> Color(0x99F0F2EC)
         else -> Color.Transparent
     }
-    return border(1.5.dp, color, CircleShape).padding(3.dp).heightIn(min=48.dp)
+    return BorderStroke(if(icon) 1.dp else 1.5.dp, color)
 }
 
 /** Draw inside the 48 dp target so the single focus outline cannot be clipped. */

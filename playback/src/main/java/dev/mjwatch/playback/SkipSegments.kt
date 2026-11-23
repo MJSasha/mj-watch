@@ -4,6 +4,7 @@ import dev.mjwatch.core.SegmentKind
 import dev.mjwatch.core.SkipSegment
 import android.content.SharedPreferences
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -11,14 +12,17 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 
@@ -61,22 +65,32 @@ internal data class SkipOffer(val segment: SkipSegment, val remainingMs: Long?)
 internal fun SkipOverlay(
     offer: SkipOffer, modifier: Modifier, skipModifier: Modifier, cancelModifier: Modifier = Modifier,
     onSkip: () -> Unit, onCancel: () -> Unit,
+    tv: Boolean = false,
 ) {
     Row(
         modifier.background(Color(0xAA12151B), CircleShape).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onSkip, modifier = skipModifier) {
-            Icon(Icons.Outlined.SkipNext, offer.segment.kind.action)
-        }
+        SkipIconButton(Icons.Outlined.SkipNext, offer.segment.kind.action, skipModifier, tv, onSkip)
         offer.remainingMs?.takeIf { it > 0 }?.let {
             Box(Modifier.width(24.dp), contentAlignment = Alignment.Center) {
                 Text("${(it + 999) / 1000}")
             }
         }
-        IconButton(onClick = onCancel, modifier = cancelModifier) {
-            Icon(Icons.Outlined.Close, "Отменить пропуск")
+        SkipIconButton(Icons.Outlined.Close, "Отменить пропуск", cancelModifier, tv, onCancel)
+    }
+}
+
+@Composable
+private fun SkipIconButton(icon: ImageVector, label: String, modifier: Modifier, tv: Boolean, onClick: () -> Unit) {
+    if (tv) {
+        val interaction = remember { MutableInteractionSource() }
+        OutlinedIconButton(onClick = onClick, modifier = modifier, shape = CircleShape,
+            interactionSource = interaction, border = tvPromptBorder(interaction, icon = true)) {
+            Icon(icon, label)
         }
+    } else {
+        IconButton(onClick = onClick, modifier = modifier) { Icon(icon, label) }
     }
 }
 
