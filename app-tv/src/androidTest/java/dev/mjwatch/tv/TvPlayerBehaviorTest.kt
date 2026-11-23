@@ -275,7 +275,7 @@ class TvPlayerBehaviorTest {
         compose.waitUntil(5000) {var gone=false;instrumentation.runOnMainSync {gone=activity()==null};gone}
     }
 
-    @Test fun styledPlaybackMenusKeepDpadFocusAndToggleSkipInPlace() {
+    @Test fun styledPlaybackMenusKeepDpadFocusAndSaveSkipSettings() {
         val activity=launch()
         focus(compose.onNodeWithTag("player-video"))
         key(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -287,12 +287,31 @@ class TvPlayerBehaviorTest {
             Assert.assertNotNull((row.getChildAt(0) as android.widget.ImageView).drawable)
         }
         selectDialog(3)
+        val preferences=activity.getSharedPreferences("playback-preferences",0)
+        fun assertRows(vararg labels:String) {
+            instrumentation.runOnMainSync {
+                val rows=(field(activity,"panel") as android.app.AlertDialog).listView.adapter
+                Assert.assertEquals(labels.toList(),(0 until rows.count).map {rows.getItem(it).toString()})
+            }
+        }
+        val skipRows=arrayOf("Начало автопропуска","Время отсчёта","Опенинг","В предыдущих сериях","Титры","Анонс следующей серии")
+        assertRows(*skipRows)
+        selectDialog(0)
+        assertRows("За 5 секунд до метки","В момент метки","Отключить")
+        selectDialog(2)
+        Assert.assertEquals("OFF",preferences.getString("auto-skip-start",null))
+        assertRows(*skipRows)
+        selectDialog(1)
+        assertRows("5 с","10 с","15 с","Нет, пропускать сразу")
+        selectDialog(1)
+        Assert.assertEquals(10,preferences.getInt("auto-skip-seconds",0))
+        assertRows(*skipRows)
         lateinit var skipPanel:android.app.AlertDialog
         instrumentation.runOnMainSync {skipPanel=field(activity,"panel") as android.app.AlertDialog}
-        selectDialog(0)
+        selectDialog(2)
         instrumentation.runOnMainSync {
             Assert.assertSame(skipPanel,field(activity,"panel"))
-            Assert.assertFalse(activity.getSharedPreferences("playback-preferences",0).getBoolean("auto-skip",true))
+            Assert.assertFalse(preferences.getBoolean("skip-segment-intro",true))
         }
         key(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5000) {
