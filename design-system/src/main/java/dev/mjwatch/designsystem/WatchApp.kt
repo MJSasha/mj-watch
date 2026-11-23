@@ -2,6 +2,7 @@
 package dev.mjwatch.designsystem
 
 import android.content.Intent
+import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -48,8 +49,21 @@ import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.withSaveLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import coil.ImageLoader
 import androidx.compose.ui.platform.*
@@ -605,26 +619,54 @@ private const val PosterAspectRatio = 2f / 3f
     progress:(@Composable ()->Unit)?=null
 ) {
     val captionBackground = Color(0xFF161B24)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(captionBackground)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(PosterAspectRatio)) {
-            Artwork(
-                metadata,config,
-                Modifier.matchParentSize().testTag(artworkTag),
-                backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
-            )
-            action?.invoke(this)
-        }
+    var captionHeight by remember {mutableIntStateOf(0)}
+    Box(Modifier.fillMaxWidth().aspectRatio(PosterAspectRatio).clip(RoundedCornerShape(16.dp))) {
+        Artwork(
+            metadata,config,
+            Modifier.matchParentSize().testTag(artworkTag).blurPosterCaption(captionHeight),
+            backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
+        )
         Column(
-            Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=10.dp),
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {captionHeight=it.height}
+                .background(Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.35f to captionBackground.copy(alpha=0.66f),
+                    1f to captionBackground.copy(alpha=0.82f)
+                )).padding(start=12.dp,end=12.dp,top=24.dp,bottom=12.dp),
             verticalArrangement=Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 title,color=Color.White,fontSize=16.sp,lineHeight=20.sp,fontWeight=FontWeight.Bold,
-                minLines=2,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             if(subtitle.isNotBlank()) Text(subtitle,color=Color(0xFFBDC7D3),fontSize=13.sp,lineHeight=16.sp,
                 maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             progress?.invoke()
+        }
+        action?.invoke(this)
+    }
+}
+
+@Composable private fun Modifier.blurPosterCaption(captionHeight:Int):Modifier {
+    if(Build.VERSION.SDK_INT<31||captionHeight==0) return this
+    val layer=rememberGraphicsLayer()
+    return drawWithCache {
+        val radius=12.dp.toPx()
+        val captionTop=(size.height-captionHeight).coerceAtLeast(0f)
+        val captionBounds=Rect(0f,captionTop,size.width,size.height)
+        val blend=Brush.verticalGradient(listOf(Color.Transparent,Color.Black),
+            startY=captionTop,endY=captionTop+24.dp.toPx())
+        val paint=Paint()
+        layer.renderEffect=BlurEffect(radius,radius,TileMode.Clamp)
+        onDrawWithContent {
+            drawContent()
+            layer.record {this@onDrawWithContent.drawContent()}
+            clipRect(top=captionTop) {
+                drawContext.canvas.withSaveLayer(captionBounds,paint) {
+                    drawLayer(layer)
+                    drawRect(blend,topLeft=Offset(0f,captionTop),size=captionBounds.size,blendMode=BlendMode.DstIn)
+                }
+            }
         }
     }
 }

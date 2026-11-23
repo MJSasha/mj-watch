@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.net.Uri
+import android.os.Build
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -19,6 +20,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.runner.RunWith
 import java.io.File
+import kotlin.math.abs
 /** Synthetic cached TMDB-shaped data; no real metadata credentials or network requests. */
 @RunWith(AndroidJUnit4::class)
 class MetadataFlowTest {
@@ -59,7 +61,16 @@ class MetadataFlowTest {
         }
         val image=artwork.captureToImage().asAndroidBitmap()
         Assert.assertEquals("Top of the poster",Color.CYAN,image.getPixel(image.width/2,image.height/40))
-        Assert.assertEquals("Bottom of the poster",Color.GREEN,image.getPixel(image.width/2,image.height-1-image.height/40))
+        val bottom=image.getPixel(image.width/2,image.height-1-image.height/40)
+        Assert.assertTrue("Bottom of the poster remains visible through the caption, pixel=${bottom.toUInt().toString(16)}",
+            Color.green(bottom)>Color.red(bottom)&&Color.green(bottom)>Color.blue(bottom))
+        if(Build.VERSION.SDK_INT>=31) {
+            val x=image.width*19/20
+            val edge=image.height*14/15
+            val above=Color.green(image.getPixel(x,edge-2))
+            val below=Color.green(image.getPixel(x,edge+2))
+            Assert.assertTrue("Blur should soften the colour boundary under the caption, green=$above/$below",abs(below-above)<16)
+        }
     } finally {
         poster.delete()
     }
@@ -75,7 +86,7 @@ class MetadataFlowTest {
     val title=compose.onNode(resultTitle,useUnmergedTree=true).getUnclippedBoundsInRoot()
     val height=artwork.bottom-artwork.top
     Assert.assertEquals(2f/3f,(artwork.right-artwork.left).value/height.value,0.02f)
-    Assert.assertTrue("Title should sit below the poster",title.top>=artwork.bottom)
+    Assert.assertTrue("Title should sit over the lower part of the poster",title.top>artwork.top+height/2&&title.bottom<artwork.bottom)
     compose.onNode(resultTitle and hasClickAction()).performClick()
     compose.waitUntil(5000) {model.state.value.page=="detail"&&model.state.value.selectedMetadata?.id==item.id}
  }
