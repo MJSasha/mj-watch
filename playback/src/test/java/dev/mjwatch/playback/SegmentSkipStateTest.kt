@@ -13,7 +13,8 @@ class SegmentSkipStateTest {
         val state = SegmentSkipState()
         var now = 0L
         fun tick(playing: Boolean = true, blocked: Boolean = false, automatic: Boolean = true) {
-            state.update(listOf(recap), 10_000, 100_000, playing, blocked, automatic, now)
+            val start = if (automatic) AutoSkipStart.AT_MARKER else AutoSkipStart.OFF
+            state.update(listOf(recap), 10_000, 100_000, playing, blocked, AutoSkip(start), now)
             now += 250
         }
         repeat(9) { tick() }
@@ -33,7 +34,7 @@ class SegmentSkipStateTest {
         val state = SegmentSkipState()
         val credits = SkipSegment(SegmentKind.OUTRO, 70_000, 90_000)
         fun showCredits() {
-            state.update(listOf(credits), 75_000, 100_000, true, false, false, 0)
+            state.update(listOf(credits), 75_000, 100_000, true, false, AutoSkip(AutoSkipStart.OFF), 0)
         }
         var advances = 0
         showCredits()
@@ -48,7 +49,7 @@ class SegmentSkipStateTest {
     @Test fun perKindDisableDismissalAndSeeking() {
         val state = SegmentSkipState()
         fun update(position: Long, enabled: (SegmentKind) -> Boolean = { true }) =
-            state.update(listOf(recap, preview), position, 100_000, true, false, false, 0, enabled)
+            state.update(listOf(recap, preview), position, 100_000, true, false, AutoSkip(AutoSkipStart.OFF), 0, enabled)
         update(10_000) { it != SegmentKind.RECAP }
         assertNull(state.offer)
         update(55_000)
@@ -60,5 +61,47 @@ class SegmentSkipStateTest {
         update(40_000)
         update(56_000)
         assertEquals(preview.endMs, state.takeTarget(56_000, 100_000) { error("Preview must not advance the queue") })
+    }
+
+    @Test fun earlyCountdownCanBeCancelledOrSkippedBeforeTheMarker() {
+        val state = SegmentSkipState()
+        val intro = SkipSegment(SegmentKind.INTRO, 20_000, 45_000)
+        fun update(position: Long, now: Long = 0) =
+            state.update(listOf(intro), position, 100_000, true, false, AutoSkip(AutoSkipStart.EARLY), now)
+
+        update(14_999)
+        assertNull(state.offer)
+        update(15_000)
+        assertEquals(5_000L, state.offer?.remainingMs)
+        state.dismiss()
+        update(20_000)
+        assertNull(state.offer)
+        update(14_999)
+        update(15_000)
+        assertEquals(intro.endMs, state.takeTarget(15_000, 100_000))
+
+        state.reset()
+        repeat(21) { tick -> update(15_000L + tick * 250, tick * 250L) }
+        assertEquals(0L, state.offer?.remainingMs)
+    }
+
+    @Test fun countdownCanStartAtTheMarkerOrSkipImmediately() {
+        val state = SegmentSkipState()
+        val intro = SkipSegment(SegmentKind.INTRO, 20_000, 45_000)
+        fun update(position: Long, timing: AutoSkip) =
+            state.update(listOf(intro), position, 100_000, true, false, timing, 0)
+
+        for (seconds in listOf(10, 15, 0)) {
+            val timing = AutoSkip(AutoSkipStart.AT_MARKER, seconds)
+            update(19_999, timing)
+            assertNull(state.offer)
+            update(20_000, timing)
+            assertEquals(seconds * 1000L, state.offer?.remainingMs)
+        }
+        update(15_000, AutoSkip(AutoSkipStart.EARLY, 0))
+        assertEquals(0L, state.offer?.remainingMs)
+        update(20_000, AutoSkip(AutoSkipStart.OFF, 0))
+        assertNotNull(state.offer)
+        assertNull(state.offer?.remainingMs)
     }
 }

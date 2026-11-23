@@ -91,7 +91,7 @@ internal val PlayerLime=Color(0xFFC7FF68)
         while(true) {
             player()?.let {p->
                 skip.update(segments,p.currentPosition,p.duration,p.isPlaying,latestBlocked,
-                    preferences.getBoolean(AUTO_SKIP,true),android.os.SystemClock.uptimeMillis(),preferences::segmentEnabled)
+                    preferences.autoSkip(),android.os.SystemClock.uptimeMillis(),preferences::segmentEnabled)
                 if(skip.offer?.remainingMs==0L&&p.isPlaying)skip.seek(p) { latestAdvanceAfterCredits(true) }
             }
             delay(200)
@@ -165,14 +165,14 @@ internal val PlayerLime=Color(0xFFC7FF68)
             }
             skip.offer?.takeUnless {skipBlocked}?.let {offer->
                 val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 16.dp
-                Row(
+                SkipOverlay(
+                    offer,
                     Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                        .navigationBarsPadding().padding(start=20.dp, end=20.dp, bottom=bottom).background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(8.dp),
-                    verticalAlignment=Alignment.CenterVertically,
-                ) {
-                    Button(modifier=Modifier.testTag("player-skip"),onClick={touch {player()?.let { skip.seek(it) { advanceAfterCredits(false) } }}}) {Text(offer.label)}
-                    TextButton(onClick={touch(skip::dismiss)}) {Text("Скрыть")}
-                }
+                        .navigationBarsPadding().padding(start=20.dp, end=20.dp, bottom=bottom),
+                    skipModifier=Modifier.testTag("player-skip"),
+                    onSkip={touch {player()?.let { skip.seek(it) { advanceAfterCredits(false) } }}},
+                    onCancel={touch(skip::dismiss)},
+                )
             }
             PlaybackSplash(splash,title,artwork,tv=false,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack,onAudioRecovery=onTracks)
             if(status!=null&&!splashBlocking)Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(visible&&ready) 120.dp else 20.dp)){PlaybackStatusOverlay(status,onRetry,onBack,metrics=metrics,onAudioRecovery=onTracks)}

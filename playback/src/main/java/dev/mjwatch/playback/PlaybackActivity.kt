@@ -842,13 +842,32 @@ class PlaybackActivity : ComponentActivity() {
     private fun showSkipSettings(preferences:android.content.SharedPreferences) {
         val kinds=SegmentKind.entries
         val icons=listOf(Icons.Outlined.Movie,Icons.Outlined.History,Icons.Outlined.Subtitles,Icons.Outlined.SkipNext)
-        val options=listOf(PlaybackMenuRow("Автопропуск через 5 секунд",Icons.Outlined.Timer,
-            selected=preferences.getBoolean(AUTO_SKIP,true)))+
+        val timing=preferences.autoSkip()
+        val startTitle="Начало автопропуска"
+        val durationTitle="Время отсчёта"
+        val options=listOf(
+            PlaybackMenuRow(startTitle,Icons.Outlined.Timer,value=timing.start.label,opensMenu=true),
+            PlaybackMenuRow(durationTitle,Icons.Outlined.Timer,value=autoSkipDurationLabel(timing.seconds),opensMenu=true),
+        )+
             kinds.mapIndexed {index,kind->PlaybackMenuRow(kind.label,icons[index],selected=preferences.segmentEnabled(kind))}
         showPlaybackMenu("Пропуск фрагментов",Icons.Outlined.FastForward,options,toggleRows=true,onCredits={
             runCatching {startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://skipdb.tv/license")))}
         }) {index,checked->
-            preferences.edit().putBoolean(if(index==0)AUTO_SKIP else kinds[index-1].preferenceKey(),checked).apply()
+            when(index) {
+                0 -> showPlaybackMenu(startTitle,Icons.Outlined.Timer,AutoSkipStart.entries.map {
+                    PlaybackMenuRow(it.label,selected=it==timing.start)
+                }) {selection,_->
+                    preferences.edit().putString(AUTO_SKIP_START,AutoSkipStart.entries[selection].name).apply()
+                    showSkipSettings(preferences)
+                }
+                1 -> showPlaybackMenu(durationTitle,Icons.Outlined.Timer,AUTO_SKIP_DURATIONS.map {
+                    PlaybackMenuRow(autoSkipDurationLabel(it),selected=it==timing.seconds)
+                }) {selection,_->
+                    preferences.edit().putInt(AUTO_SKIP_SECONDS,AUTO_SKIP_DURATIONS[selection]).apply()
+                    showSkipSettings(preferences)
+                }
+                else -> preferences.edit().putBoolean(kinds[index-2].preferenceKey(),checked).apply()
+            }
         }
     }
 

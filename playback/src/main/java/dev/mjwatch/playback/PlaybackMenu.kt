@@ -132,14 +132,14 @@ internal fun createPlaybackMenu(
             views.icon.bind(row.icon, if (checked[position]) ACCENT else MUTED)
             views.label.text = row.label
             ViewCompat.setStateDescription(view, when {
-                toggleRows -> if (checked[position]) "Включено" else "Выключено"
+                toggleRows && !row.opensMenu -> if (checked[position]) "Включено" else "Выключено"
                 checked[position] -> "Выбрано"
                 else -> null
             })
             views.value.text = row.value
             views.value.visibility = if (row.value == null) View.GONE else View.VISIBLE
             val end = when {
-                toggleRows -> if (checked[position]) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank
+                toggleRows && !row.opensMenu -> if (checked[position]) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank
                 checked[position] -> Icons.Outlined.Check
                 row.opensMenu -> Icons.AutoMirrored.Outlined.KeyboardArrowRight
                 else -> null
@@ -170,6 +170,11 @@ internal fun createPlaybackMenu(
             if (tv) setStroke(dp(2), TEXT)
         }, dp(2))
         if (toggleRows) setOnItemClickListener { _, _, index, _ ->
+            if (rows[index].opensMenu) {
+                dialog.dismiss()
+                choose(index, true)
+                return@setOnItemClickListener
+            }
             checked[index] = !checked[index]
             choose(index, checked[index])
             adapter.notifyDataSetChanged()

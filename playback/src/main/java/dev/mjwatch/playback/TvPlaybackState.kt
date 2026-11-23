@@ -40,7 +40,8 @@ internal class TvPlaybackState {
     fun update(
         position: Long, duration: Long, playing: Boolean, episode: PlaybackEpisode?, hasNext: Boolean,
         blocked: Boolean, autoNext: Boolean, segments: List<SkipSegment> = episode?.legacySegments().orEmpty(),
-        autoSkip: Boolean = false, now: Long = 0, markedTail: Boolean = false, enabled: (SegmentKind) -> Boolean = { true },
+        autoSkip: AutoSkip = AutoSkip(AutoSkipStart.OFF), now: Long = 0, markedTail: Boolean = false,
+        enabled: (SegmentKind) -> Boolean = { true },
     ): Boolean {
         if (duration <= 0 || advancing) { prompt = null; previousPosition = null; skip.reset(); return false }
         skip.update(segments, position, duration, playing, blocked, autoSkip, now, enabled)

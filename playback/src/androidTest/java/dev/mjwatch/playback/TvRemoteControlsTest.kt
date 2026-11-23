@@ -222,7 +222,8 @@ class TvRemoteControlsTest {
     @Test fun automaticSkipOffersAnOpeningThenSeeksAfterTheCountdown() {
         queue=listOf(queue.first().copy(openingStartMs=40_000,openingEndMs=90_000),queue.last())
         start(true)
-        compose.onNodeWithText("Пропустить опенинг · 5").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Пропустить опенинг").assertIsDisplayed()
+        compose.onNodeWithText("5").assertIsDisplayed()
         repeat(19) {
             compose.runOnIdle {clock+=250}
             compose.mainClock.advanceTimeBy(250)
@@ -232,6 +233,24 @@ class TvRemoteControlsTest {
         compose.mainClock.advanceTimeBy(350)
         assertEquals(90_000L,position)
         compose.onNodeWithTag("player-prompt").assertDoesNotExist()
+    }
+
+    @Test fun earlyOpeningOfferLetsTheRemoteCancelAndSkipWithControlsHidden() {
+        queue=listOf(queue.first().copy(openingStartMs=54_000,openingEndMs=90_000),queue.last())
+        start()
+        compose.onNodeWithTag("player-prompt").assertIsFocused()
+        key(Key.DirectionRight)
+        compose.onNodeWithTag("player-skip-cancel").assertIsFocused()
+        key(Key.DirectionCenter)
+        compose.onNodeWithTag("player-prompt").assertDoesNotExist()
+        assertEquals(50_000L,position)
+        compose.runOnIdle {position=48_000}
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {position=50_000}
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("player-prompt").assertIsFocused()
+        key(Key.DirectionCenter)
+        assertEquals(90_000L,position)
     }
 
     @Test fun loadingCompletionRestoresFocusToAVisiblePlaybackAction() {

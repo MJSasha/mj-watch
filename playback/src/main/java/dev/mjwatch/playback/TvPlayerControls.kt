@@ -147,7 +147,7 @@ import kotlinx.coroutines.delay
                 val queue=currentEpisodes
                 val episode=queue.getOrNull(index)
                 if(remote.update(position,duration,p.isPlaying,episode,index>=0&&index<queue.lastIndex,currentBlocked,
-                        preferences.getBoolean("auto-next",true),currentSegments,preferences.getBoolean(AUTO_SKIP,true),
+                        preferences.getBoolean("auto-next",true),currentSegments,preferences.autoSkip(),
                         now(),markedTail,preferences::segmentEnabled)) selectEpisode(index+1)
                 if(remote.skip.offer?.remainingMs==0L&&p.isPlaying) remote.skip.seek(p) { latestAdvanceAfterCredits(true) }
 
@@ -219,6 +219,10 @@ import kotlinx.coroutines.delay
                 }
             }
             if(!splashBlocking&&!visible&&code in listOf(AndroidKey.KEYCODE_DPAD_UP,AndroidKey.KEYCODE_DPAD_DOWN,AndroidKey.KEYCODE_DPAD_LEFT,AndroidKey.KEYCODE_DPAD_RIGHT)) {
+                if (prompt != null && prompt != "next" &&
+                    (lastFocused == promptFocus || lastFocused == stayFocus) &&
+                    (code == AndroidKey.KEYCODE_DPAD_LEFT || code == AndroidKey.KEYCODE_DPAD_RIGHT)
+                ) return@onPreviewKeyEvent false
                 if(down) when(code) {
                     AndroidKey.KEYCODE_DPAD_UP -> {requestedFocus=backFocus;onVisibility(true)}
                     AndroidKey.KEYCODE_DPAD_DOWN -> {requestedFocus=playFocus;onVisibility(true)}
@@ -285,29 +289,44 @@ import kotlinx.coroutines.delay
                     }
                 }
             }
-            if (prompt != null) {
+            if (prompt == "next") {
                 val actionInteraction = remember { MutableInteractionSource() }
                 val dismissInteraction = remember { MutableInteractionSource() }
-                val placement = if (prompt == "next") Modifier.align(Alignment.CenterEnd).padding(28.dp) else {
-                    val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 28.dp
-                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(start=28.dp, end=28.dp, bottom=bottom)
-                }
-                Row(placement.background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
+                Row(Modifier.align(Alignment.CenterEnd).padding(28.dp)
+                    .background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
                     horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
                     Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus))
                         .tvPromptHighlight(actionInteraction, !modal), shape=CircleShape, interactionSource=actionInteraction, onClick={
                         interact()
-                        if(prompt=="next") onEpisode(episodeIndex+1)
-                        else {player()?.let { remote.skip.seek(it) { advanceAfterCredits(false) } };focusPlayback()}
+                        onEpisode(episodeIndex+1)
                     }) {
-                        val label=if(prompt=="next") {
-                            if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}"
+                        val label=if(preferences.getBoolean("auto-next",true))"Следующая серия · ${((10_000-remote.nextElapsed+999)/1000).coerceAtLeast(0)}"
                             else "Следующая серия"
-                        } else remote.skip.offer?.label.orEmpty()
                         Text(label)
                     }
                     TextButton(modifier=controlFocus(stayFocus).tvPromptHighlight(dismissInteraction, !modal),
-                        shape=CircleShape, interactionSource=dismissInteraction, onClick={dismissPrompt()}) {Text(if(prompt=="next")"Остаться" else "Скрыть")}
+                        shape=CircleShape, interactionSource=dismissInteraction, onClick={dismissPrompt()}) {Text("Остаться")}
+                }
+            } else if (prompt != null) {
+                remote.skip.offer?.let { offer ->
+                    val bottom = if (visible && ready) with(LocalDensity.current) { footerHeight.toDp() } else 28.dp
+                    SkipOverlay(
+                        offer,
+                        Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                            .padding(start=28.dp, end=28.dp, bottom=bottom),
+                        skipModifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus))
+                            .focusProperties { right=stayFocus; left=FocusRequester.Cancel }
+                            .skipButtonFocus(),
+                        cancelModifier=Modifier.testTag("player-skip-cancel").then(controlFocus(stayFocus))
+                            .focusProperties { left=promptFocus; right=FocusRequester.Cancel }
+                            .skipButtonFocus(),
+                        onSkip={
+                            interact()
+                            player()?.let { remote.skip.seek(it) { advanceAfterCredits(false) } }
+                            focusPlayback()
+                        },
+                        onCancel={dismissPrompt()},
+                    )
                 }
             }
             PlaybackSplash(splash,title,artwork,tv=true,metrics=metrics,progress=progress,onRetry=onRetry,onCancel=onBack,onAudioRecovery=onTracks)
@@ -341,6 +360,12 @@ import kotlinx.coroutines.delay
 }
 
 private val TvPlayerLime=Color(0xFFB4F45B)
+
+@Composable private fun Modifier.skipButtonFocus():Modifier {
+    var focused by remember { mutableStateOf(false) }
+    return onFocusChanged { focused=it.isFocused }
+        .border(1.dp, if (focused) TvPlayerLime else Color.Transparent, CircleShape)
+}
 
 /** Keep the highlight clear of the filled pill and aligned with its contour. */
 @Composable private fun Modifier.tvPromptHighlight(interaction:MutableInteractionSource, showHighlight:Boolean):Modifier {

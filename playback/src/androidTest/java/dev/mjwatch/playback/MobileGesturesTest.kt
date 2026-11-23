@@ -142,7 +142,7 @@ class MobileGesturesTest {
             compose.setContent {
                 PlayerControls({player},"Test",shown,true,false,null,{}, {shown=it},{},{},{},skipSegments=markers)
             }
-            compose.onNodeWithText("Пропустить опенинг").assertIsDisplayed().performClick()
+            compose.onNodeWithContentDescription("Пропустить опенинг").assertIsDisplayed().performClick()
             compose.runOnIdle {assertEquals(60_000L,position)}
         } finally {
             prefs.edit().remove(AUTO_SKIP).commit()
@@ -185,10 +185,10 @@ class MobileGesturesTest {
             SkipSegment(SegmentKind.OUTRO,2_659_000,2_694_000),
         ),markers)
         val state=SegmentSkipState()
-        state.update(markers,235_000,2_694_000,true,false,false,0)
-        assertEquals("Пропустить опенинг",state.offer?.label)
+        state.update(markers,235_000,2_694_000,true,false,AutoSkip(AutoSkipStart.OFF),0)
+        assertEquals("Пропустить опенинг",state.offer?.segment?.kind?.action)
         assertNull(state.offer?.remainingMs)
-        repeat(21) {state.update(markers,235_000,2_694_000,true,false,true,it*250L)}
+        repeat(21) {state.update(markers,235_000,2_694_000,true,false,AutoSkip(AutoSkipStart.AT_MARKER),it*250L)}
         assertEquals(0L,state.offer?.remainingMs)
         assertEquals(265_000L,state.takeTarget(235_000,2_694_000))
         response.getJSONObject("segments").getJSONObject("intro").put("offset_ms",-16_000)
