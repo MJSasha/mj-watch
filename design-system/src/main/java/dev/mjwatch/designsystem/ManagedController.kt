@@ -70,15 +70,27 @@ class ManagedController(private val context:android.content.Context,private val 
   val savedApi=ManagedApi(saved,secrets,caOverride);savedApi.saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(savedApi,db.syncDao()).connect();if(caOverride!=null)secrets.put("ca:${api.base.origin()}",caOverride);settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
  }
  fun load(path:String)=run {val api=api();val me=api.authorized("me");val data=api.authorized(path);if(config().scope!=api.config.scope)throw CancellationException("Account changed");mutable.update {it.copy(me=me,data=data,statusCheckedAt=if(path=="admin/status")System.currentTimeMillis() else it.statusCheckedAt)}}
- fun action(path:String,method:String,body:JSONObject=JSONObject(),revision:String?=null,reload:String?=null)=run {val api=api();val data=api.authorized(path,method,body,revision);if(config().scope!=api.config.scope)throw CancellationException("Account changed");if(path=="history"&&method=="DELETE"){db.syncDao().clearHistoryOutbox(config().scope);SyncEngine(api,db.syncDao()).connect()};mutable.update {it.copy(data=data,message="Операция подтверждена сервером")};if(reload!=null){val fresh=api.authorized(reload);mutable.update {it.copy(data=fresh)}}}
+ fun action(path:String,method:String,body:JSONObject=JSONObject(),revision:String?=null,reload:String?=null)=run {
+  val api=api()
+  val data=if(path=="history"&&method=="DELETE") SyncEngine(api,db.syncDao()).clearHistory()
+   else api.authorized(path,method,body,revision)
+  if(config().scope!=api.config.scope)throw CancellationException("Account changed")
+  mutable.update {it.copy(data=data,message="Операция подтверждена сервером")}
+  if(reload!=null){val fresh=api.authorized(reload);mutable.update {it.copy(data=fresh)}}
+ }
  fun logout(clearCache:Boolean)=run {
   check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед выходом"}
   val c=config();syncJob?.cancel();observer?.cancel();runCatching {api(c).authorized("auth/logout","POST")};val origin=endpoint(c.managedUrl).origin();secrets.put("access:$origin:${c.scope}","");secrets.put("refresh:$origin:${c.scope}","")
-  if(clearCache) {SyncEngine.mutex.lock();try{db.syncDao().clearEntities(c.scope);db.syncDao().clearOutbox(c.scope);db.syncDao().clearCursor(c.scope)}finally{SyncEngine.mutex.unlock()}}
+  if(clearCache) SyncEngine(api(c),db.syncDao()).clearCache()
   settings.save(c.copy(connectionMode="direct",serverId="",userId=""));mutable.value=ManagedState(message="Вы вышли из аккаунта")
  }
  fun direct(deleteHistory:Boolean)=run {check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед сменой режима"};val c=config();if(c.managed){syncJob?.cancel();val origin=endpoint(c.managedUrl).origin();runCatching {api(c).authorized("auth/logout","POST")};secrets.put("access:$origin:${c.scope}","");secrets.put("refresh:$origin:${c.scope}","")};if(deleteHistory)db.dao().clearLegacyHistory();settings.handleLegacyHistory();val provider=if(c.managed)JSONObject(context.getSharedPreferences("profile-playback-preferences",0).getString("direct","{}") ?: "{}").optString("metadataProvider","none") else c.metadataProvider;settings.save(c.copy(connectionMode="direct",serverId="",userId="",metadataProvider=provider));mutable.value=ManagedState()}
- suspend fun record(c:Config,kind:String,key:String,json:JSONObject,operation:String="put") {if(!c.historyEnabled||config().scope!=c.scope)return;try {SyncEngine(api(c),db.syncDao()).enqueue(kind,key,json,operation)}catch(e:Exception){mutable.update {it.copy(message=safeError(e))}}}
+ suspend fun record(c:Config,kind:String,key:String,json:JSONObject,operation:String="put") {
+  if(!c.historyEnabled||config().scope!=c.scope)return
+  try {SyncEngine(api(c),db.syncDao()).enqueue(kind,key,json,operation)}
+  catch(e:CancellationException){throw e}
+  catch(e:Exception){mutable.update {it.copy(message=safeError(e))}}
+ }
  private fun installationId():String {val prefs=context.getSharedPreferences("device-installation",0);return prefs.getString("id",null) ?: java.util.UUID.randomUUID().toString().also {prefs.edit().putString("id",it).commit()}}
  private val syncMutex=Mutex()
  private suspend fun sync(c:Config):Boolean=syncMutex.withLock {

@@ -1,7 +1,10 @@
 package dev.mjwatch.core
 import androidx.room.Room
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -53,6 +56,87 @@ class ManagedContractsTest {
    SyncEngine(ManagedApi(c,SecretStore(context)),dao).enqueue("progress","key",JSONObject().put("positionMs",1000))
    val queued=dao.pending(c.scope).single();assertEquals("restore",queued.operation);assertEquals(5L,queued.baseRevision);assertEquals(7L,queued.historyEpoch)
   }finally{db.close()}
+ }
+
+ @Test fun slowMutationDoesNotBlockLocalPlaybackWritesOrReplaceTheirPosition()=runBlocking {
+  val db=Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
+  try {
+   val dao=db.syncDao()
+   val scope="slow-server:viewer"
+   val cursor=SyncCursor(scope,"epoch",1)
+   dao.put(cursor)
+   val awaitingReceipt=CompletableDeferred<Unit>()
+   val sendReceipt=CompletableDeferred<Unit>()
+   val engine=SyncEngine(scope,dao) {path,_,body->
+    if(path=="mutations") {
+     val mutation=checkNotNull(body)
+     if(mutation.getString("kind")=="progress") {
+      awaitingReceipt.complete(Unit)
+      sendReceipt.await()
+     }
+     JSONObject().put("entity",JSONObject()
+      .put("kind",mutation.getString("kind")).put("entityKey",mutation.getString("entityKey"))
+      .put("value",mutation.getJSONObject("value")).put("revision",1))
+    } else {
+     assertTrue(path.startsWith("sync?"))
+     JSONObject("""{"serverEpoch":"epoch","historyEpoch":1,"cursor":2,"entities":[]}""")
+    }
+   }
+   val opening=LibraryEntry("release","Сериал","fixture",openedAt=1)
+   val progress=Progress("episode","release",1,"S02E06.mkv",20_000,90_000,2,false)
+   engine.recordPlayback(opening,progress,"session",1)
+   val syncing=async {engine.sync(JSONObject("""{"serverEpoch":"epoch","historyEpoch":1}"""))}
+   try {
+    withTimeout(5_000) {
+     awaitingReceipt.await()
+     val newer=progress.copy(positionMs=40_000,updatedAt=3)
+     engine.recordPlayback(opening,newer,"session",2)
+     assertEquals(newer,dao.resumeProgress(scope,opening.id,progress.key))
+    }
+   } finally {
+    sendReceipt.complete(Unit)
+   }
+   syncing.await()
+   assertEquals(40_000L,dao.resumeProgress(scope,opening.id,progress.key)?.positionMs)
+   assertEquals(2L,dao.pending(scope).single().sequence)
+   assertEquals(opening,dao.entity(scope,"opening",opening.id)?.libraryEntry())
+  } finally {db.close()}
+ }
+
+ @Test fun playbackBeforeFirstSnapshotSurvivesAndOlderEpochRequiresResolution()=runBlocking {
+  val db=Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(),WatchDatabase::class.java).build()
+  try {
+   val dao=db.syncDao()
+   val scope="offline-server:viewer"
+   val engine=SyncEngine(scope,dao) {_,_,_->error("Recording must not use the network")}
+   val opening=LibraryEntry("release","Сериал","fixture",openedAt=1)
+   val progress=Progress("episode","release",1,"S02E06.mkv",20_000,90_000,2,false)
+   val newer=progress.copy(positionMs=40_000,updatedAt=3)
+   engine.recordPlayback(opening,progress,"session",1)
+   engine.recordPlayback(opening,newer,"session",2)
+   assertEquals(newer,dao.resumeProgress(scope,opening.id,progress.key))
+   assertNull(dao.cursor(scope))
+   assertEquals(3,dao.pending(scope).size)
+
+   val older=SyncEntity(scope,"progress",progress.key,progress.syncJson().toString(),4)
+   dao.applySnapshot(scope,listOf(older),SyncCursor(scope,"epoch",1,4))
+   val queued=dao.pending(scope)
+   val pendingProgress=queued.single {it.kind=="progress"}
+   assertEquals(2,queued.size)
+   assertEquals(4L,pendingProgress.baseRevision)
+   assertEquals(2L,pendingProgress.sequence)
+   assertEquals(newer,dao.resumeProgress(scope,opening.id,progress.key))
+
+   val tombstone=older.copy(json="{}",revision=5,deleted=true)
+   val cleared=SyncCursor(scope,"epoch",2,5)
+   dao.applySnapshot(scope,listOf(tombstone),cleared)
+   assertTrue(dao.pending(scope).all {it.conflict.isNotBlank()&&it.historyEpoch==1L})
+   val other=SyncEntity(scope,"opening","other",opening.copy(id="other").syncJson().toString(),1)
+   dao.resolveSnapshot(pendingProgress,listOf(tombstone,other),cleared.copy(cursor=9),useLocal=false)
+   assertNull(dao.resumeProgress(scope,opening.id,progress.key))
+   assertEquals(other,dao.entity(scope,"opening","other"))
+   assertEquals(9L,dao.cursor(scope)?.cursor)
+  } finally {db.close()}
  }
 
  @Test fun failedSyncBacksOffAndHealthySyncResetsImmediately(){

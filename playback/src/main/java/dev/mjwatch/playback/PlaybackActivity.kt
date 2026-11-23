@@ -44,6 +44,7 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
@@ -115,6 +116,7 @@ class PlaybackActivity : ComponentActivity() {
     private lateinit var overlay:androidx.compose.ui.platform.ComposeView
     private var released=false
     private var lastProgressWrite:Job?=null
+    private var progressSync:Job?=null
     private var episodeCompleted=false
     private val decoderFallback=DecoderFallback()
     private var bufferPlan=PlaybackBuffer(4*1048576,4*1048576)
@@ -484,6 +486,7 @@ class PlaybackActivity : ComponentActivity() {
         if(!::player.isInitialized||released||index==episodeIndex||episodeLoad?.isActive==true)return false
         if(!offline&&!validStreamUri(episode.uri,config))return false
         save(completed)
+        val previousWrite=lastProgressWrite
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
@@ -505,6 +508,7 @@ class PlaybackActivity : ComponentActivity() {
         intent.removeExtra("segmentEpisode")
         controlsVisible=true;status=PlaybackStatus("Готовим видео","Загружаем серию",loading=true)
         episodeLoad=scope.launch {
+            previousWrite?.join()
             val progress=if(config.historyEnabled)withContext(Dispatchers.IO) {db.syncDao().resumeProgress(config.scope,releaseId,contentIdentity.ifBlank {"$releaseId|$path"})} else null
             player.setMediaItem(mediaItem(episode.uri),progress?.takeUnless {it.completed}?.positionMs ?: 0)
             startedAt=System.currentTimeMillis();player.prepare();player.play()
@@ -652,19 +656,26 @@ class PlaybackActivity : ComponentActivity() {
         val position=player.currentPosition.coerceAtLeast(0)
         episodeCompleted=episodeCompleted || ended || duration?.let { position>=it*0.95 }==true
         val progress=Progress(contentIdentity.ifBlank {"$releaseId|$path"},releaseId,fileId,path,position,duration,System.currentTimeMillis(),episodeCompleted)
+        val opening=LibraryEntry(releaseId,intent.getStringExtra("title").orEmpty().ifBlank {path},"MJWatch",
+            openedAt=progress.updatedAt,metadataId=intent.getStringExtra("metadataId")?.takeIf {it.isNotBlank()})
         val sessionId=playbackSession
         val sequence=++playbackSequence
         lastProgressWrite=scope.launch {
-            saveMutex.lock()
-            try {
+            val engine=saveMutex.withLock {
                 withContext(Dispatchers.IO) {
-                    if(Settings(applicationContext).config.first().profileKey!=config.profileKey) return@withContext
-                    val engine=SyncEngine(ManagedApi(config,SecretStore(applicationContext)),db.syncDao())
-                    engine.enqueue("progress",progress.key,progress.syncJson(),playSession=sessionId,sequence=sequence)
-                    if(!offline) runCatching {engine.sync()}
+                    val current=Settings(applicationContext).config.first()
+                    if(current.profileKey!=config.profileKey) return@withContext null
+                    SyncEngine(ManagedApi(current,SecretStore(applicationContext)),db.syncDao()).also {
+                        it.recordPlayback(opening,progress,sessionId,sequence)
+                    }
                 }
-            } finally {
-                saveMutex.unlock()
+            }
+            if(engine!=null&&!offline&&progressSync?.isActive!=true) {
+                progressSync=scope.launch(Dispatchers.IO) {
+                    try {engine.sync()}
+                    catch(e:CancellationException){throw e}
+                    catch(_:Exception){ /* Room keeps the pending changes for the next sync. */ }
+                }
             }
         }
     }
@@ -902,6 +913,7 @@ class PlaybackActivity : ComponentActivity() {
             pending?.join()
             startupJob?.join()
             recoveryJob?.join()
+            progressSync?.join()
             withContext(Dispatchers.IO) {
                 if(finished)queue?.delete()
                 db.close()
