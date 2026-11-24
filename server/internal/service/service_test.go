@@ -394,7 +394,7 @@ func TestPlaybackStatsExposeOnlyAuthorizedTorrentCounters(t *testing.T) {
 		t.Fatal("unknown file", code)
 	}
 	code, body := call(t, s, owner, "GET", path+"17", nil)
-	if code != 200 || len(body) != 4 || body["download_speed"] != 1200000.5 || body["active_peers"] != 2.0 || body["total_peers"] != 9.0 || body["connected_seeders"] != 0.0 {
+	if code != 200 || len(body) != 5 || body["download_speed"] != 1200000.5 || body["active_peers"] != 2.0 || body["total_peers"] != 9.0 || body["connected_seeders"] != 0.0 || body["preloaded_bytes"] != 999.0 {
 		t.Fatal(code, body)
 	}
 }

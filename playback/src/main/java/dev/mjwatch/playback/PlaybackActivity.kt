@@ -149,6 +149,8 @@ class PlaybackActivity : ComponentActivity() {
     private var artwork by androidx.compose.runtime.mutableStateOf<PlaybackArtwork?>(null)
     private var artworkJob: Job? = null
     private val networkBytes = AtomicLong()
+    private var streamByteBaseline = 0L
+    private var streamBytesReceived by androidx.compose.runtime.mutableLongStateOf(0)
     private var streamBytesPerSecond by androidx.compose.runtime.mutableStateOf<Double?>(null)
     private var torrentStats by androidx.compose.runtime.mutableStateOf<TorrentPlaybackStats?>(null)
     private var startupProgress by androidx.compose.runtime.mutableStateOf<Float?>(null)
@@ -178,7 +180,7 @@ class PlaybackActivity : ComponentActivity() {
         view.useController=false
         overlay=androidx.compose.ui.platform.ComposeView(this).apply {setContent {
             PlayerControls(player={if(::player.isInitialized&&!released) player else null},title=intent.getStringExtra("title") ?: path,visible=controlsVisible,mobile=intent.getBooleanExtra("mobile",true),status=status?.let {if(offline)it.copy(backLabel="К загрузкам") else it},onRetry={retryPlayback()},keepVisible=(getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled,onVisibility={controlsVisible=it},onBack={exitPlayback()},onTracks={tracks()},onPip={enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())},episodeCount=episodes.size,episodeIndex=episodeIndex,episodeLabel=episodes.getOrNull(episodeIndex)?.path.orEmpty(),onEpisode={switchEpisode(it)},advanceAfterCredits=::advanceAfterCredits,episodes=episodes,externalPanel=panelOpen||inPip,skipSegments=skipSegments,onTvBackHandler={tvBackHandler=it},onVideo={videoSettings()},mediaInteraction=mediaInteraction,beforeFirstFrame=!firstFrameSeen,artwork=artwork,metrics=if(intent.getStringExtra("torrentHandle")==null) null else PlaybackLoadingMetrics(
-                torrentStats,streamBytesPerSecond,intent.getIntExtra("trackerSeeders",-1).takeIf {it>=0}),progress=startupProgress)
+                torrentStats,streamBytesPerSecond,intent.getIntExtra("trackerSeeders",-1).takeIf {it>=0},streamBytesReceived),progress=startupProgress)
         }}
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
@@ -278,7 +280,7 @@ class PlaybackActivity : ComponentActivity() {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
                 override fun onRenderedFirstFrame() {
-                    firstFrame=true; firstFrameSeen=true; if(startupProgress!=null) startupProgress=1f; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null
+                    firstFrame=true; firstFrameSeen=true; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null
                     frozenFrame.showLiveVideo()
                     surface.postOnAnimation { if (!released && firstFrame) frozenFrame.sample(surface) }
                 }
@@ -390,12 +392,14 @@ class PlaybackActivity : ComponentActivity() {
             snapshotFlow { status?.loading == true }.collectLatest { loading ->
                 if (!loading) return@collectLatest
                 var previousBytes = networkBytes.get()
+                streamByteBaseline = previousBytes
                 var previousTime = android.os.SystemClock.elapsedRealtime()
                 try {
                     while (isActive) {
                         delay(500)
                         val now = android.os.SystemClock.elapsedRealtime()
                         val bytes = networkBytes.get()
+                        streamBytesReceived = bytes - streamByteBaseline
                         val count = bytes - previousBytes
                         if (count > 0 || streamBytesPerSecond != null) {
                             streamBytesPerSecond = count * 1000.0 / (now - previousTime).coerceAtLeast(1)
@@ -405,6 +409,7 @@ class PlaybackActivity : ComponentActivity() {
                     }
                 } finally {
                     streamBytesPerSecond = null
+                    streamBytesReceived = 0
                 }
             }
         }
@@ -490,7 +495,7 @@ class PlaybackActivity : ComponentActivity() {
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
-        startupProgress=null;torrentStats=null
+        resetLoadingProgress()
         frozenFrame.clear()
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
@@ -588,6 +593,7 @@ class PlaybackActivity : ComponentActivity() {
         val position=player.currentPosition.coerceAtLeast(0)
         val playing=player.playWhenReady
         terminalError=false;startedAt=System.currentTimeMillis()
+        resetLoadingProgress()
         recoveryJob=scope.launch {
             while(isActive&&!released) {
                 status=PlaybackStatus("Восстанавливаем соединение",if(automatic)"Попытка ${retries+1} из 3" else "Подключаемся к потоку",loading=true,compact=firstFrame)
@@ -644,6 +650,13 @@ class PlaybackActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun resetLoadingProgress() {
+        startupProgress = null
+        torrentStats = null
+        streamByteBaseline = networkBytes.get()
+        streamBytesReceived = 0
     }
 
     private data class RecoveredSource(val handle:String,val fileId:Int,val uri:String,

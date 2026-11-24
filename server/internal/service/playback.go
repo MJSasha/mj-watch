@@ -381,6 +381,10 @@ func safePlaybackStats(torrent map[string]any) map[string]float64 {
 			stats[key] = count
 		}
 	}
+	// TorrServer reports the current cache occupancy in preloaded_bytes.
+	if bytes, ok := torrent["preloaded_bytes"].(float64); ok && bytes >= 0 && bytes < float64(math.MaxInt64) && bytes == math.Trunc(bytes) {
+		stats["preloaded_bytes"] = bytes
+	}
 	return stats
 }
 

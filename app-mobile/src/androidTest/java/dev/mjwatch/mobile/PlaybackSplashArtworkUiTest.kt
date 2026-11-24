@@ -19,6 +19,7 @@ import org.junit.Test
 import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackSplashArtworkUiTest {
@@ -51,12 +52,13 @@ class PlaybackSplashArtworkUiTest {
         val logoBytes=java.io.ByteArrayOutputStream().apply {logo.compress(android.graphics.Bitmap.CompressFormat.PNG,100,this)}.toByteArray()
         logo.recycle()
         val hash="0123456789012345678901234567890123456789"
+        val cachedBytes=AtomicLong(1_000_000)
         server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse = when(request.path) {
                 "/backdrop.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(backdrop))
                 "/logo.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(logoBytes))
                 "/torrents" -> MockResponse().setHeader("Content-Type","application/json")
-                    .setBody("""{"hash":"$hash","download_speed":7125000,"active_peers":12,"total_peers":446,"connected_seeders":12}""")
+                    .setBody("""{"hash":"$hash","download_speed":7125000,"active_peers":12,"total_peers":446,"connected_seeders":12,"preloaded_bytes":${cachedBytes.get()}}""")
                 "/movie.mp4" -> MockResponse().setHeadersDelay(7,TimeUnit.SECONDS).setHeader("Content-Type","video/mp4").setBody(okio.Buffer().write(video))
                 else -> MockResponse().setResponseCode(404)
             }
@@ -68,6 +70,10 @@ class PlaybackSplashArtworkUiTest {
         assertNotNull("The graphic logo is visible",device.wait(Until.findObject(By.desc("Тихая орбита")),5_000))
         assertNotNull("Torrent telemetry is visible",device.wait(Until.findObject(By.text("57 Мбит/с")),5_000))
         assertNotNull("Connected seeders are visible",device.wait(Until.findObject(By.text("Сиды 12")),5_000))
+        fun cacheLabel(bytes:Long)="В кэше раздачи ${android.text.format.Formatter.formatShortFileSize(context,bytes)}"
+        assertNotNull("The initial cache size is visible",device.wait(Until.findObject(By.text(cacheLabel(cachedBytes.get()))),3_000))
+        cachedBytes.set(2_000_000)
+        assertNotNull("The cache size updates before the first frame",device.wait(Until.findObject(By.text(cacheLabel(cachedBytes.get()))),3_000))
         assertTrue("The logo clears after the first frame",device.wait(Until.gone(By.desc("Тихая орбита")),20_000))
         if(InstrumentationRegistry.getArguments().getString("capturePlaybackPreview")=="true") Thread.sleep(4500)
     }

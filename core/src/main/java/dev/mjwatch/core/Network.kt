@@ -273,7 +273,8 @@ data class TorrentPlaybackStats(
     val downloadBytesPerSecond:Double?,
     val activePeers:Int?,
     val totalPeers:Int?,
-    val connectedSeeders:Int?
+    val connectedSeeders:Int?,
+    val cachedBytes:Long? = null,
 )
 
 /** Passive status for the selected torrent. TorrServer exposes these counters for the torrent as a whole. */
@@ -312,8 +313,9 @@ class TorrentPlaybackStatsSource(private val config:Config,secrets:SecretStore) 
 private fun parseTorrentPlaybackStats(data:JSONObject):TorrentPlaybackStats? {
     fun number(key:String)=(data.opt(key) as? Number)?.toDouble()?.takeIf {it.isFinite()&&it>=0}
     fun count(key:String)=number(key)?.takeIf {it<=Int.MAX_VALUE&&it%1==0.0}?.toInt()
-    val stats=TorrentPlaybackStats(number("download_speed"),count("active_peers"),count("total_peers"),count("connected_seeders"))
-    return stats.takeIf {it.downloadBytesPerSecond!=null||it.activePeers!=null||it.totalPeers!=null||it.connectedSeeders!=null}
+    val cachedBytes=number("preloaded_bytes")?.takeIf {it<Long.MAX_VALUE.toDouble()&&it%1==0.0}?.toLong()
+    val stats=TorrentPlaybackStats(number("download_speed"),count("active_peers"),count("total_peers"),count("connected_seeders"),cachedBytes)
+    return stats.takeIf {it.downloadBytesPerSecond!=null||it.activePeers!=null||it.totalPeers!=null||it.connectedSeeders!=null||it.cachedBytes!=null}
 }
 
 fun safeError(e: Throwable): String = when(e) {

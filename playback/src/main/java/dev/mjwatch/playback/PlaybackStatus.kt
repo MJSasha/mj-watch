@@ -4,6 +4,7 @@ package dev.mjwatch.playback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ internal data class PlaybackLoadingMetrics(
     val torrent:TorrentPlaybackStats?,
     val streamBytesPerSecond:Double?,
     val trackerSeeders:Int?,
+    val streamBytesReceived:Long,
 )
 
 internal data class PlaybackStatus(val title:String,val message:String="",val loading:Boolean=false,val retry:Boolean=false,val compact:Boolean=false,val backLabel:String="К раздаче",val audioRecovery:Boolean=false)
@@ -95,6 +97,14 @@ internal fun PlaybackStatusOverlay(
         val showStatus = !metricsAvailable || status.compact || status.message.isNotBlank()
         val serverSpeed = torrent?.downloadBytesPerSecond
         val streamSpeed = metrics?.streamBytesPerSecond
+        val receivedBytes = metrics?.streamBytesReceived?.takeIf { it > 0 }
+        val cachedBytes = torrent?.cachedBytes?.takeIf { it > 0 }
+        val context = LocalContext.current
+        val transferred = when {
+            receivedBytes != null -> "Получено ${android.text.format.Formatter.formatShortFileSize(context, receivedBytes)}"
+            cachedBytes != null -> "В кэше раздачи ${android.text.format.Formatter.formatShortFileSize(context, cachedBytes)}"
+            else -> null
+        }
         val speed = when {
             serverSpeed != null -> "${mbitPerSecond(serverSpeed)} Мбит/с"
             streamSpeed != null -> "Поток ${mbitPerSecond(streamSpeed)} Мбит/с"
@@ -133,6 +143,7 @@ internal fun PlaybackStatusOverlay(
                     }
                 }
                 if (metricsAvailable) {
+                    if (transferred != null) Text(transferred, color = foreground, style = MaterialTheme.typography.bodyMedium)
                     Text(speed, color = foreground, style = MaterialTheme.typography.bodyMedium)
                     Text(seeders, color = muted, style = MaterialTheme.typography.bodyMedium)
                     if (peers != null && totalPeers != null && available >= 405.dp) {
