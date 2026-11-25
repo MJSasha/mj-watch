@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import java.util.UUID
 
+private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
+
 @Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,registerBack:((()->Unit)?)->Unit) {
  val keyboard=LocalSoftwareKeyboardController.current
  val controller=model.managed;val account by controller.state.collectAsState();val managed=if(account.scope==s.config.scope)account else account.copy(me=null,data=null,pending=emptyList());val page=s.page
@@ -45,12 +47,12 @@ import java.util.UUID
  if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
- val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-jacred"->"admin/jacred";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
+ val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-jacred"->JACRED_OVERVIEW;"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
  LaunchedEffect(page,s.config.scope,s.config.managedUrl){if(load!=null&&s.config.historyEnabled) {
   do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
  }}
  val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(screenScroll).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-  if(managed.busy&&page!="server-overview"&&page!="server-jacred") LinearProgressIndicator(Modifier.fillMaxWidth())
+  if(managed.busy&&page!="server-overview"&&page!="server-jacred"&&page!="server-resources") LinearProgressIndicator(Modifier.fillMaxWidth())
   when(page) {
    "connection-choice"->{
     Text("Как подключиться",fontSize=28.sp,fontWeight=FontWeight.Bold)
@@ -129,7 +131,7 @@ import java.util.UUID
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
     ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy,managed.message.isNotBlank(),managed.statusCheckedAt,tv){controller.load("admin/status")}
-    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("JacRed","server-jacred",Icons.Outlined.Search),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
+    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Ресурсы сервера","server-resources",Icons.Outlined.Speed),Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("JacRed","server-jacred",Icons.Outlined.Search),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-resources"->"Процессор, память и диск";"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{
     var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
@@ -217,6 +219,11 @@ import java.util.UUID
    "server-update"->key(s.config.managedUrl){ServerUpdateScreen(s,model,tv)}
    "server-migration"->ServerMigrationScreen(s.config.managedUrl,managed,controller,tv)
 
+   "server-resources"->{
+    Text("Ресурсы сервера",fontSize=28.sp,fontWeight=FontWeight.Bold)
+    if(managed.me?.optString("role")=="admin") ServerResourcesScreen(s.config,model.secrets,tv)
+    else SettingsHint("Ресурсы сервера доступны администратору.")
+   }
    "server-jacred"->{
     Text("JacRed",fontSize=28.sp,fontWeight=FontWeight.Bold)
     val admin=managed.me?.optString("role")=="admin"
@@ -227,17 +234,45 @@ import java.util.UUID
       else editing=next
      }
      val diagnostics=managed.data?.takeIf {it.optBoolean("jacredDiagnostics")}
+     var catalog by remember(s.config.scope,s.config.managedUrl) {mutableStateOf<JSONObject?>(null)}
+     var catalogLoading by remember(s.config.scope,s.config.managedUrl) {mutableStateOf(false)}
+     var catalogError by remember(s.config.scope,s.config.managedUrl) {mutableStateOf("")}
+     var catalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      if(editing) {
       key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
      } else {
-      JacredDiagnosticsPanel(diagnostics,tv,managed.busy,onSettings={editing=true},
-       onCollect={controller.action("admin/jacred/collect","POST",reload="admin/jacred")}) { query ->
-       controller.load(if(query.isBlank()) "admin/jacred" else "admin/jacred?query="+java.net.URLEncoder.encode(query,"UTF-8"))
+      val separateCatalog=diagnostics?.optBoolean("separateCatalogStats")==true
+      val installed=diagnostics?.optBoolean("installed")==true
+      val lastRun=diagnostics?.optJSONObject("index")?.optJSONArray("history")?.optJSONObject(0)?.optLong("updatedAt")
+      LaunchedEffect(s.config.scope,s.config.managedUrl,separateCatalog,installed,lastRun,catalogRefresh) {
+       if(separateCatalog&&installed) {
+        catalogLoading=true
+        catalogError=""
+        try {
+         val fresh=withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/jacred/stats")}
+         if(fresh.has("catalogCount")||catalog==null)catalog=fresh
+        } catch(e:CancellationException) {
+         throw e
+        } catch(e:Exception) {
+         if(e is HttpFailure&&e.status in setOf(401,403))catalog=null
+         catalogError=safeError(e)
+        } finally {
+         catalogLoading=false
+        }
+       }
+      }
+      JacredDiagnosticsPanel(diagnostics,tv,managed.busy,
+       catalog=if(separateCatalog) catalog else diagnostics,
+       catalogLoading=if(separateCatalog) catalogLoading||(installed&&catalog==null&&catalogError.isBlank()) else managed.busy,
+       catalogError=if(separateCatalog) catalogError else "",
+       onCatalogRefresh={if(separateCatalog) catalogRefresh++ else controller.load(JACRED_OVERVIEW)},
+       onSettings={editing=true},onCollect={controller.action("admin/jacred/collect","POST",reload=JACRED_OVERVIEW)}) { query ->
+       controller.load(if(query.isBlank()) JACRED_OVERVIEW else "$JACRED_OVERVIEW&query="+java.net.URLEncoder.encode(query,"UTF-8").replace(".","%2E"))
       }
       val indexing=diagnostics?.optBoolean("collectQueued")==true||diagnostics?.optJSONObject("index")?.optString("state")=="running"
       LaunchedEffect(indexing) {
        if(indexing) {
-        while(true){delay(6_000);controller.load("admin/jacred")}
+        while(true){delay(6_000);controller.load(JACRED_OVERVIEW)}
        }
       }
      }
@@ -257,7 +292,7 @@ import java.util.UUID
  BoxWithConstraints(Modifier.fillMaxSize()) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    listOf("Обзор" to "server-overview","Пользователи" to "server-users","TorrServer" to "server-torr","JacRed" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second!="server-jacred"||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
+    listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","JacRed" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second !in setOf("server-jacred","server-resources")||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
    Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
   }else BoundedPane(!tv){content()}
@@ -362,7 +397,7 @@ import java.util.UUID
     data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
     onDirty(false)
     message="JacRed запущен. Можно проверить поиск в настройках источника."
-    model.managed.load("admin/jacred")
+    model.managed.load(JACRED_OVERVIEW)
    }
   }
  }else if(settings){

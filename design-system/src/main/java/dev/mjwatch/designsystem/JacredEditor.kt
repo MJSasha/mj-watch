@@ -2,13 +2,18 @@
 
 package dev.mjwatch.designsystem
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.Dns
@@ -23,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.endpoint
 import org.json.JSONArray
@@ -146,8 +152,9 @@ internal fun JacredEditor(snapshot: JSONObject, tv: Boolean, busy: Boolean, onDi
 
 @Composable
 internal fun JacredDiagnosticsPanel(
-    data: JSONObject?, tv: Boolean, busy: Boolean, onSettings: () -> Unit, onCollect: () -> Unit,
-    onRefresh: (String) -> Unit,
+    data: JSONObject?, tv: Boolean, busy: Boolean, catalog: JSONObject?, catalogLoading: Boolean,
+    catalogError: String, onCatalogRefresh: () -> Unit, onSettings: () -> Unit,
+    onCollect: () -> Unit, onRefresh: (String) -> Unit,
 ) {
     val installed = data?.optBoolean("installed") == true
     val searchReady = data?.optBoolean("searchReady") == true
@@ -155,7 +162,6 @@ internal fun JacredDiagnosticsPanel(
     val state = index?.optString("state")
     val queued = data?.optBoolean("collectQueued") == true
     val active = state == "running"
-    val count = data?.optLong("catalogCount", -1) ?: -1
     val manual = data?.optBoolean("manualCollect") == true
     val collection = data?.opt("collect") as? Boolean
     val sync = data?.opt("syncConfigured") as? Boolean
@@ -176,14 +182,6 @@ internal fun JacredDiagnosticsPanel(
             },
         )
         if (installed) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                JacredMetric(Modifier.weight(1f), "Раздачи", if (count >= 0) number.format(count) else "—")
-                JacredMetric(Modifier.weight(1f), "Трекеры", data?.optJSONArray("trackers")?.length()?.let(number::format) ?: "—")
-            }
-            data?.optLong("statsUpdatedAt")?.takeIf { it > 0 }?.let {
-                Text("Статистика на ${jacredTime(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (count == 0L) SettingsHint("Каталог пока пуст. Запустите сбор или проверьте источник синхронизации.")
             if (collection == true) Text("Сбор по расписанию · каждые ${data?.optInt("interval")} мин")
             if (sync == true) Text("Синхронизация настроена")
             if (collection == false && sync == false) SettingsHint("Включите сбор или настройте синхронизацию.")
@@ -197,7 +195,7 @@ internal fun JacredDiagnosticsPanel(
             } else if (data != null) {
                 Action(if (installed) "Настроить сбор" else "Установить JacRed", tv, onClick = onSettings)
             }
-            Action("Обновить", tv, secondary = true, enabled = !busy, icon = Icons.Outlined.Refresh) { onRefresh("") }
+            Action("Обновить статус", tv, secondary = true, enabled = !busy, icon = Icons.Outlined.Refresh) { onRefresh("") }
         }
     }
     if (!installed || data == null) return
@@ -219,17 +217,12 @@ internal fun JacredDiagnosticsPanel(
             style = MaterialTheme.typography.titleMedium,
         )
         if (active && rows.isNotEmpty()) {
-            LinearProgressIndicator(progress = { completed.toFloat() / rows.size }, modifier = Modifier.fillMaxWidth())
+            val progress by animateFloatAsState(completed.toFloat() / rows.size, label = "JacRed collection")
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         }
         if (queued && !active) LinearProgressIndicator(Modifier.fillMaxWidth())
         index?.optLong("updatedAt")?.takeIf { it > 0 }?.let { Text("Последнее событие · ${jacredTime(it)}") }
-        rows.sortedBy { row ->
-            when (row.optString("state")) {
-                "running" -> 0
-                in failed -> 1
-                else -> 2
-            }
-        }.forEach { row ->
+        rows.forEach { row ->
             val rowState = row.optString("state")
             val status = when (rowState) {
                 "pending" -> if (state == "interrupted") "Не начато" else "В очереди"
@@ -245,10 +238,16 @@ internal fun JacredDiagnosticsPanel(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(row.optString("tracker"), Modifier.weight(1f))
-                Text(status, color = if (rowState in failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(status, color = when {
+                    rowState in failed -> MaterialTheme.colorScheme.error
+                    rowState == "running" && active -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                })
             }
         }
     }
+
+    JacredCatalogPanel(catalog, catalogLoading, catalogError, tv, onCatalogRefresh)
 
     val history = index?.optJSONArray("history")
     if (history != null && history.length() > 0) SettingsDisclosure(
@@ -284,14 +283,51 @@ internal fun JacredDiagnosticsPanel(
         }
     }
 
-    val trackers = data.optJSONArray("trackers") ?: return
-    if (trackers.length() == 0) return
+}
+
+@Composable
+private fun JacredCatalogPanel(data: JSONObject?, loading: Boolean, error: String, tv: Boolean, onRefresh: () -> Unit) {
+    val number = NumberFormat.getIntegerInstance()
+    val count = data?.optLong("catalogCount", -1) ?: -1
+    val trackers = data?.optJSONArray("trackers")
+    val updated = data?.optLong("statsUpdatedAt", 0) ?: 0
+    SettingsCard("Статистика каталога", Icons.Outlined.BarChart, tv) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            JacredMetric(Modifier.weight(1f), "Раздачи", if (count >= 0) number.format(count) else "—")
+            JacredMetric(Modifier.weight(1f), "Трекеры", trackers?.length()?.let(number::format) ?: "—")
+        }
+        Text(
+            when {
+                error.isNotBlank() -> error
+                updated > 0 -> "Статистика на ${jacredTime(updated)}"
+                count >= 0 -> "Получены данные каталога"
+                loading -> "Загружаем статистику…"
+                else -> "Первая сводка ещё не готова"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (error.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (count == 0L) SettingsHint("Каталог пока пуст. Запустите сбор или проверьте источник синхронизации.")
+        Action("Обновить статистику", tv, secondary = true, enabled = !loading, loading = loading,
+            icon = Icons.Outlined.Refresh, onClick = onRefresh)
+    }
+    if (trackers == null || trackers.length() == 0) return
     SettingsDisclosure("Каталог по трекерам", "Источников: ${trackers.length()}", Icons.Outlined.Search, tv) {
-        for (position in 0 until trackers.length()) {
-            val row = trackers.optJSONObject(position) ?: continue
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(row.optString("trackerName"))
-                Text(number.format(row.optLong("alltorrents")), style = MaterialTheme.typography.titleSmall)
+        val rows = (0 until trackers.length()).mapNotNull { trackers.optJSONObject(it) }
+        for (row in rows.sortedByDescending { it.optLong("alltorrents") }) {
+            val entries = row.optLong("alltorrents")
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(row.optString("trackerName"))
+                    Text(number.format(entries), style = MaterialTheme.typography.titleSmall)
+                }
+                if (count > 0) {
+                    val fraction = (entries.toDouble() / count).toFloat().coerceIn(0f, 1f)
+                    Box(Modifier.fillMaxWidth().height(3.dp).clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                        Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(MaterialTheme.colorScheme.primary))
+                    }
+                }
             }
         }
     }

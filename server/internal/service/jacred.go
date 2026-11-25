@@ -111,7 +111,7 @@ func (s *Server) jacredDiagnostics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	access := s.readJacredAccess()
-	summary := map[string]any{"jacredDiagnostics": true, "installed": access.APIKey != "", "searchReady": false}
+	summary := map[string]any{"jacredDiagnostics": true, "separateCatalogStats": true, "installed": access.APIKey != "", "searchReady": false}
 	if access.APIKey == "" {
 		respond(w, 200, summary)
 		return
@@ -139,16 +139,48 @@ func (s *Server) jacredDiagnostics(w http.ResponseWriter, r *http.Request) {
 	if searchReady && query != "" {
 		summary["probeCount"] = len(search.Results)
 	}
+	// Older clients expect statistics in this response.
+	if r.URL.Query().Get("view") != "overview" {
+		if stats, err := s.jacredCatalogStats(ctx, access.APIKey); err == nil {
+			for key, value := range stats {
+				summary[key] = value
+			}
+		}
+	}
+	respond(w, 200, summary)
+}
+
+func (s *Server) jacredStats(w http.ResponseWriter, r *http.Request) {
+	access := s.readJacredAccess()
+	if access.APIKey == "" {
+		fail(w, 503, "jacred_not_installed")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	stats, err := s.jacredCatalogStats(ctx, access.APIKey)
+	if err != nil {
+		fail(w, 503, "jacred_stats_unavailable")
+		return
+	}
+	respond(w, 200, stats)
+}
+
+func (s *Server) jacredCatalogStats(ctx context.Context, key string) (map[string]any, error) {
+	result := make(map[string]any)
 	var stats []struct {
 		Tracker string `json:"trackerName"`
 		Count   int64  `json:"alltorrents"`
 	}
-	if s.jacredGet(ctx, "/stats/torrents", access.APIKey, url.Values{}, &stats) == nil && stats != nil {
+	if err := s.jacredGet(ctx, "/stats/torrents", key, url.Values{}, &stats); err != nil {
+		return nil, err
+	}
+	if stats != nil {
 		var meta struct {
 			UpdatedAt time.Time
 		}
-		if s.jacredGet(ctx, "/stats/meta", access.APIKey, url.Values{}, &meta) == nil && !meta.UpdatedAt.IsZero() {
-			summary["statsUpdatedAt"] = meta.UpdatedAt.Unix()
+		if s.jacredGet(ctx, "/stats/meta", key, url.Values{}, &meta) == nil && !meta.UpdatedAt.IsZero() {
+			result["statsUpdatedAt"] = meta.UpdatedAt.Unix()
 		}
 		// JacRed returns an empty array before it has written the first report.
 		if len(stats) != 0 || !meta.UpdatedAt.IsZero() {
@@ -156,11 +188,11 @@ func (s *Server) jacredDiagnostics(w http.ResponseWriter, r *http.Request) {
 			for _, row := range stats {
 				total += row.Count
 			}
-			summary["catalogCount"] = total
-			summary["trackers"] = stats
+			result["catalogCount"] = total
+			result["trackers"] = stats
 		}
 	}
-	respond(w, 200, summary)
+	return result, nil
 }
 
 func (s *Server) queueJacredCollection(w http.ResponseWriter) {

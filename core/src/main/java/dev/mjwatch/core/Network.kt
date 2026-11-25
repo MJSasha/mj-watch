@@ -349,6 +349,7 @@ fun safeError(e: Throwable): String = when(e) {
         "credential_missing"->"Владелец ещё не настроил TMDB"
         "jacred_not_installed"->"Установите JacRed в настройках сервера или выберите внешний источник."
         "jacred_unavailable"->"Внутренний JacRed не отвечает. Проверьте его состояние в настройках сервера."
+        "jacred_stats_unavailable"->"JacRed не вернул статистику каталога. Повторите попытку."
         "jacred_collect_unavailable"->"Ручной запуск пока недоступен. Загрузите и примените настройки JacRed."
         "jacred_collect_disabled"->"Включите сбор с трекеров в настройках JacRed."
         "jacred_collect_running"->"Сбор уже выполняется."

@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.15**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.16**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.15
+export MJWATCH_SERVER_VERSION=0.1.16
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -60,9 +60,13 @@ Choose trackers and a collection interval, or enter an HTTPS synchronization ser
 
 Starting with server 0.1.15, **My server → JacRed** shows search health, catalog counts, per-tracker collection progress and the last 12 runs. An authenticated administrator can start a collection from that page. Installation and configuration continue to use owner SSH.
 
+Server 0.1.16 can deliver catalog statistics independently of search health and collection progress. The stats panel retains its last values during refresh and offers a separate retry when statistics are unavailable.
+
 The JacRed catalog lives in `/var/lib/mjwatch-jacred/Data`. On a replacement host, install JacRed and configure its sources again. To preserve the existing catalog, stop the JacRed service while copying this directory, and set ownership to `mjwatch-jacred` on the destination. The built-in MJWatch account/history transfer does not include the JacRed catalog.
 
 ## Resource profiles and diagnostics (0.1.7)
+
+Starting with server 0.1.16, administrators can open **My server → Server resources** to monitor CPU load, available memory and disk space. The app refreshes the readings every five seconds while the page is open. CPU usage appears after the second sample. The page also shows the MJWatch data disk when it is on a separate filesystem.
 
 The automatic viewing profile is chosen at startup using effective RAM (including inherited cgroup v2 limits): at most 1 GiB → one viewing session/preparation; at most 2 GiB → two; otherwise four. Unknown RAM uses one. Password checks/uploads allow one concurrent operation on the smallest profile, two otherwise. Two overlapping Range requests for the same session/torrent/file share one viewing slot, allowing seeking without consuming a second slot. Preparation, password/upload budgets and system memory limits stay tied to the RAM profile.
 

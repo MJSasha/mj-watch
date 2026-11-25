@@ -90,6 +90,9 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 	if code, _ := call(t, s, "", "GET", path, nil); code != 401 {
 		t.Fatal(code)
 	}
+	if code, _ := call(t, s, "", "GET", path+"/stats", nil); code != 401 {
+		t.Fatal(code)
+	}
 	code, invite := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})
 	if code != 200 {
 		t.Fatal(code, invite)
@@ -101,6 +104,7 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 		t.Fatal(code, account)
 	}
 	calls := 0
+	statsAvailable := true
 	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
 		if r.URL.Host != "127.0.0.1:19117" || r.URL.Query().Get("apikey") != "private-key" || r.Header.Get("Authorization") != "" {
@@ -109,6 +113,9 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 		body := `{"results":[]}`
 		switch r.URL.Path {
 		case "/stats/torrents":
+			if !statsAvailable {
+				return &http.Response{StatusCode: 503, Body: io.NopCloser(strings.NewReader("offline"))}, nil
+			}
 			body = `[{"trackerName":"rutor","alltorrents":7,"private":"upstream-private-field"}]`
 		case "/stats/meta":
 			body = `{"updatedAt":"2026-11-25T16:45:00Z"}`
@@ -119,6 +126,9 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})
 	if code, _ := call(t, s, account["accessToken"].(string), "GET", path, nil); code != 403 || calls != 0 {
+		t.Fatal(code, calls)
+	}
+	if code, _ := call(t, s, account["accessToken"].(string), "GET", path+"/stats", nil); code != 403 || calls != 0 {
 		t.Fatal(code, calls)
 	}
 	if code, _ := call(t, s, account["accessToken"].(string), "POST", path+"/collect", nil); code != 403 {
@@ -147,6 +157,21 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 			t.Fatal("Diagnostics exposed private upstream information")
 		}
 	}
+	calls = 0
+	code, stats := call(t, s, owner, "GET", path+"/stats", nil)
+	if code != 200 || calls != 2 || stats["catalogCount"] != float64(7) || stats["searchReady"] != nil {
+		t.Fatal(code, calls, stats)
+	}
+	statsAvailable = false
+	if code, body := call(t, s, owner, "GET", path+"/stats", nil); code != 503 || body["code"] != "jacred_stats_unavailable" {
+		t.Fatal(code, body)
+	}
+	calls = 0
+	code, overview := call(t, s, owner, "GET", path+"?view=overview", nil)
+	if code != 200 || calls != 1 || overview["separateCatalogStats"] != true ||
+		overview["searchReady"] != true || overview["catalogCount"] != nil || overview["index"] == nil {
+		t.Fatal(code, calls, overview)
+	}
 }
 func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 	s, owner := fixture(t)
@@ -163,11 +188,18 @@ func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 	if code != 401 {
 		t.Fatal("invite reused", code)
 	}
-	for _, path := range []string{"admin/users", "admin/tmdb", "admin/settings", "admin/status", "admin/torrserver/settings"} {
+	for _, path := range []string{"admin/users", "admin/tmdb", "admin/settings", "admin/status", "admin/resources", "admin/torrserver/settings"} {
 		code, _ := call(t, s, token, "GET", path, nil)
 		if code != 403 {
 			t.Fatal(path, code)
 		}
+	}
+	if code, _ := call(t, s, "", "GET", "admin/resources", nil); code != 401 {
+		t.Fatal("anonymous resource access", code)
+	}
+	if code, sample := call(t, s, owner, "GET", "admin/resources", nil); code != 200 ||
+		sample["checkedAt"] == nil || sample["cpu"] == nil || sample["memory"] == nil || sample["disks"] == nil {
+		t.Fatal("admin resource sample", code, sample)
 	}
 	code, _ = call(t, s, owner, "DELETE", "admin/users/"+func() string { i, _ := s.identity(owner); return i.User }(), nil)
 	if code != 409 {
