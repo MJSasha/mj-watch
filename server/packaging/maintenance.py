@@ -100,6 +100,8 @@ def main():
    release.mkdir(mode=0o755,exist_ok=False);release.chmod(0o755);(release/'.mjwatch-owned').touch(mode=0o600)
    for name,source in [('mjwatch',f'linux-{arch}/mjwatch'),('torrserver',f'linux-{arch}/TorrServer')]:shutil.copy2(upload/source,release/name);(release/name).chmod(0o755)
    for helper in ['maintenance.py','renew.py']:shutil.copy2(upload/helper,release/helper);(release/helper).chmod(0o700)
+   if any(entry['path']=='jacred.py' for entry in manifest['files']):
+    shutil.copy2(upload/'jacred.py',release/'jacred.py');(release/'jacred.py').chmod(0o700)
    shutil.copy2(upload/'manifest.json',release/'manifest.json');(release/'manifest.json').chmod(0o644)
    try:
     run('systemctl','stop','mjwatch.service','mjwatch-torrserver.service');temp=current.with_suffix('.next');temp.symlink_to(release);os.replace(temp,current);run('systemctl','start','mjwatch-torrserver.service','mjwatch.service');healthy(config)

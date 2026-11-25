@@ -135,8 +135,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     @Synchronized private fun repositories(c:Config=state.value.config):Pair<ReleaseRepository,StreamGateway> {
         if(cachedConfig==c) cachedRepositories?.let {return it}
         if(c.demo) return DemoReleases to DemoGateway
-        val client=if(c.managed&&runCatching{endpoint(c.jackett).origin()==endpoint(c.managedUrl).origin()}.getOrDefault(false)) managedClient(c,secrets) else guardedClient(c); val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client)
-        return (r to if(c.managed) ManagedGateway(ManagedApi(c,secrets),r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
+        val api=if(c.managed) ManagedApi(c,secrets) else null
+        val client=if(api!=null&&runCatching{endpoint(c.jackett).origin()==api.base.origin()}.getOrDefault(false)) api.client else guardedClient(c)
+        val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client,api?.takeIf { c.internalJacred })
+        return (r to if(api!=null) ManagedGateway(api,r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
     private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
     internal suspend fun cast(id: String, config: Config): List<CastMember> =
@@ -230,8 +232,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         if(!refresh && detailSourceKey==key) detailSourceResult?.let {return it}
         val repository=repositories().first
         return withContext(Dispatchers.IO) {repository.search(title)}.also {result ->
-            detailSourceKey=key
-            detailSourceResult=result
+            if (result.releases.isNotEmpty() || result.failures.isEmpty()) {
+                detailSourceKey=key
+                detailSourceResult=result
+            }
         }
     }
     fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title,releasesOnly=true)}
@@ -403,7 +407,9 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         update {if(jackett) it.copy(checkingJackett=true) else it.copy(checkingTorr=true)}
         checkJobs[jackett]=viewModelScope.launch {
             try { val result=withContext(Dispatchers.IO) {
-                if(c.demo) { if(jackett) DemoReleases.check() else DemoGateway.check() } else {
+                if(c.demo) { if(jackett) DemoReleases.check() else DemoGateway.check() }
+                else if(jackett&&c.internalJacred) repositories(c).first.check()
+                else {
                     val c=if(jackett)c else c.copy(torrServer=normalizeDirectAddress(c.torrServer))
                     if(jackett) endpoint(c.jackett) else endpoint(c.torrServer); val scoped=if(jackett) c.copy(torrServer="") else c.copy(jackett="",indexers="",torznabPaths=emptyMap());val client=guardedClient(scoped); val r=TorznabRepository(scoped,key,client)
                     if(jackett) r.check() else TorrServerGateway(scoped,if(user.isBlank()) "" else Credentials.basic(user,password),client,r).check()

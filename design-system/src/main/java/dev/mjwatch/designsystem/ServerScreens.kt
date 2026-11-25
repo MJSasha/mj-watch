@@ -129,7 +129,7 @@ import java.util.UUID
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
     ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy,managed.message.isNotBlank(),managed.statusCheckedAt,tv){controller.load("admin/status")}
-    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
+    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("JacRed","server-jacred",Icons.Outlined.Search),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{
     var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
@@ -217,6 +217,11 @@ import java.util.UUID
    "server-update"->key(s.config.managedUrl){ServerUpdateScreen(s,model,tv)}
    "server-migration"->ServerMigrationScreen(s.config.managedUrl,managed,controller,tv)
 
+   "server-jacred"->{
+    Text("JacRed",fontSize=28.sp,fontWeight=FontWeight.Bold)
+    Text("Свой каталог раздач на сервере MJWatch.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
+   }
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{
     var limitsDirty by remember{mutableStateOf(false)};var torrDirty by remember{mutableStateOf(false)};var limitsRevision by remember{mutableIntStateOf(0)}
@@ -231,7 +236,7 @@ import java.util.UUID
  BoxWithConstraints(Modifier.fillMaxSize()) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    listOf("Обзор" to "server-overview","Пользователи" to "server-users","TorrServer" to "server-torr","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
+    listOf("Обзор" to "server-overview","Пользователи" to "server-users","TorrServer" to "server-torr","JacRed" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second!="server-jacred"||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
    Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
   }else BoundedPane(!tv){content()}
@@ -247,14 +252,14 @@ import java.util.UUID
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
-@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,onDirty:(Boolean)->Unit={}) {
+@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,onDirty:(Boolean)->Unit={}) {
  val keyboard=LocalSoftwareKeyboardController.current
  val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
  val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
  var connectionOpen by rememberSaveable{mutableStateOf(false)}
  var refreshedLimits by remember{mutableIntStateOf(limitsRevision)}
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
- var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
+ var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||jacred)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
  var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
  val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
@@ -262,7 +267,7 @@ import java.util.UUID
  var activeCount by remember{mutableStateOf<Int?>(null)};var restoreWarning by remember{mutableStateOf(false)}
  var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
- fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=if(install)installationError(e) else safeError(e);if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
+ fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=when {install->installationError(e);jacred&&e is MaintenanceFailure->jacredError(e.code);else->safeError(e)};if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
  suspend fun refreshTorr(target:SshTarget){
   val fresh=ssh.read(target)
   val previous=data
@@ -309,12 +314,12 @@ import java.util.UUID
  if(!install||progress==null){
  if(install){Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Остальное MJWatch сделает сам")}
  if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
- if(settings)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Для чтения и сохранения кэша",tv){connectionOpen=!connectionOpen}}
- if(!settings||connectionOpen){
+ if(settings||jacred)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Подключение по SSH",tv){connectionOpen=!connectionOpen}}
+ if((!settings&&!jacred)||connectionOpen){
  ServerField(host,{host=it},"IP или домен сервера");if(!settings)ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
  if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
  TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
- ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
+ if(!jacred)ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
  }
  if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
  if(install){
@@ -323,6 +328,21 @@ import java.util.UUID
   Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){startInstallation()}
   Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){showProgress(InstallationProgress());checkInstallation()}
 
+ }else if(jacred){
+  fun refresh()=perform{target->data=ssh.readJacred(target);connectionOpen=false;message=""}
+  val snapshot=data
+  if(connectionOpen) Action("Загрузить состояние JacRed",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){refresh()}
+  if(snapshot==null&&!connectionOpen) SettingsCard("Состояние сервиса",Icons.Outlined.Dns,tv){
+   SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
+   Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
+  }
+  if(snapshot!=null) JacredEditor(snapshot,tv,busy,onDirty,onRefresh={refresh()}) { next ->
+   perform{target->
+    data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
+    onDirty(false)
+    message="JacRed запущен. Можно проверить поиск в настройках источника."
+   }
+  }
  }else if(settings){
   if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));ssh.apply(target,pending);val current=ssh.read(target);data=current;draft=JSONObject(current.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён. Данные сервера обновлены."}}
   if(data==null||connectionOpen){

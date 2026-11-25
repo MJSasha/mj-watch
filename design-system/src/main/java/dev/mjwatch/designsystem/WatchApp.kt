@@ -286,7 +286,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
-                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,registerBack={editorBack=it})
+                                    "connection-choice","managed-login","server-overview","server-tmdb","server-history","server-retention","server-torr","server-jacred","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
@@ -812,6 +812,7 @@ private class ReleaseOptions(
                             if(seasonNumber!=null) model.findSeriesReleases(s.selectedMetadata,seasonNumber,episodeNumber,s.episodeTargetId,s.episodeDownload)
                             else model.findReleases()
                         }
+                        if(s.failures.isNotEmpty()) Action("Настроить источник",tv,secondary=true) {model.page("settings-search")}
                     }
                 } else Empty("Нет раздач с этими фильтрами","Попробуйте другой источник или качество.",tv,"Сбросить фильтры") {resetFilters()}
             }}
@@ -1291,9 +1292,24 @@ private class ReleaseOptions(
             Heading(if(setupStep==1)"Добавьте источник раздач" else "Подключите TorrServer")
         }} else if(section==null)item{Heading("Подключения")}
         if((!setup||setupStep==1)&&(section==null||section=="search"))item {SettingsCard("Источник раздач",Icons.Outlined.Search,tv){
+            if(c.managed&&!c.demo) {
+                val account by model.managed.state.collectAsStateWithLifecycle()
+                FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Pill("Внутренний JacRed",c.internalJacred,tv) {changed(c.copy(externalReleaseSearch=false))}
+                    Pill("Внешний источник",!c.internalJacred,tv) {changed(c.copy(externalReleaseSearch=true))}
+                }
+                if(c.internalJacred) {
+                    SettingsHint("Поиск идёт через JacRed, установленный на вашем сервере MJWatch.")
+                    if(account.scope==c.scope&&account.me?.optString("role")=="admin") {
+                        Action("Управление JacRed",tv,secondary=true,icon=Icons.Outlined.Tune){model.page("server-jacred")}
+                    }
+                }
+            }
+            if(!c.internalJacred) {
             Text("Jackett / JacRed находит раздачи для просмотра.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
+            }
             Action("Проверить поиск",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingJackett){model.check(true,c,key,user,password)}
             OperationMessage(s.checkJackett)
         }}
@@ -1304,7 +1320,7 @@ private class ReleaseOptions(
             Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingTorr){model.check(false,c,key,user,password)}
             OperationMessage(s.checkTorr)
         }}
-        if(section=="search")item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){
+        if(section=="search"&&!c.internalJacred)item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){
             Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
             SettingsHint("Авто подходит для большинства серверов. Выберите протокол вручную, если автоматическая проверка не распознала источник.")
@@ -1480,7 +1496,11 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     val managed=account.takeIf {it.scope==s.config.scope}
     val admin=managed?.me?.optString("role")=="admin"
     SettingsGroup(tv) {
-        SettingsActionRow(Icons.Outlined.Search,"Jackett / JacRed",if(s.config.demo) "Демонстрационный режим" else s.config.jackett,tv) {model.page("settings-search")}
+        SettingsActionRow(Icons.Outlined.Search,"Jackett / JacRed",when {
+            s.config.demo -> "Демонстрационный режим"
+            s.config.internalJacred -> "Внутренний JacRed"
+            else -> s.config.jackett
+        },tv) {model.page("settings-search")}
         if(!s.config.managed) {
             SettingsDivider()
             SettingsActionRow(Icons.Outlined.Dns,"TorrServer",if(s.config.demo) "Локальное тестовое видео" else s.config.torrServer,tv) {model.page("settings-server")}

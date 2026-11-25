@@ -384,7 +384,7 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
         try {
             val result=model.titleReleases(m.title,refresh=retry>0)
             candidates=(listOfNotNull(release)+result.releases).distinctBy { it.id }
-            if (candidates.isNullOrEmpty() && result.failures.isNotEmpty()) error="Источники не ответили."
+            if (candidates.isNullOrEmpty()) error=result.failures.joinToString("\n")
         } catch (cancel:CancellationException) { throw cancel }
         catch (e:Exception) { error=safeError(e) }
     }
@@ -397,6 +397,7 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
                 else -> Text("Раздачи пока не найдены.",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if(error.isNotEmpty()||candidates!=null) Action("Повторить поиск",tv,secondary=true) {candidates=null;retry++}
+            if(error.isNotEmpty()) Action("Настроить источник",tv,secondary=true) {model.page("settings-search")}
         }
     }}
     val shown = s.copy(results=candidates.orEmpty(),busy=false,releaseSeason=null,releaseEpisode=null,

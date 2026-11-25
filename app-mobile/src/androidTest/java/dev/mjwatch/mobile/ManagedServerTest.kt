@@ -26,7 +26,7 @@ class ManagedServerTest {
   val context=InstrumentationRegistry.getInstrumentation().targetContext
   context.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
   val response=JSONObject(java.net.URL("http://127.0.0.1:18444/bootstrap").readText())
-  val config=Config(connectionMode="managed",managedUrl=response.getString("url"),serverId=response.getString("serverId"),userId=response.getString("userId"),jackett=response.getString("url")+"/fixture-source",releaseApi="jacred",theme="dark")
+  val config=Config(connectionMode="managed",managedUrl=response.getString("url"),serverId=response.getString("serverId"),userId=response.getString("userId"),jackett=response.getString("url")+"/fixture-source",releaseApi="jacred",externalReleaseSearch=true,theme="dark")
   val secrets=SecretStore(context);secrets.put("ca:${endpoint(config.managedUrl).origin()}",response.getString("ca"));val api=ManagedApi(config,secrets);api.saveTokens(response)
   val db=Room.databaseBuilder(context,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).build()
   try {api.authorized("history","DELETE");db.syncDao().clearOutbox(config.scope);db.syncDao().clearEntities(config.scope);db.syncDao().clearCursor(config.scope);SyncEngine(api,db.syncDao()).sync()}finally{db.close()}

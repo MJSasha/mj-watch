@@ -42,6 +42,36 @@ func call(t *testing.T, s *Server, token, method, path string, body any) (int, m
 	json.Unmarshal(w.Body.Bytes(), &v)
 	return w.Code, v
 }
+
+func TestManagedJacredSearch(t *testing.T) {
+	s, owner := fixture(t)
+	dir := t.TempDir()
+	s.Config.SecretKey = filepath.Join(dir, "secret.key")
+	path := "search/jacred?indexer=all&query=Film%20%26%20Series"
+	if code, _ := call(t, s, "", "GET", path, nil); code != 401 {
+		t.Fatal(code)
+	}
+	if code, body := call(t, s, owner, "GET", path, nil); code != 503 || body["code"] != "jacred_not_installed" {
+		t.Fatal(code, body)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "jacred-access.json"), []byte(`{"apiKey":"local-test-key"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		q := r.URL.Query()
+		if r.URL.Host != "127.0.0.1:19117" || r.URL.Path != "/api/v2.0/indexers/all/results" ||
+			q.Get("apikey") != "local-test-key" || q.Get("Query") != "Film & Series" || r.Header.Get("Authorization") != "" {
+			t.Fatal("Unexpected JacRed request")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"results":[{"Title":"Film"}],"private":"ignored"}`))}, nil
+	})
+	if code, _ := call(t, s, owner, "GET", "search/jacred?indexer=../stats", nil); code != 400 {
+		t.Fatal(code)
+	}
+	if code, body := call(t, s, owner, "GET", path, nil); code != 200 || len(body) != 1 || len(body["Results"].([]any)) != 1 {
+		t.Fatal(code, body)
+	}
+}
 func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 	s, owner := fixture(t)
 	code, created := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})

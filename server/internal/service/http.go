@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.13"
+var Version = "0.1.14"
 
 type Server struct {
 	maxStreams         int
@@ -207,6 +207,8 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case path == "search/jacred" && r.Method == "GET":
+		s.jacredSearch(w, r)
 	case path == "me" && r.Method == "GET":
 		var name string
 		s.DB.QueryRow("SELECT name FROM users WHERE id=?", i.User).Scan(&name)

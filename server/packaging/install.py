@@ -140,6 +140,8 @@ def main():
   unit('mjwatch-torrserver.service','mjwatch-torr',f"/opt/mjwatch/current/torrserver --ip 127.0.0.1 --port {plan['torrPort']} --path /var/lib/torrserver-mjwatch --httpauth",'/var/lib/torrserver-mjwatch')
   unit('mjwatch.service','mjwatch','/opt/mjwatch/current/mjwatch serve /etc/mjwatch/config.json','/var/lib/mjwatch /var/backups/mjwatch')
   for helper in ['maintenance.py','renew.py']:shutil.copyfile(UPLOAD/helper,release/helper);(release/helper).chmod(0o700)
+  if any(entry['path']=='jacred.py' for entry in manifest['files']):
+   shutil.copyfile(UPLOAD/'jacred.py',release/'jacred.py');(release/'jacred.py').chmod(0o700)
   shutil.copyfile(UPLOAD/'operation.py','/opt/mjwatch/operation.py');pathlib.Path('/opt/mjwatch/operation.py').chmod(0o700)
   shutil.copyfile(UPLOAD/'release-public.pem','/etc/mjwatch/release-public.pem');pathlib.Path('/etc/mjwatch/release-public.pem').chmod(0o644)
   shutil.copyfile(UPLOAD/'mjwatchctl','/usr/local/sbin/mjwatchctl');pathlib.Path('/usr/local/sbin/mjwatchctl').chmod(0o700)

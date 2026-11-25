@@ -117,17 +117,38 @@ object TorznabXml {
         }; return result.distinctBy { it.hash ?: it.id }
     }
 }
-class TorznabRepository(private val config: Config, private val apiKey: String, private val client: OkHttpClient) : ReleaseRepository {
+class TorznabRepository(private val config: Config, private val apiKey: String, private val client: OkHttpClient,
+    private val internalSearch: ManagedApi? = null) : ReleaseRepository {
     private val permits=Semaphore(3)
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
-    private val sources get()=config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
+    private val sources get()=if(internalSearch!=null) listOf("all")
+        else config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
+    private suspend fun jacredReleases(source:String,query:String):List<Release> {
+        val data=if(internalSearch==null) String(read(url(source,"search",query))) else try {
+            internalSearch.authorized("search/jacred?indexer=$source&query="+java.net.URLEncoder.encode(query,"UTF-8")).toString()
+        } catch(e:HttpFailure) {
+            if(e.status!=404) throw e
+            throw IOException("Обновите сервер MJWatch, чтобы включить внутренний JacRed.",e)
+        }
+        return JacredJson.releases(data,source)
+    }
     private suspend fun read(url:HttpUrl):ByteArray {
         val request=Request.Builder().url(url).build()
-        return try {client.bytes(request)} catch(e:HttpFailure) {
-            // Read-only lookup only. Respect long server cooldowns by returning an actionable error.
-            if(e.status!=429||(e.retryAfterSeconds ?: 2)>5) throw e
-            delay((e.retryAfterSeconds ?: 2)*1000)
-            client.bytes(request)
+        return try {
+            try {client.bytes(request)} catch(e:HttpFailure) {
+                // Read-only lookup only. Respect long server cooldowns by returning an actionable error.
+                if(e.status!=429||(e.retryAfterSeconds ?: 2)>5) throw e
+                delay((e.retryAfterSeconds ?: 2)*1000)
+                client.bytes(request)
+            }
+        } catch(e:HttpFailure) {
+            if (e.status != 401 && e.status != 403) throw e
+            val guidance = if (url.host.removePrefix("www.") == "jac.red" && apiKey.isBlank() && e.status == 403) {
+                "Проверьте подключение позже или укажите другой адрес Jackett / JacRed."
+            } else {
+                "Проверьте API-ключ и права доступа в настройках Jackett / JacRed."
+            }
+            throw IOException("${url.host} отклонил поиск раздач (HTTP ${e.status}). $guidance", e)
         }
     }
     private fun url(source: String, type: String, query: String? = null): HttpUrl {
@@ -145,7 +166,10 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         return TorznabXml.caps(String(read(url(source,"caps")))).also { caps[source]=System.currentTimeMillis() to it }
     }
     override suspend fun check(): String {
-        if(config.usesJacred()) {sources.forEach {JacredJson.releases(String(read(url(it,"search", ""))),it)};return "JacRed JSON: подключение проверено"}
+        if(internalSearch!=null || config.usesJacred()) {
+            sources.forEach {jacredReleases(it,"")}
+            return if(internalSearch!=null) "Внутренний JacRed отвечает" else "JacRed JSON: подключение проверено"
+        }
         sources.forEach { capabilities(it) }; return "Torznab: проверено источников ${sources.size}"
     }
     override suspend fun search(query: String): SearchResult = searchPage(query)
@@ -156,9 +180,9 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         val responses=java.util.concurrent.ConcurrentHashMap<String,Pair<List<Release>,String?>>()
         val jobs=selected.map {source -> async {permits.withPermit {
             val result=try {withTimeout(20_000) {
-                if(config.usesJacred()) {
+                if(internalSearch!=null || config.usesJacred()) {
                     if(page>0) return@withTimeout Pair(emptyList<Release>(),null)
-                    return@withTimeout Pair(JacredJson.releases(String(read(url(source,"search",query))),source),null)
+                    return@withTimeout Pair(jacredReleases(source,query),null)
                 }
                 val cap=capabilities(source)
                 if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null)
@@ -323,6 +347,8 @@ fun safeError(e: Throwable): String = when(e) {
         "migration_in_progress"->"Идёт перенос сервера. Приложение повторит подключение."
         "provider_disabled"->"Каталог выключен владельцем. Поиск раздач и просмотр доступны."
         "credential_missing"->"Владелец ещё не настроил TMDB"
+        "jacred_not_installed"->"Установите JacRed в настройках сервера или выберите внешний источник."
+        "jacred_unavailable"->"Внутренний JacRed не отвечает. Проверьте его состояние в настройках сервера."
         "credential_rejected","provider_credential_rejected"->"TMDB отклонил ключ. Прежний ключ не заменён."
         "provider_rate_limited"->"TMDB ограничил запросы. Повторите позже."
         "provider_unavailable"->"TMDB временно недоступен. Поиск раздач работает."

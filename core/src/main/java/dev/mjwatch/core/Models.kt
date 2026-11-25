@@ -21,7 +21,9 @@ data class StreamRequest(val uri: String, val headers: Map<String, String> = emp
 data class SearchResult(val releases: List<Release>, val failures: List<String> = emptyList(), val more: Boolean = false)
 data class Config(val schemaVersion: Int = 1, val jackett: String = "https://jac.red", val indexers: String = "",
     val torrServer: String = "", val localHttp: Boolean = false, val demo: Boolean = false,
-    val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap(), val releaseApi:String="auto", val connectionMode:String="direct", val managedUrl:String="", val serverId:String="", val userId:String="")
+    val theme: String = "system", val metadataProvider: String = "none", val torznabPaths: Map<String,String> = emptyMap(), val releaseApi:String="auto", val connectionMode:String="direct", val managedUrl:String="", val serverId:String="", val userId:String="", val externalReleaseSearch:Boolean=false)
+
+val Config.internalJacred: Boolean get() = connectionMode == "managed" && !demo && !externalReleaseSearch
 interface ReleaseRepository {
     suspend fun search(query: String): SearchResult
     suspend fun check(): String

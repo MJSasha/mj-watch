@@ -15,6 +15,14 @@ import org.robolectric.annotation.Config
 @Config(sdk=[35],manifest=Config.NONE)
 class ContractsTest {
     private fun fixture(name:String)=javaClass.classLoader!!.getResource(name)!!.readText()
+    @Test fun managedSearchDefaultsToInternalAndPreservesExternalChoice() {
+        val managed=decodeConfig("""{"connectionMode":"managed","managedUrl":"https://server.invalid"}""")
+        assertTrue(managed.internalJacred)
+        assertFalse(managed.copy(connectionMode="direct").internalJacred)
+        val external=managed.withSearchSettings(managed.copy(externalReleaseSearch=true))
+        assertFalse(decodeConfig(encodeConfig(external)).internalJacred)
+        assertEquals(managed.managedUrl,external.managedUrl)
+    }
     @Test fun jacredJsonContractAndConfigRoundTrip() {
         val items=JacredJson.releases(fixture("jacred.json"),"all")
         assertEquals(1,items.size);val r=items.single()
@@ -59,7 +67,11 @@ class ContractsTest {
             }
             server.enqueue(MockResponse().setResponseCode(403))
             val failure=runCatching {repo.check()}.exceptionOrNull()!!
-            assertTrue(safeError(failure).contains("HTTP 403"));assertEquals(3,server.requestCount)
+            assertTrue(safeError(failure).contains("HTTP 403"))
+            assertTrue(safeError(failure).contains("API-ключ"))
+            server.enqueue(MockResponse().setResponseCode(403).setBody("<html>Private proxy error</html>"))
+            assertEquals("all: ${safeError(failure)}",repo.search("Sintel").failures.single())
+            assertEquals(4,server.requestCount)
         } finally {server.shutdown()}
     }
     @Test fun localHttpPolicyReasonSurvivesAsyncFailureAndHtmlIsRejected()=runBlocking {

@@ -5,6 +5,7 @@ go test -race ./...
 go vet ./...
 python3 packaging/test_install_status.py
 python3 packaging/test_health_tls.py
+PYTHONDONTWRITEBYTECODE=1 python3 packaging/test_jacred.py
 python3 - <<'PY'
 import ast,pathlib
 for path in pathlib.Path('packaging').glob('*.py'):ast.parse(path.read_text())

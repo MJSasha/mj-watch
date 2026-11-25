@@ -41,6 +41,32 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  suspend fun identity(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl identity"))}
  suspend fun cancel(target:SshTarget)=session(target){exec(it,"touch /var/lib/mjwatch-install/cancel")}
  suspend fun read(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl torrserver settings read"))}
+ private fun jacredStatus(session:Session):JSONObject {
+  val path="/opt/mjwatch/current/jacred.py"
+  val ready=exec(session,"if [ -x $path ]; then echo ready; else echo update; fi")
+  check(ready.trim()=="ready") {"Обновите сервер MJWatch в разделе «Обслуживание»."}
+  return JSONObject(exec(session,"/usr/bin/python3 $path status"))
+ }
+ suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)
+ suspend fun applyJacred(target:SshTarget,settings:JSONObject,onStage:(String)->Unit)=session(target){connection->
+  val before=jacredStatus(connection).optJSONObject("operation")
+  check(before?.optString("state")!="running") {"JacRed уже настраивается. Обновите состояние после завершения."}
+  val started=JSONObject(exec(connection,"/usr/bin/python3 /opt/mjwatch/current/jacred.py start",settings.toString()))
+  check(started.optString("state")!="busy") {"JacRed уже настраивается. Обновите состояние после завершения."}
+  check(started.optString("state")!="failed") {"Проверьте адрес синхронизации, трекеры и интервал."}
+  val deadline=android.os.SystemClock.elapsedRealtime()+310_000
+  var snapshot:JSONObject
+  do {
+   Thread.sleep(900)
+   snapshot=jacredStatus(connection)
+   val operation=snapshot.optJSONObject("operation")
+   onStage(operation?.optString("stage").orEmpty())
+   if(operation?.optString("state")=="failed") throw MaintenanceFailure(operation.optString("code"))
+   check(android.os.SystemClock.elapsedRealtime()<deadline) {"Установка продолжается. Обновите состояние JacRed."}
+  } while(operation?.optString("state")=="running")
+  check(snapshot.optBoolean("running")) {"JacRed не запущен. Проверьте состояние сервера."}
+  snapshot
+ }
  suspend fun apply(target:SshTarget,body:JSONObject)=session(target){session->
   val id=body.getString("operationId");val key="torrApply:${target.host}:${target.port}";secrets.put(key,body.toString())
   fun result()=JSONObject(exec(session,"/usr/local/sbin/mjwatchctl torrserver operation",JSONObject().put("operationId",id).toString()))

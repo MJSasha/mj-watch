@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.13**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.14**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.13
+export MJWATCH_SERVER_VERSION=0.1.14
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -51,6 +51,14 @@ Service units are `mjwatch.service`, `mjwatch-torrserver.service`, `mjwatch-rene
 `check.sh` runs service/control contracts, race detector, vet and packaging syntax. `cmd/fixture` is test-only and is not included in server supply/APK: private-CA HTTPS API on 18443, loopback fixture control on 18444, SQLite and controlled MP4 upstream. Never deploy it. Android tests require explicit reverse ports to a dedicated emulator. Live installation/update/restore evidence and untested scenarios: [`../docs/testing/SERVER-MANAGEMENT-V1.md`](../docs/testing/SERVER-MANAGEMENT-V1.md).
 
 Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair](../docs/testing/PYTHON314-HEALTH.md). Server 0.1.3 preserves existing CA trust and adds explicit critical signing key usage for new CAs.
+
+## Internal JacRed (0.1.14)
+
+Install or update the managed server from the app, then open **My server → JacRed** as the owner. The SSH workflow installs the pinned JacRed release for Linux AMD64 or ARM64, verifies its SHA-256, and starts a dedicated systemd service. JacRed listens on loopback. Signed-in clients search through the existing MJWatch HTTPS endpoint.
+
+Choose trackers and a collection interval, or enter an HTTPS synchronization server you can access. A new catalog fills as collection or synchronization runs. **Settings → Jackett / JacRed** selects internal or external search on each client. Internal is the default for managed profiles. Direct TorrServer profiles use the configured external source.
+
+The JacRed catalog lives in `/var/lib/mjwatch-jacred/Data`. On a replacement host, install JacRed and configure its sources again. To preserve the existing catalog, stop the JacRed service while copying this directory, and set ownership to `mjwatch-jacred` on the destination. The built-in MJWatch account/history transfer does not include the JacRed catalog.
 
 ## Resource profiles and diagnostics (0.1.7)
 
