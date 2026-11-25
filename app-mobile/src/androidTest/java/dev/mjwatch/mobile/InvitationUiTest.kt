@@ -2,6 +2,7 @@ package dev.mjwatch.mobile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.UiDevice
@@ -31,14 +32,17 @@ class InvitationUiTest {
   compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
   compose.waitUntil(10000){model.state.value.config.theme=="dark"&&model.state.value.page=="connection-choice"}
   compose.runOnIdle{model.legacyHandled();model.page("managed-login")}
+  compose.waitUntil(5000){compose.runOnUiThread{compose.activity.hasWindowFocus()}}
   compose.runOnIdle{
    val clipboard=instrumentation.targetContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("fixture",packet))
   }
   // Test explicit accessible activation; Android's native clipboard preview can cover a physical tap.
-  compose.onNodeWithText("Вставить приглашение").performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) {it()}
+  compose.onNodeWithText("Вставить приглашение").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) {it()}
   Assert.assertEquals("",model.secrets.get("ca:https://fixture.invalid:8443"))
-  compose.onNodeWithText("Подтвердить").performClick()
+  val confirm=hasText("Подтвердить") and hasClickAction()
+  compose.waitUntil(5000){compose.onAllNodes(confirm).fetchSemanticsNodes().size==1}
+  compose.onNode(confirm).performSemanticsAction(SemanticsActions.OnClick) {it()}
   compose.runOnIdle{Assert.assertEquals(ca,model.secrets.get("ca:https://fixture.invalid:8443"));Assert.assertEquals("",model.secrets.get("ca:https://fixture.invalid:443"))}
   compose.onNodeWithText("https://fixture.invalid:8443").assertExists()
   compose.onNodeWithContentDescription("Придумайте пароль · от 10 символов").performScrollTo().performTextInput("fixture-password")

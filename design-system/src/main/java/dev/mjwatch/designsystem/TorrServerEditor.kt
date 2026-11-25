@@ -31,13 +31,7 @@ import org.json.JSONObject
    Text(when(savedMode){true->"Диск";false->"ОЗУ";null->"Неизвестен"},style=MaterialTheme.typography.labelLarge)
   }
   Text("Где хранить загруженные части видео",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-   for((disk,label) in listOf(false to "В памяти",true to "На диске")){
-    OutlinedButton(onClick={change("UseDisk",disk)},modifier=Modifier.weight(1f).tvFocusRing(tv).semantics{selected=selectedMode==disk},colors=ButtonDefaults.outlinedButtonColors(containerColor=if(selectedMode==disk)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)){
-     Icon(if(disk)Icons.Outlined.Storage else Icons.Outlined.Memory,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text(label)
-    }
-   }
-  }
+  SettingsChoiceTabs("В памяти",Icons.Outlined.Memory,"На диске",Icons.Outlined.Storage,selectedMode,tv){change("UseDisk",it)}
   if(selectedMode!=savedMode)Text("Режим изменится после сохранения",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
   if(budget!=null){
    val free=budget.optLong("availableBytes")/1048576

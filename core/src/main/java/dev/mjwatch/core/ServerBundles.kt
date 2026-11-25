@@ -19,6 +19,7 @@ class ServerBundles(private val context:Context) {
   fun manifest()=open("manifest.json").use {JSONObject(String(it.readBytes()))}
  }
  fun active()=Source(installed.takeIf {it.isDirectory},context)
+ internal fun bundled()=Source(null,context)
  fun useBundled(){installed.deleteRecursively()}
  fun import(input:InputStream):JSONObject {
   require(context.filesDir.usableSpace>320L*1024*1024){"Недостаточно места для серверной поставки"}

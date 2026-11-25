@@ -1294,9 +1294,8 @@ private class ReleaseOptions(
         if((!setup||setupStep==1)&&(section==null||section=="search"))item {SettingsCard("Источник раздач",Icons.Outlined.Search,tv){
             if(c.managed&&!c.demo) {
                 val account by model.managed.state.collectAsStateWithLifecycle()
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Pill("Внутренний JacRed",c.internalJacred,tv) {changed(c.copy(externalReleaseSearch=false))}
-                    Pill("Внешний источник",!c.internalJacred,tv) {changed(c.copy(externalReleaseSearch=true))}
+                SettingsChoiceTabs("Внутренний JacRed",Icons.Outlined.Dns,"Внешний источник",Icons.Outlined.Language,c.externalReleaseSearch,tv) {
+                    changed(c.copy(externalReleaseSearch=it))
                 }
                 if(c.internalJacred) {
                     SettingsHint("Поиск идёт через JacRed, установленный на вашем сервере MJWatch.")

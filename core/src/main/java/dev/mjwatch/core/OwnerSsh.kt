@@ -43,8 +43,20 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  suspend fun read(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl torrserver settings read"))}
  private fun jacredStatus(session:Session):JSONObject {
   val path="/opt/mjwatch/current/jacred.py"
-  val ready=exec(session,"if [ -x $path ]; then echo ready; else echo update; fi")
-  check(ready.trim()=="ready") {"Обновите сервер MJWatch в разделе «Обслуживание»."}
+  if(exec(session,"if [ -x $path ]; then echo ready; else echo missing; fi").trim()!="ready") {
+   val script=context.assets.open("jacred-repair.py").bufferedReader().use {it.readText()}
+   val helper=try {
+    ServerBundles(context).bundled().open("jacred.py").bufferedReader().use {it.readText()}
+   }catch(_:java.io.FileNotFoundException){""}
+   val quotedScript="'"+script.replace("'","'\\''")+"'"
+   when(exec(session,"/usr/bin/python3 -c $quotedScript",helper).trim()) {
+    "ready" -> Unit
+    "update_required" -> error("Установите сервер MJWatch версии 0.1.14 или новее в разделе «Обслуживание → Обновление сервера».")
+    "helper_unavailable" -> error("В поставке для установленной версии не найден проверенный файл JacRed. Проверьте серверную поставку в разделе «Обслуживание».")
+    "release_changed" -> error("Версия сервера изменилась во время проверки. Загрузите состояние JacRed ещё раз.")
+    else -> error("Не удалось проверить установленную поставку MJWatch. Загрузите состояние JacRed ещё раз.")
+   }
+  }
   return JSONObject(exec(session,"/usr/bin/python3 $path status"))
  }
  suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)

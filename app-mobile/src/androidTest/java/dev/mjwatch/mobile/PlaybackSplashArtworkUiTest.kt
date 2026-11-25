@@ -18,16 +18,20 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.regex.Pattern
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackSplashArtworkUiTest {
     private val server=MockWebServer()
+    private val releaseVideo=CountDownLatch(1)
     @get:Rule val fixture=object:ExternalResource() {
         override fun before() {server.start()}
         override fun after() {
+            releaseVideo.countDown()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {PlaybackActivity.stopActivePlayback()}
             server.shutdown()
         }
@@ -54,13 +58,19 @@ class PlaybackSplashArtworkUiTest {
         logo.recycle()
         val hash="0123456789012345678901234567890123456789"
         val cachedBytes=AtomicLong(1_000_000)
+        val keepFillingCache=AtomicBoolean(false)
         server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):MockResponse = when(request.path) {
                 "/backdrop.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(backdrop))
                 "/logo.png" -> MockResponse().setHeader("Content-Type","image/png").setBody(okio.Buffer().write(logoBytes))
-                "/torrents" -> MockResponse().setHeader("Content-Type","application/json")
-                    .setBody("""{"hash":"$hash","download_speed":7125000,"active_peers":12,"total_peers":446,"connected_seeders":12,"preloaded_bytes":${cachedBytes.get()}}""")
-                "/movie.mp4" -> MockResponse().setHeadersDelay(11,TimeUnit.SECONDS).setHeader("Content-Type","video/mp4").setBody(okio.Buffer().write(video))
+                "/torrents" -> {
+                    val bytes=if(keepFillingCache.get()) cachedBytes.addAndGet(25_000) else cachedBytes.get()
+                    MockResponse().setHeader("Content-Type","application/json")
+                        .setBody("""{"hash":"$hash","download_speed":7125000,"active_peers":12,"total_peers":446,"connected_seeders":12,"preloaded_bytes":$bytes}""")
+                }
+                "/movie.mp4" -> if(releaseVideo.await(25,TimeUnit.SECONDS)) {
+                    MockResponse().setHeader("Content-Type","video/mp4").setBody(okio.Buffer().write(video))
+                } else MockResponse().setResponseCode(503)
                 else -> MockResponse().setResponseCode(404)
             }
         }
@@ -76,7 +86,9 @@ class PlaybackSplashArtworkUiTest {
         cachedBytes.set(1_300_000)
         assertNotNull("The cache size updates before the first frame",device.wait(Until.findObject(By.text(cacheLabel(cachedBytes.get()))),3_000))
         assertNotNull("Measured cache growth is reflected in the percentage",device.wait(Until.findObject(By.text("≈16%")),3_000))
-        assertNotNull("The estimated wait is visible",device.wait(Until.findObject(By.text(Pattern.compile("≈ [0-9]+ с"))),3_000))
+        keepFillingCache.set(true)
+        assertNotNull("The estimated wait is visible",device.wait(Until.findObject(By.text(Pattern.compile("≈ [0-9]+ с"))),5_000))
+        releaseVideo.countDown()
         assertTrue("The logo clears after the first frame",device.wait(Until.gone(By.desc("Тихая орбита")),20_000))
         if(InstrumentationRegistry.getArguments().getString("capturePlaybackPreview")=="true") Thread.sleep(4500)
     }

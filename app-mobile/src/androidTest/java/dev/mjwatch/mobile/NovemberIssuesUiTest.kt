@@ -26,6 +26,9 @@ import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class NovemberIssuesUiTest {
@@ -71,26 +74,41 @@ class NovemberIssuesUiTest {
     @Test fun searchSpinnerCoversSlowReleaseRequests() {
         val m=model()
         val server=okhttp3.mockwebserver.MockWebServer()
+        val responses=List(2){CountDownLatch(1)}
+        val requestIndex=AtomicInteger()
         server.start()
         try {
             val body="""{"Results":[{"Title":"Sintel 720p","Tracker":"Fixture","Seeders":1,"MagnetUri":"magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"}],"jacred":true}"""
-            repeat(2) {server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(body).setBodyDelay(3,java.util.concurrent.TimeUnit.SECONDS))}
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request:okhttp3.mockwebserver.RecordedRequest):okhttp3.mockwebserver.MockResponse {
+                    val ready=responses.getOrNull(requestIndex.getAndIncrement())?.await(20,TimeUnit.SECONDS)==true
+                    return if(ready) okhttp3.mockwebserver.MockResponse().setBody(body)
+                    else okhttp3.mockwebserver.MockResponse().setResponseCode(503)
+                }
+            }
             val url=server.url("/parser").toString()
             runBlocking {Settings(compose.activity).save(config.copy(demo=false,jackett=url,releaseApi="jacred",localHttp=true,externalReleaseSearch=true))}
             compose.waitUntil(10000) {m.state.value.config.jackett==url}
             compose.runOnIdle {m.search("Sintel")}
+            Assert.assertNotNull("Search request reached JacRed",server.takeRequest(10,TimeUnit.SECONDS))
             compose.onNodeWithContentDescription("Поиск…").assertIsDisplayed()
             capture("search-loading")
+            responses[0].countDown()
             compose.waitUntil(15000) {!m.state.value.busy}
             compose.onNodeWithContentDescription("Поиск…").assertDoesNotExist()
             compose.onNodeWithText("Sintel 720p").assertExists()
             compose.runOnIdle {m.metadata(Metadata("tmdb:movie:1","Sintel",null,null));m.findReleases()}
+            Assert.assertNotNull("Release request reached JacRed",server.takeRequest(10,TimeUnit.SECONDS))
             compose.onNodeWithContentDescription("Ищем раздачи…").assertIsDisplayed()
             capture("releases-loading")
+            responses[1].countDown()
             compose.waitUntil(15000) {!m.state.value.busy}
             compose.onNodeWithContentDescription("Ищем раздачи…").assertDoesNotExist()
             compose.onNodeWithText("Sintel 720p").assertExists()
-        } finally {server.shutdown()}
+        } finally {
+            responses.forEach {it.countDown()}
+            server.shutdown()
+        }
     }
     @Test fun serverOverviewAdaptsToBothThemes() {
         val m=model()

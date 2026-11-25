@@ -44,6 +44,27 @@ import androidx.compose.ui.unit.dp
  }
 }
 
+@Composable internal fun SettingsChoiceTabs(
+ firstLabel:String,firstIcon:ImageVector,secondLabel:String,secondIcon:ImageVector,
+ selectedSecond:Boolean?,tv:Boolean,onSelect:(Boolean)->Unit,
+){
+ Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+  for(second in listOf(false,true)){
+   val isSelected=selectedSecond==second
+   OutlinedButton(
+    onClick={onSelect(second)},
+    modifier=Modifier.weight(1f).fillMaxHeight().tvFocusRing(tv).semantics{selected=isSelected;role=Role.Tab},
+    colors=ButtonDefaults.outlinedButtonColors(containerColor=if(isSelected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
+    contentPadding=PaddingValues(horizontal=8.dp,vertical=8.dp),
+   ){
+    Icon(if(second)secondIcon else firstIcon,null,Modifier.size(18.dp))
+    Spacer(Modifier.width(8.dp))
+    Text(if(second)secondLabel else firstLabel)
+   }
+  }
+ }
+}
+
 /** Bounds are the server API contract; resource estimates are shown only when supplied by the server. */
 @Composable internal fun SettingsNumber(value:String,onChange:(String)->Unit,label:String,unit:String,min:Long,max:Long,tv:Boolean,recommended:Long?=null,hint:String=""){
  val n=value.toLongOrNull();val invalid=n==null||n !in min..max
