@@ -4,8 +4,11 @@ import json
 import pathlib
 import runpy
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
+import urllib.error
+import urllib.request
 import zipfile
 
 import jacred
@@ -14,6 +17,63 @@ restore = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[2] / 'core
 
 
 class JacredTest(unittest.TestCase):
+    def test_admin_session_requires_cookie_and_preserves_managed_config(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            config = root / 'init.conf'
+            previous = jacred.merged_config({}, jacred.DEFAULTS)
+            config.write_text(json.dumps(previous))
+            (root / 'wwwroot').mkdir()
+            (root / 'wwwroot/index.html').write_text('JacRed editor')
+
+            def upstream(handler, path, body=None):
+                if path == jacred.WEB_CONFIG:
+                    return 200, json.dumps({'data': json.loads(config.read_text())}).encode()
+                self.assertEqual(jacred.WEB_CONFIG + '/format', path)
+                validated = json.loads(body)['data']
+                self.assertEqual('127.0.0.1', validated['listenip'])
+                return 200, json.dumps({'ok': True, 'data': validated}).encode()
+
+            with patch.multiple(jacred, CONTROL=root, RELEASE=root, CONFIG=config,
+                                operation_active=lambda: False, atomic=lambda path, value, *_: path.write_text(value)), \
+                 patch.object(jacred.grp, 'getgrnam'), patch.object(jacred.AdminWebHandler, 'upstream', upstream), \
+                 jacred.ThreadingHTTPServer(('127.0.0.1', 0), jacred.AdminWebHandler) as server:
+                server.token = 'test-secret'
+                server.cookie_name = 'admin'
+                server.config_revision = config.stat().st_mtime_ns
+                origin = f'http://127.0.0.1:{server.server_port}'
+                headers = {'Cookie': 'admin=test-secret', 'Origin': origin}
+                worker = threading.Thread(target=server.serve_forever, daemon=True)
+                worker.start()
+
+                def request(path, request_headers=None, data=None):
+                    body = json.dumps({'data': data}).encode() if data is not None else None
+                    req = urllib.request.Request(origin + path, body, request_headers or {})
+                    return urllib.request.urlopen(req, timeout=5)
+
+                try:
+                    with self.assertRaises(urllib.error.HTTPError) as rejected:
+                        request('/settings')
+                    self.assertEqual(403, rejected.exception.code)
+                    with request('/settings', headers) as response:
+                        self.assertEqual(b'JacRed editor', response.read())
+                    with self.assertRaises(urllib.error.HTTPError) as cross_origin:
+                        request(jacred.WEB_CONFIG, dict(headers, Origin='http://127.0.0.1:5555'), {'logFdb': False})
+                    self.assertEqual(403, cross_origin.exception.code)
+                    with self.assertRaises(urllib.error.HTTPError) as managed:
+                        request(jacred.WEB_CONFIG, headers, {'ListenIP': 'any'})
+                    self.assertEqual(400, managed.exception.code)
+                    with request(jacred.WEB_CONFIG, headers, {'futureOption': 3, 'logFdb': False}) as response:
+                        self.assertTrue(json.load(response)['ok'])
+                    advanced = jacred.merged_config(json.loads(config.read_text()), dict(jacred.DEFAULTS, interval=60))
+                    self.assertFalse(advanced['logFdb'])
+                    self.assertEqual(3, advanced['futureOption'])
+                    self.assertEqual(previous['apikey'], advanced['apikey'])
+                    self.assertEqual(60, advanced['timeSync'])
+                finally:
+                    server.shutdown()
+                    worker.join()
+
     def test_manual_run_consumes_request_and_records_progress_and_history(self):
         with tempfile.TemporaryDirectory() as folder:
             root = pathlib.Path(folder)

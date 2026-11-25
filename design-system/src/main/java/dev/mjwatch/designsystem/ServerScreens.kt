@@ -317,6 +317,8 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
  var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||jacred)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
+ var jacredAdmin by remember{mutableStateOf<SshTarget?>(null)}
+ var jacredDirty by remember{mutableStateOf(false)}
  var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
  val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
  fun showProgress(value:InstallationProgress){installationJson=JSONObject().put("stage",value.stage).put("state",value.state).put("code",value.code).put("updated",value.updated).toString()}
@@ -392,9 +394,19 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
    SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
    Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
   }
-  if(snapshot!=null) JacredEditor(snapshot,tv,busy,onDirty,onRefresh={refresh()}) { next ->
+  if(snapshot?.optBoolean("running")==true) {
+   Action("Открыть админку",tv,Modifier.fillMaxWidth(),secondary=true,
+    enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank(),icon=Icons.Outlined.AdminPanelSettings) {
+    jacredAdmin=target()
+   }
+  }
+  jacredAdmin?.let { adminTarget ->
+   JacredAdminDialog(s.config,model.secrets,ssh,adminTarget,tv,onClose={jacredAdmin=null})
+  }
+  if(snapshot!=null) JacredEditor(snapshot,tv,busy,{jacredDirty=it;onDirty(it)},onRefresh={refresh()}) { next ->
    perform{target->
     data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
+    jacredDirty=false
     onDirty(false)
     message="JacRed запущен. Можно проверить поиск в настройках источника."
     model.managed.load(JACRED_OVERVIEW)

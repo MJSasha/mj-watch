@@ -13,6 +13,9 @@ import android.util.Base64
 
 class HostKeyRequired(val fingerprint:String,val changed:Boolean):java.io.IOException(if(changed) "SSH host key изменился. Сверьте отпечаток с консолью сервера." else "Подтвердите SSH host key после сверки с консолью провайдера.")
 class MaintenanceFailure(val code:String):java.io.IOException("Операция обслуживания: $code")
+class JacredAdminAddress(val port: Int, val cookie: String, val token: String) {
+ val origin get() = "http://127.0.0.1:$port"
+}
 data class SshTarget(val host:String,val port:Int=22,val user:String="root",val password:String) {
  override fun toString()="SshTarget(password=redacted)"
  init {require(host.length in 1..253&&host.all {it.isLetterOrDigit()||it in ".:-"}){"Укажите IP или домен без протокола и пути"};require(port in 1..65535){"SSH-порт должен быть от 1 до 65535"};require(user=="root"){"Для установки нужен пользователь root"}}
@@ -60,6 +63,39 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   return JSONObject(exec(session,"/usr/bin/python3 $path status"))
  }
  suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)
+ suspend fun browseJacred(target: SshTarget, serverId: String, onReady: (JacredAdminAddress) -> Unit) =
+  session(target) { connection ->
+   check(serverId.isNotBlank() && JSONObject(exec(connection, "/usr/local/sbin/mjwatchctl identity"))
+    .getString("serverId") == serverId) { "SSH относится к другому серверу" }
+   connection.setServerAliveInterval(15_000)
+   connection.serverAliveCountMax = 2
+   val channel = connection.openChannel("exec") as ChannelExec
+   channel.setCommand("/usr/bin/python3 /opt/mjwatch/current/jacred.py admin-session")
+   val input = channel.outputStream
+   val output = channel.inputStream
+   try {
+    channel.connect(10_000)
+    val deadline = android.os.SystemClock.elapsedRealtime() + 15_000
+    while (output.available() == 0 && !channel.isClosed &&
+     android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
+    check(output.available() > 0) {
+     if (channel.exitStatus == 64) "Обновите сервер MJ Watch для доступа к админке JacRed."
+     else "Сервер не открыл админку JacRed. Проверьте состояние службы."
+    }
+    val ready = JSONObject(output.bufferedReader().readLine())
+    check(!ready.has("error")) { "Проверьте, что серверный JacRed установлен и запущен." }
+    val remotePort = ready.getInt("port")
+    val cookie = ready.getString("cookie")
+    val token = ready.getString("token")
+    check(remotePort in 1..65535 && cookie == "mjwatch_jacred_$remotePort" &&
+     token.matches(Regex("[A-Za-z0-9_-]{43}"))) { "Сервер вернул неверные параметры админки." }
+    val port = connection.setPortForwardingL("127.0.0.1", 0, "127.0.0.1", remotePort)
+    onReady(JacredAdminAddress(port, cookie, token))
+    while (connection.isConnected && channel.isConnected && !channel.isClosed) Thread.sleep(250)
+   } finally {
+    try { runCatching { input.close() } } finally { channel.disconnect() }
+   }
+  }
  suspend fun applyJacred(target:SshTarget,settings:JSONObject,onStage:(String)->Unit)=session(target){connection->
   val before=jacredStatus(connection).optJSONObject("operation")
   check(before?.optString("state")!="running") {"JacRed уже настраивается. Обновите состояние после завершения."}

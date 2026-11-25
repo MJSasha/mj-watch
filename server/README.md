@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.16**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.17**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.16
+export MJWATCH_SERVER_VERSION=0.1.17
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -61,6 +61,8 @@ Choose trackers and a collection interval, or enter an HTTPS synchronization ser
 Starting with server 0.1.15, **My server → JacRed** shows search health, catalog counts, per-tracker collection progress and the last 12 runs. An authenticated administrator can start a collection from that page. Installation and configuration continue to use owner SSH.
 
 Server 0.1.16 can deliver catalog statistics independently of search health and collection progress. The stats panel retains its last values during refresh and offers a separate retry when statistics are unavailable.
+
+Starting with server 0.1.17, the owner can load JacRed settings over SSH and open the embedded JacRed admin page. MJ Watch verifies the server identity and opens a temporary authenticated loopback tunnel. Closing the page or backgrounding the app closes the tunnel. Advanced settings saved in the editor survive later changes from MJ Watch. The listener, credentials and collection settings are managed by MJ Watch.
 
 The JacRed catalog lives in `/var/lib/mjwatch-jacred/Data`. On a replacement host, install JacRed and configure its sources again. To preserve the existing catalog, stop the JacRed service while copying this directory, and set ownership to `mjwatch-jacred` on the destination. The built-in MJWatch account/history transfer does not include the JacRed catalog.
 

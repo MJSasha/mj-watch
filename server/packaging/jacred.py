@@ -3,12 +3,18 @@
 import fcntl
 import grp
 import hashlib
+import hmac
+import http.client
+from http.cookies import CookieError, SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import mimetypes
 import os
 import pathlib
 import platform
 import re
 import secrets
+import select
 import shutil
 import stat
 import subprocess
@@ -42,6 +48,14 @@ JOB = 'mjwatch-jacred-operation'
 ROOT_HELPER = '/opt/mjwatch/current/jacred.py'
 ADDR = 'http://127.0.0.1:19117'
 DEFAULTS = dict(syncUrl='', trackers=['rutor', 'nnmclub'], collect=True, interval=120)
+MANAGED_CONFIG = {'listenip', 'listenport', 'apikey', 'devkey', 'web', 'openstats', 'opensync',
+                  'syncapi', 'synctrackers', 'timesync', 'collect'}
+WEB_CONFIG = '/api/v1.0/config'
+WEB_READ = {WEB_CONFIG, WEB_CONFIG + '/schema', '/api/v1.0/conf', '/api/v1.0/torrents',
+            '/api/v2.0/indexers/all/results', '/stats/torrents', '/stats/meta',
+            '/health', '/health/background-jobs', '/version'}
+WEB_VALIDATE = {WEB_CONFIG + '/' + action for action in ('parse', 'render', 'format', 'validate', 'diff')}
+WEB_BODY_LIMIT = 256 * 1024
 
 
 def run(*args, **options):
@@ -272,6 +286,186 @@ def enable_observability():
     publish_access(config)
 
 
+def merged_config(previous, draft):
+    config = dict(syncsport=False, syncspidr=False, flaresolverr=dict(enable=False),
+                  cffetch=dict(enable=False))
+    config.update(previous)
+    config.update(listenip='127.0.0.1', listenport=19117, web=False, opensync=False, openstats=True,
+                  apikey=previous.get('apikey') or secrets.token_urlsafe(32),
+                  devkey=previous.get('devkey') or secrets.token_urlsafe(32),
+                  syncapi=draft['syncUrl'], synctrackers=draft['trackers'],
+                  timeSync=draft['interval'], collect=draft['collect'])
+    return config
+
+
+def merged_web_config(previous, changes):
+    if not isinstance(changes, dict):
+        raise ValueError('Нужен объект конфигурации JacRed.')
+    next_config = previous.copy()
+    existing = {key.lower(): key for key in previous}
+    seen = set()
+    for key, value in changes.items():
+        field = key.lower()
+        if field in seen:
+            raise ValueError('В конфигурации повторяется поле.')
+        seen.add(field)
+        if field in MANAGED_CONFIG:
+            if field in existing and value != previous[existing[field]]:
+                raise ValueError('Этот параметр управляется MJ Watch: ' + field)
+        else:
+            next_config[existing.get(field, key)] = value
+    return next_config
+
+
+class AdminWebHandler(BaseHTTPRequestHandler):
+    """Authenticated, temporary SSH entrypoint for the packaged JacRed web assets."""
+    def setup(self):
+        self.request.settimeout(15)
+        super().setup()
+
+    def log_message(self, *_):
+        pass
+
+    def reply(self, status, content, content_type):
+        self.send_response(status)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(content)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                         "img-src 'self' data:; worker-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+        self.end_headers()
+        self.wfile.write(content)
+
+    def json_reply(self, status, body):
+        self.reply(status, json.dumps(body).encode(), 'application/json; charset=utf-8')
+
+    def authenticated(self):
+        try:
+            cookie = SimpleCookie(self.headers.get('Cookie', ''))
+            entry = cookie.get(self.server.cookie_name)
+            return entry is not None and hmac.compare_digest(entry.value.encode(), self.server.token.encode())
+        except CookieError:
+            return False
+
+    def upstream(self, path, body=None):
+        headers = {'Content-Type': 'application/json', 'X-Dev-Key': self.server.dev_key,
+                   'X-Api-Key': self.server.api_key}
+        connection = http.client.HTTPConnection('127.0.0.1', 19117, timeout=10)
+        try:
+            connection.request('POST' if body is not None else 'GET', path, body, headers)
+            response = connection.getresponse()
+            data = response.read(4 * 1024 * 1024 + 1)
+            if len(data) > 4 * 1024 * 1024:
+                raise OSError('upstream response too large')
+            return response.status, data
+        finally:
+            connection.close()
+
+    def save_config(self, body):
+        payload = json.loads(body)
+        if not isinstance(payload, dict):
+            raise ValueError('Нужен объект конфигурации JacRed.')
+        changes = payload.get('data')
+        if changes is None:
+            status, parsed = self.upstream(WEB_CONFIG + '/parse', body)
+            result = json.loads(parsed)
+            if status != 200 or not result.get('ok'):
+                raise ValueError(result.get('error') or 'Не удалось разобрать конфигурацию.')
+            changes = result.get('data')
+        with (CONTROL / 'start.lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            revision = CONFIG.stat().st_mtime_ns
+            if operation_active() or self.server.config_revision != revision:
+                raise ValueError('Настройки изменились на сервере. Откройте админку заново.')
+            next_config = merged_web_config(load(CONFIG, {}), changes)
+            request = json.dumps({'data': next_config, 'format': 'json'}).encode()
+            status, body = self.upstream(WEB_CONFIG + '/format', request)
+            validation = json.loads(body)
+            if status != 200 or not validation.get('ok'):
+                raise ValueError(validation.get('error') or 'JacRed отклонил конфигурацию.')
+            normalized = validation['data']
+            atomic(CONFIG, json.dumps(next_config, ensure_ascii=False), 0o640, grp.getgrnam('mjwatch-jacred').gr_gid)
+            self.server.config_revision = CONFIG.stat().st_mtime_ns
+        # The web editor reloads the form as soon as this request returns.
+        message = 'Настройки записаны. Обновите страницу после перечитывания конфига JacRed.'
+        try:
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                status, current = self.upstream(WEB_CONFIG)
+                if status == 200 and json.loads(current).get('data') == normalized:
+                    message = 'Настройки сохранены и применены.'
+                    break
+                time.sleep(1)
+        except (OSError, ValueError, http.client.HTTPException):
+            pass
+        self.json_reply(200, dict(ok=True, format='json', message=message))
+
+    def dispatch(self):
+        host = self.headers.get('Host', '')
+        if not re.fullmatch(r'127\.0\.0\.1:[0-9]{1,5}', host) or not self.authenticated():
+            self.json_reply(403, dict(ok=False, error='Откройте админку из MJ Watch.'))
+            return
+        path = urllib.parse.urlsplit(self.path).path
+        if self.command == 'POST':
+            if self.headers.get('Origin') != 'http://' + host:
+                self.json_reply(403, dict(ok=False, error='Недопустимый источник запроса.'))
+            elif path in WEB_VALIDATE or path == WEB_CONFIG:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= WEB_BODY_LIMIT:
+                    return self.json_reply(413, dict(ok=False, error='Слишком большой или пустой запрос.'))
+                body = self.rfile.read(size)
+                if path == WEB_CONFIG:
+                    return self.save_config(body)
+                status, data = self.upstream(path, body)
+                self.reply(status, data, 'application/json; charset=utf-8')
+            else:
+                self.json_reply(404, dict(ok=False))
+            return
+        if path in WEB_READ:
+            query = urllib.parse.urlsplit(self.path).query
+            status, data = self.upstream(path + ('?' + query if query else ''))
+            self.reply(status, data, 'application/json; charset=utf-8')
+            return
+        if path in ('/', '/settings', '/stats', '/jobs'):
+            path = '/index.html'
+        root = (RELEASE / 'wwwroot').resolve()
+        asset = (root / urllib.parse.unquote(path).lstrip('/')).resolve()
+        if asset.is_relative_to(root) and asset.is_file() and asset.name != 'sw.js':
+            self.reply(200, asset.read_bytes(), mimetypes.guess_type(asset.name)[0] or 'application/octet-stream')
+        else:
+            self.json_reply(404, dict(ok=False))
+
+    def do_GET(self):
+        try:
+            self.dispatch()
+        except ValueError as error:
+            self.json_reply(400, dict(ok=False, error=str(error)))
+        except (OSError, http.client.HTTPException):
+            self.json_reply(502, dict(ok=False, error='JacRed не ответил.'))
+
+    do_POST = do_GET
+
+
+def admin_session():
+    config = load(CONFIG, {})
+    if (not config or not (CONTROL / 'owned').is_file() or not systemd_active(UNIT)
+            or (BASE / 'init.yaml').exists() or not (RELEASE / 'wwwroot/index.html').is_file()):
+        print(json.dumps(dict(error='admin_unavailable')), flush=True)
+        return
+    with ThreadingHTTPServer(('127.0.0.1', 0), AdminWebHandler) as server:
+        server.timeout = 0.5
+        server.token = secrets.token_urlsafe(32)
+        server.cookie_name = 'mjwatch_jacred_' + str(server.server_port)
+        server.dev_key = config['devkey']
+        server.api_key = config['apikey']
+        server.config_revision = CONFIG.stat().st_mtime_ns
+        print(json.dumps(dict(port=server.server_port, token=server.token, cookie=server.cookie_name)), flush=True)
+        deadline = time.monotonic() + 1800
+        while time.monotonic() < deadline and not select.select([sys.stdin], [], [], 0)[0]:
+            server.handle_request()
+
+
 def apply(raw):
     draft = validate(raw)
     marker = CONTROL / 'owned'
@@ -303,13 +497,7 @@ def apply(raw):
     data = BASE / 'Data'
     data.mkdir(mode=0o700, exist_ok=True)
     shutil.chown(data, user='mjwatch-jacred', group='mjwatch-jacred')
-    key = previous.get('apikey') or secrets.token_urlsafe(32)
-    config = dict(listenip='127.0.0.1', listenport=19117, apikey=key,
-                  devkey=previous.get('devkey') or secrets.token_urlsafe(32),
-                  web=False, openstats=True, opensync=False, syncapi=draft['syncUrl'],
-                  synctrackers=draft['trackers'], timeSync=draft['interval'],
-                  collect=draft['collect'], syncsport=False, syncspidr=False,
-                  flaresolverr=dict(enable=False), cffetch=dict(enable=False))
+    config = merged_config(previous, draft)
 
     def configure(value):
         atomic(CONFIG, json.dumps(value), 0o640, jacred_group.gr_gid)
@@ -422,6 +610,9 @@ def main():
         return
     if command == 'enable-observability':
         enable_observability()
+        return
+    if command == 'admin-session':
+        admin_session()
         return
     if command == 'start':
         try:
