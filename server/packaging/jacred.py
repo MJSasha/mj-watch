@@ -272,7 +272,7 @@ def publish_access(config):
     active = settings(config)
     atomic(ACCESS, json.dumps(dict(apiKey=config['apikey'], collect=active['collect'],
                                   synchronized=bool(active['syncUrl']), interval=active['interval'],
-                                  manual=True)),
+                                  manual=True, trackers=active['trackers'])),
            0o640, grp.getgrnam('mjwatch').gr_gid)
 
 

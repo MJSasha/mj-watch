@@ -31,6 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.endpoint
+import dev.mjwatch.core.safeError
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -151,25 +154,19 @@ internal fun JacredEditor(snapshot: JSONObject, tv: Boolean, busy: Boolean, onDi
 }
 
 @Composable
-internal fun JacredDiagnosticsPanel(
+internal fun JacredOverviewPanel(
     data: JSONObject?, tv: Boolean, busy: Boolean, catalog: JSONObject?, catalogLoading: Boolean,
     catalogError: String, onCatalogRefresh: () -> Unit, onSettings: () -> Unit,
-    onCollect: () -> Unit, onRefresh: (String) -> Unit,
+    onRefresh: () -> Unit, onProbe: suspend (String) -> Int,
 ) {
     val installed = data?.optBoolean("installed") == true
     val searchReady = data?.optBoolean("searchReady") == true
-    val index = data?.optJSONObject("index")
-    val state = index?.optString("state")
-    val queued = data?.optBoolean("collectQueued") == true
-    val active = state == "running"
-    val manual = data?.optBoolean("manualCollect") == true
     val collection = data?.opt("collect") as? Boolean
     val sync = data?.opt("syncConfigured") as? Boolean
-    val number = NumberFormat.getIntegerInstance()
-    SettingsCard("Сводка", Icons.Outlined.Dns, tv) {
+    SettingsCard("Состояние сервиса", Icons.Outlined.Dns, tv) {
         Text(
             when {
-                data == null -> "Ожидаем данные сервера"
+                data == null -> if (busy) "Подключаемся…" else "Нет данных о сервисе"
                 !installed -> "JacRed ещё не установлен"
                 searchReady -> "Поиск отвечает"
                 else -> "Поиск недоступен"
@@ -187,25 +184,64 @@ internal fun JacredDiagnosticsPanel(
             if (collection == false && sync == false) SettingsHint("Включите сбор или настройте синхронизацию.")
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (installed && manual && collection == true) {
-                Action(
-                    if (active) "Сбор идёт" else if (queued) "В очереди" else "Запустить сбор",
-                    tv, enabled = !busy && !active && !queued && searchReady, icon = Icons.Outlined.PlayArrow, onClick = onCollect,
-                )
-            } else if (data != null) {
+            if (data != null && (!installed || collection == false && sync == false)) {
                 Action(if (installed) "Настроить сбор" else "Установить JacRed", tv, onClick = onSettings)
             }
-            Action("Обновить статус", tv, secondary = true, enabled = !busy, icon = Icons.Outlined.Refresh) { onRefresh("") }
+            Action("Обновить статус", tv, secondary = true, enabled = !busy, loading = busy,
+                icon = Icons.Outlined.Refresh, onClick = onRefresh)
         }
     }
-    if (!installed || data == null) return
+    if (!installed) return
+    JacredCatalogPanel(catalog, catalogLoading, catalogError, tv, onCatalogRefresh)
+    SettingsDisclosure("Проверка поиска", "Посчитать результаты по названию", Icons.Outlined.Search, tv) {
+        var query by rememberSaveable { mutableStateOf("") }
+        var submitted by rememberSaveable { mutableStateOf("") }
+        var found by rememberSaveable { mutableStateOf<Int?>(null) }
+        var error by remember { mutableStateOf("") }
+        var checking by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        ServerField(query, { query = it.take(120) }, "Название фильма или сериала")
+        Action("Проверить запрос", tv, secondary = true, enabled = !checking && query.isNotBlank(), loading = checking) {
+            submitted = query.trim()
+            found = null
+            error = ""
+            checking = true
+            scope.launch {
+                try {
+                    found = onProbe(submitted)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    error = safeError(failure)
+                } finally {
+                    checking = false
+                }
+            }
+        }
+        if (query.trim() == submitted) {
+            found?.let { Text("Найдено: ${NumberFormat.getIntegerInstance().format(it)}", style = MaterialTheme.typography.titleMedium) }
+            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
 
+@Composable
+internal fun JacredCollectionPanel(
+    data: JSONObject, tv: Boolean, busy: Boolean, onCollect: () -> Unit, onSettings: () -> Unit,
+) {
+    val searchReady = data.optBoolean("searchReady")
+    val index = data.optJSONObject("index")
+    val state = index?.optString("state")
+    val queued = data.optBoolean("collectQueued")
+    val active = state == "running"
+    val manual = data.optBoolean("manualCollect")
+    val collection = data.opt("collect") as? Boolean
     val results = index?.optJSONArray("results")
     val rows = (0 until (results?.length() ?: 0)).mapNotNull { results?.optJSONObject(it) }
     val unfinished = setOf("pending", "running")
     val failed = setOf("http_error", "parser_error", "timeout", "connection_error")
     val completed = rows.count { it.optString("state") !in unfinished }
-    SettingsCard("Сбор раздач", Icons.Outlined.Schedule, tv) {
+    SettingsCard("Сбор раздач MJWatch", Icons.Outlined.Schedule, tv) {
         Text(
             when {
                 active -> "Сбор идёт · $completed из ${rows.size}"
@@ -219,6 +255,14 @@ internal fun JacredDiagnosticsPanel(
         if (active && rows.isNotEmpty()) {
             val progress by animateFloatAsState(completed.toFloat() / rows.size, label = "JacRed collection")
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        }
+        if (collection == true) Text("Сбор по расписанию · каждые ${data.optInt("interval")} мин")
+        if (collection == false) Text("Сбор по расписанию отключён")
+        if (manual && collection == true) {
+            Action("Запустить сбор", tv, enabled = !busy && !active && !queued && searchReady,
+                icon = Icons.Outlined.PlayArrow, onClick = onCollect)
+        } else {
+            Action("Настроить сбор", tv, secondary = true, onClick = onSettings)
         }
         if (queued && !active) LinearProgressIndicator(Modifier.fillMaxWidth())
         index?.optLong("updatedAt")?.takeIf { it > 0 }?.let { Text("Последнее событие · ${jacredTime(it)}") }
@@ -247,8 +291,6 @@ internal fun JacredDiagnosticsPanel(
         }
     }
 
-    JacredCatalogPanel(catalog, catalogLoading, catalogError, tv, onCatalogRefresh)
-
     val history = index?.optJSONArray("history")
     if (history != null && history.length() > 0) SettingsDisclosure(
         "История запусков", "Запусков: ${history.length()}", Icons.Outlined.Schedule, tv,
@@ -262,24 +304,6 @@ internal fun JacredDiagnosticsPanel(
                 Text("$trigger · ${jacredTime(run.optLong("startedAt"))}", style = MaterialTheme.typography.titleSmall)
                 Text(result, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-    }
-
-    SettingsDisclosure("Проверка поиска", "Посчитать результаты по названию", Icons.Outlined.Search, tv) {
-        var query by rememberSaveable { mutableStateOf("") }
-        var submitted by rememberSaveable { mutableStateOf("") }
-        var found by rememberSaveable { mutableStateOf<Int?>(null) }
-        LaunchedEffect(data) {
-            if (data.has("probeCount")) found = data.optInt("probeCount")
-        }
-        ServerField(query, { query = it.take(120) }, "Название фильма или сериала")
-        Action("Проверить запрос", tv, secondary = true, enabled = !busy && query.isNotBlank()) {
-            submitted = query.trim()
-            found = null
-            onRefresh(submitted)
-        }
-        if (query.trim() == submitted) found?.let {
-            Text("Найдено: ${number.format(it)}", style = MaterialTheme.typography.titleMedium)
         }
     }
 
@@ -343,7 +367,7 @@ private fun JacredMetric(modifier: Modifier, label: String, value: String) {
     }
 }
 
-private fun jacredTime(seconds: Long): String = if (seconds > 0) {
+internal fun jacredTime(seconds: Long): String = if (seconds > 0) {
     val time = Instant.ofEpochSecond(seconds).atZone(ZoneId.systemDefault())
     DateTimeFormatter.ofPattern("dd.MM HH:mm:ss").format(time)
 } else "Время неизвестно"

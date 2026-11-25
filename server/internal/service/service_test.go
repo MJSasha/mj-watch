@@ -73,6 +73,93 @@ func TestManagedJacredSearch(t *testing.T) {
 	}
 }
 
+func TestJacredBackgroundJobs(t *testing.T) {
+	s, owner := fixture(t)
+	dir := t.TempDir()
+	s.Config.SecretKey = filepath.Join(dir, "secret.key")
+	if err := os.WriteFile(filepath.Join(dir, "jacred-access.json"),
+		[]byte(`{"apiKey":"private-key","collect":true,"trackers":["rutor","lostfilm"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const path = "admin/jacred/jobs"
+	start := jacredJobTarget{Tracker: "rutor", Job: jacredUpdateTasks}
+	if code, _ := call(t, s, "", "POST", path, start); code != 401 {
+		t.Fatal(code)
+	}
+	code, user := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})
+	if code != 200 {
+		t.Fatal(code, user)
+	}
+	code, account := call(t, s, "", "POST", "auth/accept-invite", map[string]string{
+		"invite": user["invite"].(string), "password": "viewer-test-password", "device": "phone",
+	})
+	if code != 200 {
+		t.Fatal(code, account)
+	}
+	viewer := account["accessToken"].(string)
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		if code, _ := call(t, s, viewer, method, path, start); code != 403 {
+			t.Fatal(method, code)
+		}
+	}
+	starts := 0
+	jobList := `{"jobs":[{"id":"rutor:ParseAllTask","tracker":"rutor","job":"ParseAllTask","startedAtUtc":"2026-09-08T13:48:01.5624351Z","elapsedSeconds":12,"pagesCompleted":6,"pagesTotal":154,"percent":4,"currentCategory":"32","currentPage":5,"private":"ignored"}]}`
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "127.0.0.1:19117" || r.Method != http.MethodGet || r.Header.Get("Authorization") != "" {
+			t.Fatal("Unexpected JacRed request")
+		}
+		body := jobList
+		switch r.URL.Path {
+		case "/health/background-jobs":
+		case "/cron/rutor/UpdateTasksParse":
+			starts++
+			if starts == 1 {
+				body = "ok"
+			} else {
+				body = "work"
+			}
+		default:
+			t.Fatal("Unexpected JacRed path", r.URL.Path)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	code, report := call(t, s, owner, "GET", path, nil)
+	if code != 200 {
+		t.Fatal(code, report)
+	}
+	jobs := report["jobs"].([]any)
+	available := report["availableStarts"].([]any)
+	if len(jobs) != 1 || len(available) != 1 {
+		t.Fatal(report)
+	}
+	job, option := jobs[0].(map[string]any), available[0].(map[string]any)
+	if job["tracker"] != "rutor" || job["job"] != "ParseAllTask" || job["percent"] != float64(4) ||
+		job["private"] != nil || option["tracker"] != "rutor" || option["job"] != jacredUpdateTasks {
+		t.Fatal(report)
+	}
+	for _, target := range []jacredJobTarget{{Tracker: "rutor", Job: "ParseAllTask"}, {Tracker: "../maintenance", Job: jacredUpdateTasks}} {
+		if code, _ := call(t, s, owner, "POST", path, target); code != 400 {
+			t.Fatal(code, target)
+		}
+	}
+	if code, body := call(t, s, owner, "POST", path, jacredJobTarget{Tracker: "nnmclub", Job: jacredUpdateTasks}); code != 409 || body["code"] != "jacred_job_disabled" {
+		t.Fatal(code, body)
+	}
+	if code, body := call(t, s, owner, "POST", path, start); code != 202 || body["state"] != "started" {
+		t.Fatal(code, body)
+	}
+	if code, body := call(t, s, owner, "POST", path, start); code != 409 || body["code"] != "jacred_job_busy" {
+		t.Fatal(code, body)
+	}
+	jobList = `{"jobs":[]}`
+	if code, body := call(t, s, owner, "GET", path, nil); code != 200 || len(body["jobs"].([]any)) != 0 {
+		t.Fatal(code, body)
+	}
+	if starts != 2 {
+		t.Fatal("Unexpected number of starts", starts)
+	}
+}
+
 func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 	s, owner := fixture(t)
 	dir := t.TempDir()

@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.18**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.19**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.18
+export MJWATCH_SERVER_VERSION=0.1.19
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -63,6 +63,8 @@ Starting with server 0.1.15, **My server → JacRed** shows search health, catal
 Server 0.1.16 can deliver catalog statistics independently of search health and collection progress. The stats panel retains its last values during refresh and offers a separate retry when statistics are unavailable.
 
 Starting with server 0.1.18, **Refresh statistics** asks JacRed to recalculate the report from its local catalog. This works even with tracker collection disabled.
+
+Starting with server 0.1.19, the administrator can read active JacRed jobs and start a supported tracker's release refresh in MJWatch. The job list shows live process progress. MJWatch keeps its scheduled collection history separately.
 
 Starting with server 0.1.17, the owner can load JacRed settings over SSH and open the embedded JacRed admin page. MJ Watch verifies the server identity and opens a temporary authenticated loopback tunnel. Closing the page or backgrounding the app closes the tunnel. Advanced settings saved in the editor survive later changes from MJ Watch. The listener, credentials and collection settings are managed by MJ Watch.
 

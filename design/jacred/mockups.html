@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JacRed · Макеты MJWatch</title>
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; padding: 24px; background: #0c0e15; color: #f0f2ec; font: 15px system-ui, sans-serif; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 24px; max-width: 1250px; margin: auto; align-items: start; }
+  article { padding: 16px; background: #0c0e15; border: 1px solid #313947; border-radius: 24px; }
+  nav, .metrics, .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav span, .button { border: 1px solid #68778d; border-radius: 999px; padding: 9px 12px; font-weight: 600; }
+  nav span { flex: 1; text-align: center; }
+  nav .current, .primary { color: #c7ff68; background: #303d28; border-color: #303d28; }
+  h1 { grid-column: 1 / -1; margin: 0; font-size: 22px; }
+  h2 { margin: 2px 0 14px; font-size: 28px; }
+  h3 { margin: 0 0 10px; font-size: 16px; }
+  p { margin: 6px 0 12px; color: #abb5c5; }
+  section { margin-top: 14px; padding: 16px; background: #191e29; border-radius: 18px; }
+  .line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .line h3, .line p { margin: 0 }
+  .line p { font-size: 12px }
+  .icon-button { display: grid; place-items: center; min-width: 48px; min-height: 48px; border: 1px solid #68778d; border-radius: 12px }
+  .job { margin-top: 12px; padding: 12px; background: #242b39; border-radius: 12px }
+  .job h4 { margin: 0; font-size: 16px }
+  .job small { margin: 3px 0 }
+  .job .line + progress { margin: 9px 0 4px }
+  .tracker-line { padding: 4px 0 0 }
+  .tracker-line .button { padding: 7px 12px; font-size: 14px; background: #303d28; color: #c7ff68; border-color: #303d28 }
+  .primary { background: #c7ff68; color: #0c0e15; border-color: #c7ff68; }
+  .metrics div { flex: 1; background: #242b39; border-radius: 12px; padding: 10px; }
+  small { display: block; color: #abb5c5; margin: 4px 0; }
+  strong { color: #c7ff68; }
+  hr { border: 0; border-top: 1px solid #3a4351; margin: 12px 0; }
+  progress { width: 100%; accent-color: #c7ff68; height: 10px; }
+  .field { border: 1px solid #68778d; border-radius: 8px; padding: 12px; }
+  aside { grid-column: 1 / -1; color: #abb5c5; }
+</style>
+<main>
+  <h1>JacRed в MJWatch</h1>
+  <article>
+    <h2>JacRed</h2>
+    <nav aria-label="Обзор"><span class="current">Обзор</span><span>Задачи</span><span>Настройки</span></nav>
+    <section>
+      <h3>Состояние сервиса</h3>
+      <strong>Поиск отвечает</strong>
+      <p>Сбор по расписанию · каждые 60 мин</p>
+      <span class="button">Обновить статус</span>
+    </section>
+    <section>
+      <h3>Статистика каталога</h3>
+      <div class="metrics"><div><small>Раздачи</small><strong>84 212</strong></div><div><small>Трекеры</small><strong>6</strong></div></div>
+      <p>Статистика на 25.11 22:50:01</p>
+      <span class="button">Обновить статистику</span>
+    </section>
+    <section><h3>Каталог по трекерам</h3><small>Источников: 6</small></section>
+    <section><h3>Проверка поиска</h3><small>Посчитать результаты по названию</small></section>
+  </article>
+  <article>
+    <h2>JacRed</h2>
+    <nav aria-label="Задачи"><span>Обзор</span><span class="current">Задачи</span><span>Настройки</span></nav>
+    <section>
+      <div class="line">
+        <div><h3>Активные задачи</h3><p>Обновлено в 23:04:14</p></div>
+        <span class="icon-button" aria-label="Обновить задачи">↻</span>
+      </div>
+      <div class="job">
+        <div class="line"><div><h4>rutracker</h4><small>Полный сбор</small></div><strong>20%</strong></div>
+        <progress value="4" max="20" aria-label="Прогресс"></progress>
+        <div class="line"><small>4 из 20 страниц</small><small>1 мин 26 с</small></div>
+        <small>Фильмы · страница 4</small>
+        <small>Начало 25.11 23:02:48</small>
+      </div>
+    </section>
+    <section>
+      <h3>Ручной запуск</h3>
+      <small>Обновление раздач</small>
+      <div class="line tracker-line"><b>rutor</b><span class="button">Запустить</span></div>
+    </section>
+    <section>
+      <h3>Сбор раздач MJWatch</h3>
+      <strong>Последний сбор завершён</strong>
+      <p>Сбор по расписанию · каждые 60 мин</p>
+      <span class="button primary">Запустить сбор</span>
+    </section>
+    <section><h3>История запусков</h3><small>Запусков: 3</small></section>
+  </article>
+  <article>
+    <h2>JacRed</h2>
+    <nav aria-label="Настройки"><span>Обзор</span><span>Задачи</span><span class="current">Настройки</span></nav>
+    <section><h3>Доступ администратора</h3><small>Подключено по SSH</small></section>
+    <section><h3>Состояние сервиса</h3><strong>Запущен · 3.20.0-oss</strong><p><span class="button">Обновить состояние</span></p></section>
+    <section><h3>Наполнение каталога</h3><strong>Собирать с трекеров</strong><p class="field">HTTPS-адрес сервера синхронизации</p><small>30 мин · 1 ч · 2 ч · 6 ч · Раз в день</small></section>
+    <section><h3>Трекеры</h3><small>Выбрано 6</small></section>
+    <section><span class="button primary">Сохранить настройки</span></section>
+    <section><h3>Веб-админка JacRed</h3><span class="button">Открыть админку</span></section>
+  </article>
+  <aside>На телефоне разделы идут в одну колонку. На ТВ экран остаётся в правой панели сервера. Задачи показывают отдельные состояния загрузки, пустого списка и ошибки связи. При обновлении прежний снимок остаётся доступен вместе со временем последнего успешного ответа.</aside>
+</main>
+</html>

@@ -21,6 +21,7 @@ type jacredAccess struct {
 	Synchronized *bool
 	Interval     int
 	Manual       bool
+	Trackers     []string
 }
 
 func (s *Server) readJacredAccess() jacredAccess {

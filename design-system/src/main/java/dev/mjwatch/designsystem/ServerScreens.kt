@@ -12,7 +12,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -33,6 +36,11 @@ import org.json.JSONObject
 import java.util.UUID
 
 private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
+private const val JACRED_JOBS = "admin/jacred/jobs"
+
+private enum class JacredSection(val title: String) {
+ Overview("Обзор"), Jobs("Задачи"), Settings("Настройки")
+}
 
 @Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,registerBack:((()->Unit)?)->Unit) {
  val keyboard=LocalSoftwareKeyboardController.current
@@ -232,64 +240,96 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
     Text("JacRed",fontSize=28.sp,fontWeight=FontWeight.Bold)
     val admin=managed.me?.optString("role")=="admin"
     if(admin) {
-     var editing by rememberSaveable(s.config.scope){mutableStateOf(false)}
-     SettingsChoiceTabs("Диагностика",Icons.Outlined.MonitorHeart,"Настройки",Icons.Outlined.Tune,editing,tv) {next->
-      if(dirty&&!next)confirm="Отбросить несохранённые изменения JacRed?" to {dirty=false;editing=false}
-      else editing=next
+     var section by rememberSaveable(s.config.scope,s.config.managedUrl){mutableStateOf(JacredSection.Overview)}
+     LaunchedEffect(section) {screenScroll.scrollTo(0)}
+     JacredSectionTabs(section,tv) {next->
+      if(next!=section) {
+       if(dirty)confirm="Отбросить несохранённые изменения JacRed?" to {dirty=false;section=next}
+       else section=next
+      }
      }
      val diagnostics=managed.data?.takeIf {it.optBoolean("jacredDiagnostics")}
+     val installed=diagnostics?.optBoolean("installed")==true
+     val api by remember(s.config,model.secrets){lazy{ManagedApi(s.config,model.secrets)}}
      var catalog by remember(s.config.scope,s.config.managedUrl) {mutableStateOf<JSONObject?>(null)}
      var catalogLoading by remember(s.config.scope,s.config.managedUrl) {mutableStateOf(false)}
      var catalogError by remember(s.config.scope,s.config.managedUrl) {mutableStateOf("")}
      var catalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      var requestedCatalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
-     if(editing) {
-      key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onJacredAdmin={jacredAdmin=it})}
-     } else {
-      val separateCatalog=diagnostics?.optBoolean("separateCatalogStats")==true
-      val canRebuildCatalog=diagnostics?.optBoolean("refreshCatalogStats")==true
-      val installed=diagnostics?.optBoolean("installed")==true
-      val lastRun=diagnostics?.optJSONObject("index")?.optJSONArray("history")?.optJSONObject(0)?.optLong("updatedAt")
-      LaunchedEffect(s.config.scope,s.config.managedUrl,separateCatalog,canRebuildCatalog,installed,lastRun,catalogRefresh) {
-       if(separateCatalog&&installed) {
-        catalogLoading=true
-        catalogError=""
-        try {
-         val api=ManagedApi(s.config,model.secrets)
-         if(canRebuildCatalog&&catalogRefresh!=requestedCatalogRefresh) {
-          withContext(Dispatchers.IO){api.authorized("admin/jacred/stats","POST")}
-          requestedCatalogRefresh=catalogRefresh
+     when(section) {
+      JacredSection.Settings -> key(s.config.managedUrl) {
+       SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onJacredAdmin={jacredAdmin=it})
+      }
+      JacredSection.Jobs -> key(s.config.scope,s.config.managedUrl) {
+       if(installed&&diagnostics!=null) {
+        JacredJobsPanel(tv,
+         load={withContext(Dispatchers.IO){api.authorized(JACRED_JOBS)}},
+         start={tracker,job->withContext(Dispatchers.IO){
+          api.authorized(JACRED_JOBS,"POST",JSONObject().put("tracker",tracker).put("job",job))
+         }},
+        )
+        JacredCollectionPanel(diagnostics,tv,managed.busy,
+         onCollect={controller.action("admin/jacred/collect","POST",reload=JACRED_OVERVIEW)},
+         onSettings={section=JacredSection.Settings},
+        )
+       } else SettingsCard("Фоновые задачи JacRed",Icons.Outlined.Schedule,tv) {
+        Text(if(diagnostics==null) "Нет данных о сервисе" else "JacRed ещё не установлен")
+        if(diagnostics==null) Action("Обновить статус",tv,secondary=true,enabled=!managed.busy) {controller.load(JACRED_OVERVIEW)}
+        else Action("Установить JacRed",tv) {section=JacredSection.Settings}
+       }
+      }
+      JacredSection.Overview -> {
+       val separateCatalog=diagnostics?.optBoolean("separateCatalogStats")==true
+       val canRebuildCatalog=diagnostics?.optBoolean("refreshCatalogStats")==true
+       val lastRun=diagnostics?.optJSONObject("index")?.optJSONArray("history")?.optJSONObject(0)?.optLong("updatedAt")
+       LaunchedEffect(s.config.scope,s.config.managedUrl,separateCatalog,canRebuildCatalog,installed,lastRun,catalogRefresh) {
+        if(separateCatalog&&installed) {
+         catalogLoading=true
+         catalogError=""
+         try {
+          if(canRebuildCatalog&&catalogRefresh!=requestedCatalogRefresh) {
+           withContext(Dispatchers.IO){api.authorized("admin/jacred/stats","POST")}
+           requestedCatalogRefresh=catalogRefresh
+          }
+          do {
+           val fresh=withContext(Dispatchers.IO){api.authorized("admin/jacred/stats")}
+           if(fresh.has("catalogCount")||catalog==null)catalog=fresh
+           val refreshState=fresh.optString("refreshState")
+           if(refreshState=="failed")catalogError="JacRed не смог пересчитать статистику. Повторите попытку."
+           if(refreshState=="running")delay(2_000)
+          } while(refreshState=="running")
+         } catch(e:CancellationException) {
+          throw e
+         } catch(e:Exception) {
+          if(e is HttpFailure&&e.status in setOf(401,403))catalog=null
+          catalogError=safeError(e)
+         } finally {
+          catalogLoading=false
          }
-         do {
-          val fresh=withContext(Dispatchers.IO){api.authorized("admin/jacred/stats")}
-          if(fresh.has("catalogCount")||catalog==null)catalog=fresh
-          val refreshState=fresh.optString("refreshState")
-          if(refreshState=="failed")catalogError="JacRed не смог пересчитать статистику. Повторите попытку."
-          if(refreshState=="running")delay(2_000)
-         } while(refreshState=="running")
-        } catch(e:CancellationException) {
-         throw e
-        } catch(e:Exception) {
-         if(e is HttpFailure&&e.status in setOf(401,403))catalog=null
-         catalogError=safeError(e)
-        } finally {
-         catalogLoading=false
         }
        }
+       JacredOverviewPanel(diagnostics,tv,managed.busy,
+        catalog=if(separateCatalog) catalog else diagnostics,
+        catalogLoading=if(separateCatalog) catalogLoading||(installed&&catalog==null&&catalogError.isBlank()) else managed.busy,
+        catalogError=if(separateCatalog) catalogError else "",
+        onCatalogRefresh={if(separateCatalog) catalogRefresh++ else controller.load(JACRED_OVERVIEW)},
+        onSettings={section=JacredSection.Settings},
+        onRefresh={controller.load(JACRED_OVERVIEW)},
+        onProbe={query->withContext(Dispatchers.IO){
+         val encoded=java.net.URLEncoder.encode(query,"UTF-8").replace(".","%2E")
+         api.authorized("$JACRED_OVERVIEW&query=$encoded").getInt("probeCount")
+        }},
+       )
       }
-      JacredDiagnosticsPanel(diagnostics,tv,managed.busy,
-       catalog=if(separateCatalog) catalog else diagnostics,
-       catalogLoading=if(separateCatalog) catalogLoading||(installed&&catalog==null&&catalogError.isBlank()) else managed.busy,
-       catalogError=if(separateCatalog) catalogError else "",
-       onCatalogRefresh={if(separateCatalog) catalogRefresh++ else controller.load(JACRED_OVERVIEW)},
-       onSettings={editing=true},onCollect={controller.action("admin/jacred/collect","POST",reload=JACRED_OVERVIEW)}) { query ->
-       controller.load(if(query.isBlank()) JACRED_OVERVIEW else "$JACRED_OVERVIEW&query="+java.net.URLEncoder.encode(query,"UTF-8").replace(".","%2E"))
-      }
-      val indexing=diagnostics?.optBoolean("collectQueued")==true||diagnostics?.optJSONObject("index")?.optString("state")=="running"
-      LaunchedEffect(indexing) {
-       if(indexing) {
-        while(true){delay(6_000);controller.load(JACRED_OVERVIEW)}
-       }
+     }
+     val indexing=diagnostics?.optBoolean("collectQueued")==true||diagnostics?.optJSONObject("index")?.optString("state")=="running"
+     val lifecycle=LocalLifecycleOwner.current.lifecycle
+     LaunchedEffect(s.config.scope,s.config.managedUrl,section) {
+      if(section==JacredSection.Jobs)controller.load(JACRED_OVERVIEW)
+     }
+     LaunchedEffect(s.config.scope,s.config.managedUrl,lifecycle,section,indexing) {
+      if(section==JacredSection.Jobs&&indexing)lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+       while(true){delay(6_000);controller.load(JACRED_OVERVIEW)}
       }
      }
     } else if(managed.me!=null) SettingsHint("Панель JacRed доступна администратору сервера.")
@@ -328,6 +368,23 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
  }
  }
 }
+@Composable private fun JacredSectionTabs(section:JacredSection,tv:Boolean,onSelect:(JacredSection)->Unit) {
+ Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+  JacredSection.entries.forEach {destination->
+   val current=destination==section
+   OutlinedButton(
+    onClick={onSelect(destination)},
+    modifier=Modifier.weight(1f).fillMaxHeight().tvFocusRing(tv).semantics{selected=current;role=Role.Tab},
+    colors=ButtonDefaults.outlinedButtonColors(
+     containerColor=if(current)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+     contentColor=if(current)MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+    ),
+    contentPadding=PaddingValues(horizontal=4.dp,vertical=8.dp),
+   ){Text(destination.title)}
+  }
+ }
+}
+
 @Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
  OutlinedTextField(value,onChange,label={Text(label)},singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
@@ -424,14 +481,6 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
    SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
    Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
   }
-  if(snapshot?.optBoolean("running")==true) {
-   Action("Открыть админку",tv,Modifier.fillMaxWidth(),secondary=true,
-    enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank(),icon=Icons.Outlined.AdminPanelSettings) {
-    focus.clearFocus(force=true)
-    keyboard?.hide()
-    onJacredAdmin(target())
-   }
-  }
   if(snapshot!=null) JacredEditor(snapshot,tv,busy,{jacredDirty=it;onDirty(it)},onRefresh={refresh()}) { next ->
    perform{target->
     data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
@@ -439,6 +488,14 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
     onDirty(false)
     message="JacRed запущен. Можно проверить поиск в настройках источника."
     model.managed.load(JACRED_OVERVIEW)
+   }
+  }
+  if(snapshot?.optBoolean("running")==true) SettingsCard("Веб-админка JacRed",Icons.Outlined.AdminPanelSettings,tv) {
+   Action("Открыть админку",tv,Modifier.fillMaxWidth(),secondary=true,
+    enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank()) {
+    focus.clearFocus(force=true)
+    keyboard?.hide()
+    onJacredAdmin(target())
    }
   }
  }else if(settings){
