@@ -9,6 +9,10 @@ import (
 
 func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i identity) {
 	switch {
+	case path == "admin/jacred" && r.Method == http.MethodGet:
+		s.jacredDiagnostics(w, r)
+	case path == "admin/jacred/collect" && r.Method == http.MethodPost:
+		s.queueJacredCollection(w)
 	case path == "admin/playback/settings":
 		s.playbackSettings(w, r)
 	case path == "admin/probe" && r.Method == "POST":

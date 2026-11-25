@@ -100,6 +100,7 @@ import java.util.UUID
  fun finish(result:JSONObject) {
   check(result.optBoolean("verified")){"Результат обновления пока не подтверждён"}
   phase="complete";clearPending();passphrase="";repeated="";password=""
+  if(result.optBoolean("jacredDiagnosticsPending"))message="Сервер обновлён. Откройте JacRed и примените его настройки, чтобы включить ручной сбор."
  }
  fun start() {
   operation=UUID.randomUUID().toString();version=release!!.getString("version")

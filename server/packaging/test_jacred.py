@@ -5,6 +5,7 @@ import pathlib
 import runpy
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 import jacred
@@ -13,6 +14,38 @@ restore = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[2] / 'core
 
 
 class JacredTest(unittest.TestCase):
+    def test_manual_run_consumes_request_and_records_progress_and_history(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            config, request, report = (root / name for name in ('config.json', 'request', 'report.json'))
+            config.write_text(json.dumps(dict(collect=True, synctrackers=['rutor', 'nnmclub'], devkey='private')))
+            request.touch()
+
+            def request_tracker(path, *_):
+                active = json.loads(report.read_text())
+                running = [row['tracker'] for row in active['results'] if row['state'] == 'running']
+                self.assertEqual([path.split('/')[2]], running)
+                self.assertFalse(request.exists())
+                return io.BytesIO(b'page / False' if running == ['rutor'] else b'ok')
+
+            with patch.multiple(jacred, CONFIG=config, CONTROL=root, INDEX_STATUS=report, INDEX_REQUEST=request,
+                                atomic=lambda path, value, *_: path.write_text(value), local_request=request_tracker), \
+                 patch.object(jacred.grp, 'getgrnam'):
+                jacred.index()
+            result = json.loads(report.read_text())
+            self.assertEqual('complete', result['state'])
+            self.assertEqual('manual', result['trigger'])
+            self.assertEqual(['parser_error', 'responded'], [r['state'] for r in result['results']])
+            self.assertEqual(1, result['history'][0]['failed'])
+            self.assertNotIn('private', report.read_text())
+
+    def test_parser_status_uses_known_markers_instead_of_http_200(self):
+        for body, expected in [('work', 'busy'), ('disabled', 'disabled'),
+                               ('films - 0 / False', 'parser_error'), ('error: refused', 'parser_error'),
+                               ('films - 0 / True', 'responded')]:
+            with self.subTest(body=body):
+                self.assertEqual(expected, jacred.parser_result(body))
+
     def test_settings_can_enable_collection_and_validate_upstream(self):
         ready = dict(jacred.DEFAULTS, collect=True, syncUrl='https://catalog.example/sync')
         self.assertEqual(ready, jacred.validate(ready))

@@ -3,7 +3,7 @@ set -eu
 cd "$(dirname "$0")/.."
 : "${MJWATCH_SIGNING_KEY:?Set a reviewed release signing key path; no signing bypass is available}"
 : "${TORRSERVER_ARTIFACT_DIR:?Set the directory containing pinned TorrServer-linux-amd64 and TorrServer-linux-arm64}"
-MJWATCH_SERVER_VERSION=${MJWATCH_SERVER_VERSION:-0.1.14}
+MJWATCH_SERVER_VERSION=${MJWATCH_SERVER_VERSION:-0.1.15}
 export MJWATCH_SERVER_VERSION
 mkdir -p dist/server core/src/main/assets/server
 for arch in amd64 arm64; do
@@ -21,7 +21,7 @@ shutil.copyfile(root/'server/migrate.py',assets/'migrate.py')
 for name in ['migration_host.py','install.sh','install.py','maintenance.py','renew.py','operation.py','jacred.py','mjwatchctl']:shutil.copyfile(root/'server/packaging'/name,assets/name)
 for path in sorted(assets.rglob('*')):
  if path.is_file() and path.name not in ['manifest.json','manifest.sig','release-public.pem']:files.append(dict(path=path.relative_to(assets).as_posix(),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size))
-manifest=dict(version=os.environ['MJWATCH_SERVER_VERSION'],schemaVersion=1,apiVersion=1,minClientApiVersion=1,torrserverVersion=lock['torrserverVersion'],channel=os.environ.get('MJWATCH_SUPPLY_CHANNEL','local-test'),files=files)
+manifest=dict(version=os.environ['MJWATCH_SERVER_VERSION'],schemaVersion=1,apiVersion=1,minClientApiVersion=1,torrserverVersion=lock['torrserverVersion'],channel=os.environ.get('MJWATCH_SUPPLY_CHANNEL','local-test'),jacredDiagnostics=True,files=files)
 (assets/'manifest.json').write_text(json.dumps(manifest,sort_keys=True,separators=(',',':')))
 key=os.environ['MJWATCH_SIGNING_KEY']
 subprocess.run(['openssl','pkey','-in',key,'-pubout','-out',str(assets/'release-public.pem')],check=True)

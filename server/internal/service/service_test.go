@@ -72,6 +72,82 @@ func TestManagedJacredSearch(t *testing.T) {
 		t.Fatal(code, body)
 	}
 }
+
+func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
+	s, owner := fixture(t)
+	dir := t.TempDir()
+	s.Config.SecretKey = filepath.Join(dir, "secret.key")
+	s.Config.Database = filepath.Join(dir, "state.db")
+	for name, contents := range map[string]string{
+		"jacred-access.json": `{"apiKey":"private-key","collect":true,"synchronized":false,"interval":120,"manual":true}`,
+		"jacred-index.json":  `{"state":"complete","results":[{"tracker":"rutor","state":"http_error","httpCode":403}],"raw":"private-log"}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const path = "admin/jacred"
+	if code, _ := call(t, s, "", "GET", path, nil); code != 401 {
+		t.Fatal(code)
+	}
+	code, invite := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})
+	if code != 200 {
+		t.Fatal(code, invite)
+	}
+	code, account := call(t, s, "", "POST", "auth/accept-invite", map[string]string{
+		"invite": invite["invite"].(string), "password": "viewer-test-password", "device": "phone",
+	})
+	if code != 200 {
+		t.Fatal(code, account)
+	}
+	calls := 0
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Host != "127.0.0.1:19117" || r.URL.Query().Get("apikey") != "private-key" || r.Header.Get("Authorization") != "" {
+			t.Fatal("Unexpected diagnostics request")
+		}
+		body := `{"results":[]}`
+		switch r.URL.Path {
+		case "/stats/torrents":
+			body = `[{"trackerName":"rutor","alltorrents":7,"private":"upstream-private-field"}]`
+		case "/stats/meta":
+			body = `{"updatedAt":"2026-11-25T16:45:00Z"}`
+		case "/api/v2.0/indexers/all/results":
+		default:
+			t.Fatal("Unexpected diagnostics endpoint")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	if code, _ := call(t, s, account["accessToken"].(string), "GET", path, nil); code != 403 || calls != 0 {
+		t.Fatal(code, calls)
+	}
+	if code, _ := call(t, s, account["accessToken"].(string), "POST", path+"/collect", nil); code != 403 {
+		t.Fatal(code)
+	}
+	request := filepath.Join(dir, "jacred-collect.request")
+	if _, err := os.Stat(request); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if code, body := call(t, s, owner, "POST", path+"/collect", nil); code != 202 || body["collectQueued"] != true {
+			t.Fatal(code, body)
+		}
+	}
+	code, result := call(t, s, owner, "GET", path, nil)
+	if code != 200 || calls != 3 || result["searchReady"] != true || result["catalogCount"] != float64(7) || result["collectQueued"] != true || result["statsUpdatedAt"] == nil {
+		t.Fatal(code, calls, result)
+	}
+	row := result["index"].(map[string]any)["results"].([]any)[0].(map[string]any)
+	if row["httpCode"] != float64(403) {
+		t.Fatal(row)
+	}
+	payload, _ := json.Marshal(result)
+	for _, value := range []string{"private-key", "private-log", "upstream-private-field"} {
+		if bytes.Contains(payload, []byte(value)) {
+			t.Fatal("Diagnostics exposed private upstream information")
+		}
+	}
+}
 func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 	s, owner := fixture(t)
 	code, created := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})

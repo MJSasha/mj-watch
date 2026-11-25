@@ -115,17 +115,23 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   JSONObject(exec(session,"/usr/local/sbin/mjwatchctl maintenance operation",JSONObject().put("operationId",operation).toString()))
  }
  suspend fun update(target:SshTarget,passphrase:String,operation:String,onProgress:(String)->Unit={})=session(target){session->
-  onProgress("uploading");upload(session,target);onProgress("applying")
-  maintenanceJob(session,JSONObject().put("action","update").put("operationId",operation).put("confirmed",true).put("passphrase",passphrase))
+  onProgress("uploading");val manifest=upload(session,target);onProgress("applying")
+  val result=maintenanceJob(session,JSONObject().put("action","update").put("operationId",operation).put("confirmed",true).put("passphrase",passphrase))
+  if(manifest.optBoolean("jacredDiagnostics")) {
+   try {exec(session,"/usr/bin/python3 /opt/mjwatch/current/jacred.py enable-observability")}
+   catch(_:IllegalStateException){result.put("jacredDiagnosticsPending",true)}
+  }
+  result
  }
  suspend fun ownerPassword(target:SshTarget,user:String,password:String)=session(target){exec(it,"/usr/local/sbin/mjwatchctl owner password",JSONObject().put("User",user).put("Password",password).toString())}
- private fun upload(session:Session,target:SshTarget) {
-  val bundles=ServerBundles(context);val source=bundles.active();bundles.verify(source)
-  val entries=source.manifest().getJSONArray("files")
+ private fun upload(session:Session,target:SshTarget):JSONObject {
+  val bundles=ServerBundles(context);val source=bundles.active();val manifest=bundles.verify(source)
+  val entries=manifest.getJSONArray("files")
   val paths=mutableListOf("manifest.json","manifest.sig","release-public.pem")
   for(index in 0 until entries.length())paths+=entries.getJSONObject(index).getString("path")
   exec(session,"install -d -m 700 /var/lib/mjwatch-install /var/lib/mjwatch-install/upload")
   val sftp=session.openChannel("sftp") as ChannelSftp
   try {sftp.connect(10000);for(path in paths){var dir="/var/lib/mjwatch-install/upload";for(part in path.split('/').dropLast(1)){dir+="/$part";runCatching {sftp.mkdir(dir)}};source.open(path).use {sftp.put(it,"/var/lib/mjwatch-install/upload/$path")};sftp.chmod(384,"/var/lib/mjwatch-install/upload/$path")};sftp.put(JSONObject().put("host",target.host).toString().byteInputStream(),"/var/lib/mjwatch-install/request.json");sftp.chmod(384,"/var/lib/mjwatch-install/request.json")}finally{sftp.disconnect()}
+  return manifest
  }
 }

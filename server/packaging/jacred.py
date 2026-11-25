@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -32,6 +33,8 @@ BASE = pathlib.Path('/var/lib/mjwatch-jacred')
 CONTROL = pathlib.Path('/var/lib/mjwatch-install/jacred')
 RELEASE = pathlib.Path('/opt/mjwatch-jacred') / VERSION
 ACCESS = pathlib.Path('/etc/mjwatch/jacred-access.json')
+INDEX_STATUS = ACCESS.with_name('jacred-index.json')
+INDEX_REQUEST = pathlib.Path('/var/lib/mjwatch/jacred-collect.request')
 CONFIG = BASE / 'init.conf'
 UNIT = 'mjwatch-jacred.service'
 TIMER = 'mjwatch-jacred-index.timer'
@@ -125,6 +128,7 @@ def status():
             pass
     return dict(installed=bool(config) and (RELEASE / 'JacRed').is_file(),
                 running=running, version=VERSION, catalogCount=catalog,
+                manualIndex=load(ACCESS, {}).get('manual', False),
                 settings=settings(config), trackers=TRACKERS,
                 operation=operation,
                 indexing=load(CONTROL / 'index.json', {}))
@@ -240,6 +244,32 @@ OnUnitInactiveSec={interval}min
 [Install]
 WantedBy=timers.target
 ''', 0o644)
+    atomic(directory / 'mjwatch-jacred-index.path', f'''[Unit]
+Description=Watch for a JacRed collection request from MJWatch
+[Path]
+PathExists={INDEX_REQUEST}
+Unit=mjwatch-jacred-index.service
+[Install]
+WantedBy=multi-user.target
+''', 0o644)
+
+
+def publish_access(config):
+    active = settings(config)
+    atomic(ACCESS, json.dumps(dict(apiKey=config['apikey'], collect=active['collect'],
+                                  synchronized=bool(active['syncUrl']), interval=active['interval'],
+                                  manual=True)),
+           0o640, grp.getgrnam('mjwatch').gr_gid)
+
+
+def enable_observability():
+    config = load(CONFIG, {})
+    if not config or not (CONTROL / 'owned').is_file():
+        return
+    write_units(settings(config)['interval'])
+    run('systemctl', 'daemon-reload')
+    run('systemctl', 'enable', '--now', 'mjwatch-jacred-index.path')
+    publish_access(config)
 
 
 def apply(raw):
@@ -294,16 +324,17 @@ def apply(raw):
             run('systemctl', 'restart', TIMER)
         else:
             run('systemctl', 'disable', '--now', TIMER)
+        run('systemctl', 'enable', '--now', 'mjwatch-jacred-index.path')
 
     report('running', 'start')
     try:
         configure(config)
-        atomic(ACCESS, json.dumps(dict(apiKey=key)), 0o640, grp.getgrnam('mjwatch').gr_gid)
+        publish_access(config)
     except Exception:
         if previous:
             configure(previous)
         else:
-            run('systemctl', 'disable', '--now', UNIT, TIMER)
+            run('systemctl', 'disable', '--now', UNIT, TIMER, 'mjwatch-jacred-index.path')
             CONFIG.unlink(missing_ok=True)
         raise
 
@@ -311,19 +342,69 @@ def apply(raw):
 def index():
     config = load(CONFIG, {})
     if not config or not config.get('collect'):
+        INDEX_REQUEST.unlink(missing_ok=True)
         return
+    trigger = 'manual' if INDEX_REQUEST.exists() else 'scheduled'
     successes = []
     failures = []
-    for tracker in settings(config)['trackers']:
-        if tracker not in TRACKERS:
-            continue
+    rows = [dict(tracker=tracker, state='pending') for tracker in settings(config)['trackers'] if tracker in TRACKERS]
+    started = int(time.time())
+    group = grp.getgrnam('mjwatch').gr_gid
+    previous = load(INDEX_STATUS, {})
+    history = previous.get('history', [])
+    if previous.get('state') == 'running':
+        history = [dict(state='interrupted', startedAt=previous.get('startedAt', 0),
+                        updatedAt=previous.get('updatedAt', 0), trigger=previous.get('trigger', 'scheduled')),
+                   *history][:12]
+
+    def publish(state):
+        now = int(time.time())
+        recent = history
+        if state == 'complete':
+            recent = [dict(state=state, startedAt=started, updatedAt=now, trigger=trigger,
+                           total=len(rows), failed=len(failures)), *history][:12]
+        atomic(INDEX_STATUS, json.dumps(dict(state=state, startedAt=started, updatedAt=now,
+                                           trigger=trigger, results=rows, history=recent)),
+               0o640, group)
+
+    try:
+        publish('running')
+    finally:
+        INDEX_REQUEST.unlink(missing_ok=True)
+    for row in rows:
+        tracker = row['tracker']
+        row['state'] = 'running'
+        publish('running')
         try:
             with local_request(f'/cron/{tracker}/parse', 'devkey', config['devkey'], 90) as response:
-                response.read(4096)
-            successes.append(tracker)
+                body = response.read(4096).decode(errors='replace')
+            row['state'] = parser_result(body)
+        except urllib.error.HTTPError as error:
+            row.update(state='http_error', httpCode=error.code)
+        except TimeoutError:
+            row['state'] = 'timeout'
+        except urllib.error.URLError as error:
+            row['state'] = 'timeout' if isinstance(error.reason, TimeoutError) else 'connection_error'
         except (OSError, ValueError):
+            row['state'] = 'connection_error'
+        if row['state'] in ('responded', 'busy', 'disabled'):
+            successes.append(tracker)
+        else:
             failures.append(tracker)
+        publish('running')
     atomic(CONTROL / 'index.json', json.dumps(dict(updated=int(time.time()), succeeded=successes, failed=failures)))
+    publish('complete')
+
+
+def parser_result(body):
+    text = body.strip().lower()
+    if text in ('work', 'running'):
+        return 'busy'
+    if text == 'disabled':
+        return 'disabled'
+    if text.startswith(('error', 'failed', 'exception')) or re.search(r'/\s*false\b', text):
+        return 'parser_error'
+    return 'responded'
 
 
 def main():
@@ -338,6 +419,9 @@ def main():
         return
     if command == 'index':
         index()
+        return
+    if command == 'enable-observability':
+        enable_observability()
         return
     if command == 'start':
         try:

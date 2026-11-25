@@ -45,7 +45,7 @@ import java.util.UUID
  if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
- val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
+ val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-jacred"->"admin/jacred";"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
  LaunchedEffect(page,s.config.scope,s.config.managedUrl){if(load!=null&&s.config.historyEnabled) {
   do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
  }}
@@ -219,8 +219,29 @@ import java.util.UUID
 
    "server-jacred"->{
     Text("JacRed",fontSize=28.sp,fontWeight=FontWeight.Bold)
-    Text("Свой каталог раздач на сервере MJWatch.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-    key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
+    val admin=managed.me?.optString("role")=="admin"
+    if(admin) {
+     var editing by rememberSaveable(s.config.scope){mutableStateOf(false)}
+     SettingsChoiceTabs("Диагностика",Icons.Outlined.MonitorHeart,"Настройки",Icons.Outlined.Tune,editing,tv) {next->
+      if(dirty&&!next)confirm="Отбросить несохранённые изменения JacRed?" to {dirty=false;editing=false}
+      else editing=next
+     }
+     val diagnostics=managed.data?.takeIf {it.optBoolean("jacredDiagnostics")}
+     if(editing) {
+      key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
+     } else {
+      JacredDiagnosticsPanel(diagnostics,tv,managed.busy,onSettings={editing=true},
+       onCollect={controller.action("admin/jacred/collect","POST",reload="admin/jacred")}) { query ->
+       controller.load(if(query.isBlank()) "admin/jacred" else "admin/jacred?query="+java.net.URLEncoder.encode(query,"UTF-8"))
+      }
+      val indexing=diagnostics?.optBoolean("collectQueued")==true||diagnostics?.optJSONObject("index")?.optString("state")=="running"
+      LaunchedEffect(indexing) {
+       if(indexing) {
+        while(true){delay(6_000);controller.load("admin/jacred")}
+       }
+      }
+     }
+    } else if(managed.me!=null) SettingsHint("Панель JacRed доступна администратору сервера.")
    }
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{
@@ -332,7 +353,7 @@ import java.util.UUID
   fun refresh()=perform{target->data=ssh.readJacred(target);connectionOpen=false;message=""}
   val snapshot=data
   if(connectionOpen) Action("Загрузить состояние JacRed",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){refresh()}
-  if(snapshot==null&&!connectionOpen) SettingsCard("Состояние сервиса",Icons.Outlined.Dns,tv){
+  if(snapshot==null&&!connectionOpen) SettingsCard("Установка и настройки",Icons.Outlined.Build,tv){
    SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
    Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
   }
@@ -341,6 +362,7 @@ import java.util.UUID
     data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
     onDirty(false)
     message="JacRed запущен. Можно проверить поиск в настройках источника."
+    model.managed.load("admin/jacred")
    }
   }
  }else if(settings){

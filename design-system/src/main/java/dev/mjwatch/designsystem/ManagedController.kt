@@ -69,7 +69,21 @@ class ManagedController(private val context:android.content.Context,private val 
   // Snapshot establishes epochs before any local writes; old local history is imported only explicitly.
   val savedApi=ManagedApi(saved,secrets,caOverride);savedApi.saveTokens(result);secrets.put("access:${api.base.origin()}:","");secrets.put("refresh:${api.base.origin()}:","");SyncEngine(savedApi,db.syncDao()).connect();if(caOverride!=null)secrets.put("ca:${api.base.origin()}",caOverride);settings.save(saved);settings.destination("home");mutable.update {it.copy(scope=saved.scope,me=me,data=null,message="Подключение проверено")}
  }
- fun load(path:String)=run {val api=api();val me=api.authorized("me");val data=api.authorized(path);if(config().scope!=api.config.scope)throw CancellationException("Account changed");mutable.update {it.copy(me=me,data=data,statusCheckedAt=if(path=="admin/status")System.currentTimeMillis() else it.statusCheckedAt)}}
+ fun load(path:String)=run {
+  val api=api();val me=api.authorized("me")
+  if(config().scope!=api.config.scope)throw CancellationException("Account changed")
+  val jacred=path.substringBefore('?')=="admin/jacred"
+  if(jacred&&me.optString("role")!="admin") {mutable.update {it.copy(me=me,data=null)};return@run}
+  val data=try {api.authorized(path)} catch(e:HttpFailure) {
+   if(jacred&&e.status==404&&config().scope==api.config.scope) {
+    mutable.update {it.copy(me=me,data=null)}
+    throw java.io.IOException("Для диагностики JacRed обновите сервер MJWatch до 0.1.15 или новее.",e)
+   }
+   throw e
+  }
+  if(config().scope!=api.config.scope)throw CancellationException("Account changed")
+  mutable.update {it.copy(me=me,data=data,statusCheckedAt=if(path=="admin/status")System.currentTimeMillis() else it.statusCheckedAt)}
+ }
  fun action(path:String,method:String,body:JSONObject=JSONObject(),revision:String?=null,reload:String?=null)=run {
   val api=api()
   val data=if(path=="history"&&method=="DELETE") SyncEngine(api,db.syncDao()).clearHistory()
