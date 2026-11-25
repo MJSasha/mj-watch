@@ -1,23 +1,30 @@
 package dev.mjwatch.designsystem
 
 import android.net.Uri
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,47 +32,47 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import dev.mjwatch.core.Config
 import dev.mjwatch.core.JacredAdminAddress
-import dev.mjwatch.core.ManagedApi
-import dev.mjwatch.core.OwnerSsh
-import dev.mjwatch.core.SecretStore
-import dev.mjwatch.core.SshTarget
 import dev.mjwatch.core.safeError
-import dev.mjwatch.core.scope
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Composable
-internal fun JacredAdminDialog(
-    config: Config,
-    secrets: SecretStore,
-    ssh: OwnerSsh,
-    target: SshTarget,
+internal fun JacredAdminScreen(
     tv: Boolean,
     onClose: () -> Unit,
+    connect: suspend ((JacredAdminAddress) -> Unit) -> Unit,
 ) {
     var address by remember { mutableStateOf<JacredAdminAddress?>(null) }
     var error by remember { mutableStateOf("") }
+    val window = LocalActivity.current?.window
+    DisposableEffect(window) {
+        val secureFlag = WindowManager.LayoutParams.FLAG_SECURE
+        val wasSecure = window?.attributes?.flags?.and(secureFlag) == secureFlag
+        val inputMode = window?.attributes?.softInputMode
+        window?.addFlags(secureFlag)
+        if (inputMode != null) {
+            window.setSoftInputMode(
+                (inputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+            )
+        }
+        onDispose {
+            if (!wasSecure) window?.clearFlags(secureFlag)
+            if (inputMode != null) window.setSoftInputMode(inputMode)
+        }
+    }
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    BackHandler(enabled = !imeVisible, onBack = onClose)
     LifecycleEventEffect(Lifecycle.Event.ON_STOP, onEvent = onClose)
-    if (error.isBlank()) LaunchedEffect(config.scope, config.managedUrl, target) {
+    if (error.isBlank()) LaunchedEffect(Unit) {
         try {
-            withContext(Dispatchers.IO) {
-                val me = ManagedApi(config, secrets).authorized("me")
-                check(me.optString("role") == "admin" && me.optString("serverId") == config.serverId) {
-                    "Админка JacRed доступна владельцу сервера."
-                }
-                ssh.browseJacred(target, config.serverId) { address = it }
-            }
+            connect { address = it }
             error = "SSH-сеанс завершён. Откройте админку заново."
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -75,29 +82,24 @@ internal fun JacredAdminDialog(
             address = null
         }
     }
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, securePolicy = SecureFlagPolicy.SecureOn),
-    ) {
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Админка JacRed", style = MaterialTheme.typography.titleLarge)
-                    Action("Закрыть", tv, secondary = true, onClick = onClose)
-                }
-                val connection = address
-                if (connection != null && error.isBlank()) {
-                    JacredAdminWebView(connection, Modifier.weight(1f)) { error = it }
-                } else if (error.isNotBlank()) {
-                    Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
-                } else {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Открываем SSH-туннель…", Modifier.padding(16.dp))
-                }
+    Surface(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().imePadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Админка JacRed", style = MaterialTheme.typography.titleLarge)
+                Action("Закрыть", tv, secondary = true, onClick = onClose)
+            }
+            val connection = address
+            if (connection != null && error.isBlank()) {
+                JacredAdminWebView(connection, Modifier.weight(1f)) { error = it }
+            } else if (error.isNotBlank()) {
+                Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+            } else {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("Открываем SSH-туннель…", Modifier.padding(16.dp))
             }
         }
     }

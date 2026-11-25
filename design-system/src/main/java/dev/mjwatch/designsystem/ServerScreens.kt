@@ -16,8 +16,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -41,9 +43,11 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
  LaunchedEffect(page,mobileQr) {screenScroll.scrollTo(0)}
  var dirty by remember(page) {mutableStateOf(false)}
  var leave by remember {mutableStateOf(false)}
- val back:()->Unit={if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
- DisposableEffect(page,dirty){registerBack(back);onDispose{registerBack(null)}}
- BackHandler {back()}
+ var jacredAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<SshTarget?>(null)}
+ val adminTarget=jacredAdmin?.takeIf {managed.me?.optString("role")=="admin"}
+ val back:()->Unit={if(adminTarget!=null)jacredAdmin=null else if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
+ DisposableEffect(page,dirty,adminTarget!=null){registerBack(back);onDispose{registerBack(null)}}
+ BackHandler(enabled=adminTarget==null) {back()}
  if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
@@ -240,7 +244,7 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
      var catalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      var requestedCatalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      if(editing) {
-      key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
+      key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onJacredAdmin={jacredAdmin=it})}
      } else {
       val separateCatalog=diagnostics?.optBoolean("separateCatalogStats")==true
       val canRebuildCatalog=diagnostics?.optBoolean("refreshCatalogStats")==true
@@ -301,13 +305,27 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
   if(page!="managed-login"&&managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
  }
  }
- BoxWithConstraints(Modifier.fillMaxSize()) {
+ Box(Modifier.fillMaxSize()) {
+ BoxWithConstraints(if(adminTarget==null) Modifier.fillMaxSize() else Modifier.fillMaxSize().alpha(0f).clearAndSetSemantics { hideFromAccessibility() }) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","JacRed" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second !in setOf("server-jacred","server-resources")||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
    Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
   }else BoundedPane(!tv){content()}
+ }
+ if(adminTarget!=null) {
+  val context=LocalContext.current
+  val ssh=remember(context,model.secrets){OwnerSsh(context,model.secrets)}
+  JacredAdminScreen(tv,onClose={keyboard?.hide();jacredAdmin=null}) { opened ->
+   val config=s.config
+   val me=withContext(Dispatchers.IO){ManagedApi(config,model.secrets).authorized("me")}
+   check(me.optString("role")=="admin"&&me.optString("serverId")==config.serverId) {
+    "Админка JacRed доступна владельцу сервера."
+   }
+   ssh.browseJacred(adminTarget,config.serverId,opened)
+  }
+ }
  }
 }
 @Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
@@ -320,8 +338,9 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
-@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,onDirty:(Boolean)->Unit={}) {
+@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,onDirty:(Boolean)->Unit={},onJacredAdmin:(SshTarget)->Unit={}) {
  val keyboard=LocalSoftwareKeyboardController.current
+ val focus=LocalFocusManager.current
  val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
  val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
  var connectionOpen by rememberSaveable{mutableStateOf(false)}
@@ -329,7 +348,6 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
  var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||jacred)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
- var jacredAdmin by remember{mutableStateOf<SshTarget?>(null)}
  var jacredDirty by remember{mutableStateOf(false)}
  var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
  val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
@@ -409,11 +427,10 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
   if(snapshot?.optBoolean("running")==true) {
    Action("Открыть админку",tv,Modifier.fillMaxWidth(),secondary=true,
     enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank(),icon=Icons.Outlined.AdminPanelSettings) {
-    jacredAdmin=target()
+    focus.clearFocus(force=true)
+    keyboard?.hide()
+    onJacredAdmin(target())
    }
-  }
-  jacredAdmin?.let { adminTarget ->
-   JacredAdminDialog(s.config,model.secrets,ssh,adminTarget,tv,onClose={jacredAdmin=null})
   }
   if(snapshot!=null) JacredEditor(snapshot,tv,busy,{jacredDirty=it;onDirty(it)},onRefresh={refresh()}) { next ->
    perform{target->
