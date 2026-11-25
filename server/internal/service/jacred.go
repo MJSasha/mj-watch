@@ -111,7 +111,10 @@ func (s *Server) jacredDiagnostics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	access := s.readJacredAccess()
-	summary := map[string]any{"jacredDiagnostics": true, "separateCatalogStats": true, "installed": access.APIKey != "", "searchReady": false}
+	summary := map[string]any{
+		"jacredDiagnostics": true, "separateCatalogStats": true, "refreshCatalogStats": true,
+		"installed": access.APIKey != "", "searchReady": false,
+	}
 	if access.APIKey == "" {
 		respond(w, 200, summary)
 		return
@@ -158,12 +161,48 @@ func (s *Server) jacredStats(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	s.jacredStatsMu.Lock()
+	state := s.jacredRefresh
+	s.jacredStatsMu.Unlock()
 	stats, err := s.jacredCatalogStats(ctx, access.APIKey)
 	if err != nil {
-		fail(w, 503, "jacred_stats_unavailable")
+		if state != "running" && state != "failed" {
+			fail(w, 503, "jacred_stats_unavailable")
+			return
+		}
+		stats = make(map[string]any)
+	}
+	stats["refreshState"] = state
+	respond(w, 200, stats)
+}
+
+func (s *Server) startJacredStatsRefresh(w http.ResponseWriter) {
+	if s.readJacredAccess().APIKey == "" {
+		fail(w, 503, "jacred_not_installed")
 		return
 	}
-	respond(w, 200, stats)
+	s.jacredStatsMu.Lock()
+	if s.jacredRefresh != "running" {
+		s.jacredRefresh = "running"
+		go s.refreshJacredStats()
+	}
+	s.jacredStatsMu.Unlock()
+	respond(w, 202, map[string]string{"refreshState": "running"})
+}
+
+func (s *Server) refreshJacredStats() {
+	// JacRed trusts direct loopback calls and rebuilds its tracker report in this same scan.
+	client := *s.Client
+	client.Timeout = 2 * time.Minute
+	resp, err := client.Get("http://127.0.0.1:19117/dev/TracksStats?refresh=true")
+	var report struct{ OK bool }
+	state := "complete"
+	if readJSONResponse(resp, err, &report) != nil || !report.OK {
+		state = "failed"
+	}
+	s.jacredStatsMu.Lock()
+	s.jacredRefresh = state
+	s.jacredStatsMu.Unlock()
 }
 
 func (s *Server) jacredCatalogStats(ctx context.Context, key string) (map[string]any, error) {

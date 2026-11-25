@@ -21,6 +21,7 @@ class ManagedController(private val context:android.content.Context,private val 
  val qr=TvQrController(scope,secrets,config,this)
  fun storePreferences(c:Config){val prefs=context.getSharedPreferences("playback-preferences",0);val row=JSONObject().put("metadataProvider",if(c.managed)"none" else c.metadataProvider).put("quality",prefs.getString("quality","Все")).put("audioLanguage",prefs.getString("audio-language",null)).put("subtitleLanguage",if(prefs.getBoolean("subtitles-off",false))"off" else prefs.getString("subtitle-language",null));context.getSharedPreferences("profile-playback-preferences",0).edit().putString(if(c.managed)c.scope else "direct",row.toString()).apply()}
  private suspend fun restorePreferences(c:Config){val server=if(c.historyEnabled)db.syncDao().entity(c.scope,"preferences","profile")?.takeUnless{it.deleted}?.json else null;val stored=context.getSharedPreferences("profile-playback-preferences",0).getString(if(c.managed)c.scope else "direct",null);if(!c.managed&&server==null&&stored==null)return;val value=JSONObject(server ?: stored ?: "{}");context.getSharedPreferences("playback-preferences",0).edit().putString("quality",value.optString("quality","Все")).putString("audio-language",value.optString("audioLanguage").takeIf{it.isNotBlank()&&it!="null"}).putString("subtitle-language",value.optString("subtitleLanguage").takeIf{it.isNotBlank()&&it!="null"&&it!="off"}).putBoolean("subtitles-off",value.optString("subtitleLanguage","off")=="off").apply()}
+ private val syncMutex=Mutex()
  private var syncJob:Job?=null;private var observer:Job?=null
  init {scope.launch {var previous:Config?=null;settings.config.collectLatest {c->if(previous?.scope!=c.scope||previous?.connectionMode!=c.connectionMode){previous?.let{storePreferences(it)};restorePreferences(c)};if(previous?.scope!=c.scope||previous?.managedUrl!=c.managedUrl)qr.cancelPhone();val moved=previous?.scope==c.scope&&previous?.managedUrl!=c.managedUrl
    previous=c;users.reset(c.scope);syncJob?.cancel();observer?.cancel()
@@ -112,7 +113,6 @@ class ManagedController(private val context:android.content.Context,private val 
   catch(e:Exception){mutable.update {it.copy(message=safeError(e))}}
  }
  private fun installationId():String {val prefs=context.getSharedPreferences("device-installation",0);return prefs.getString("id",null) ?: java.util.UUID.randomUUID().toString().also {prefs.edit().putString("id",it).commit()}}
- private val syncMutex=Mutex()
  private suspend fun sync(c:Config):Boolean=syncMutex.withLock {
   if(!c.historyEnabled||settings.config.first().let {it.scope!=c.scope||it.managedUrl!=c.managedUrl})return@withLock false
   try {

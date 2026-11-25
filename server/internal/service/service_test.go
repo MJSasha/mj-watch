@@ -93,6 +93,9 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 	if code, _ := call(t, s, "", "GET", path+"/stats", nil); code != 401 {
 		t.Fatal(code)
 	}
+	if code, _ := call(t, s, "", "POST", path+"/stats", nil); code != 401 {
+		t.Fatal(code)
+	}
 	code, invite := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})
 	if code != 200 {
 		t.Fatal(code, invite)
@@ -129,6 +132,9 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 		t.Fatal(code, calls)
 	}
 	if code, _ := call(t, s, account["accessToken"].(string), "GET", path+"/stats", nil); code != 403 || calls != 0 {
+		t.Fatal(code, calls)
+	}
+	if code, _ := call(t, s, account["accessToken"].(string), "POST", path+"/stats", nil); code != 403 || calls != 0 {
 		t.Fatal(code, calls)
 	}
 	if code, _ := call(t, s, account["accessToken"].(string), "POST", path+"/collect", nil); code != 403 {
@@ -173,6 +179,70 @@ func TestJacredDiagnosticsIsAdminOnly(t *testing.T) {
 		t.Fatal(code, calls, overview)
 	}
 }
+
+func TestJacredRefreshesCatalogWithCollectionDisabled(t *testing.T) {
+	s, owner := fixture(t)
+	dir := t.TempDir()
+	s.Config.SecretKey = filepath.Join(dir, "secret.key")
+	s.Config.Database = filepath.Join(dir, "state.db")
+	if err := os.WriteFile(filepath.Join(dir, "jacred-access.json"), []byte(`{"apiKey":"private-key","collect":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{}, 2)
+	finish := make(chan struct{}, 1)
+	defer close(finish)
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		body := `{"updatedAt":"2026-11-25T16:45:00Z"}`
+		switch r.URL.Path {
+		case "/dev/TracksStats":
+			if r.URL.Host != "127.0.0.1:19117" || r.URL.RawQuery != "refresh=true" || r.Header.Get("Authorization") != "" {
+				t.Error("unexpected refresh request")
+			}
+			entered <- struct{}{}
+			<-finish
+			body = `{"ok":true}`
+		case "/stats/torrents":
+			body = `[{"trackerName":"rutor","alltorrents":7}]`
+		case "/stats/meta":
+		default:
+			t.Errorf("unexpected upstream path %s", r.URL.Path)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	const path = "admin/jacred/stats"
+	for range 2 {
+		if code, body := call(t, s, owner, "POST", path, nil); code != 202 || body["refreshState"] != "running" {
+			t.Fatal(code, body)
+		}
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("JacRed never received the refresh")
+	}
+	if code, body := call(t, s, owner, "GET", path, nil); code != 200 || body["refreshState"] != "running" {
+		t.Fatal(code, body)
+	}
+	finish <- struct{}{}
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		code, body := call(t, s, owner, "GET", path, nil)
+		if code == 200 && body["refreshState"] == "complete" && body["catalogCount"] == float64(7) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(code, body)
+		}
+	}
+	select {
+	case <-entered:
+		t.Fatal("duplicate refresh")
+	default:
+	}
+	if _, err := os.Stat(filepath.Join(dir, "jacred-collect.request")); !os.IsNotExist(err) {
+		t.Fatal("statistics refresh started collection", err)
+	}
+}
+
 func TestAuthorizationSyncIsolationAndPairing(t *testing.T) {
 	s, owner := fixture(t)
 	code, created := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})

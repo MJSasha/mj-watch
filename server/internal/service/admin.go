@@ -15,6 +15,8 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i id
 		s.jacredDiagnostics(w, r)
 	case path == "admin/jacred/stats" && r.Method == http.MethodGet:
 		s.jacredStats(w, r)
+	case path == "admin/jacred/stats" && r.Method == http.MethodPost:
+		s.startJacredStatsRefresh(w)
 	case path == "admin/jacred/collect" && r.Method == http.MethodPost:
 		s.queueJacredCollection(w)
 	case path == "admin/playback/settings":

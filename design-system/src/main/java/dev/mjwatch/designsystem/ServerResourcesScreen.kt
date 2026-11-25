@@ -15,9 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -131,9 +135,7 @@ internal fun ServerResourcesPanel(
     val cpuCard: @Composable (Modifier) -> Unit = { modifier ->
         ResourceCard(modifier, "Процессор", Icons.Outlined.Speed, cpuPercent, cpuPercent?.asPercent() ?: "—",
             cores?.let { "Логических ядер: $it" } ?: "Данные процессора пока недоступны") {
-            Box(Modifier.fillMaxWidth().height(38.dp)) {
-                if (history.size > 1) CpuTrend(history)
-            }
+            if (history.isNotEmpty()) CpuTrend(history)
         }
     }
     val ramCard: @Composable (Modifier) -> Unit = { modifier ->
@@ -177,7 +179,7 @@ internal fun ServerResourcesPanel(
 @Composable
 private fun ResourceCard(
     modifier: Modifier, title: String, icon: ImageVector, percent: Float?, value: String, caption: String,
-    detail: @Composable () -> Unit = {},
+    valueDetail: @Composable () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val accent = if (percent != null && percent >= 90f) colors.error else colors.primary
@@ -194,25 +196,35 @@ private fun ResourceCard(
                     Text(it, style = MaterialTheme.typography.labelLarge, color = accent)
                 }
             }
-            Text(value, style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(value, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                valueDetail()
+            }
             LinearProgressIndicator(progress = { fill }, modifier = Modifier.fillMaxWidth(), color = accent)
             Text(caption, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-            detail()
         }
     }
 }
 
 @Composable
 private fun CpuTrend(values: List<Float>) {
-    val accent = MaterialTheme.colorScheme.tertiary
-    Canvas(Modifier.fillMaxWidth().height(38.dp)) {
+    val accent = MaterialTheme.colorScheme.primary
+    Canvas(
+        Modifier.size(width = 96.dp, height = 22.dp)
+            .semantics { contentDescription = "График загрузки процессора" }
+    ) {
+        val inset = 2.dp.toPx()
+        val width = size.width - 2 * inset
+        val height = size.height - 2 * inset
         val line = Path()
+        var latest = Offset.Zero
         values.forEachIndexed { index, value ->
-            val x = size.width * index / (values.size - 1)
-            val y = size.height * (1f - value / 100f)
-            if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
+            val progress = if (values.size == 1) 1f else index.toFloat() / values.lastIndex
+            latest = Offset(inset + width * progress, inset + height * (1f - value / 100f))
+            if (index == 0) line.moveTo(latest.x, latest.y) else line.lineTo(latest.x, latest.y)
         }
-        drawPath(line, color = accent, style = Stroke(width = 2.dp.toPx()))
+        drawPath(line, color = accent, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
+        drawCircle(accent, radius = inset, center = latest)
     }
 }
 

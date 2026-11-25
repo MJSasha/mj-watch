@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.16"
+var Version = "0.1.18"
 
 type Server struct {
 	maxStreams         int
@@ -65,6 +65,8 @@ type Server struct {
 	tmdbMu         sync.Mutex
 	remoteMu       sync.Mutex
 	cpu            resources.CPUSampler
+	jacredStatsMu  sync.Mutex
+	jacredRefresh  string
 }
 
 func New(db *sql.DB, c Config) *Server {

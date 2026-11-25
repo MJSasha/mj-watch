@@ -238,19 +238,31 @@ private const val JACRED_OVERVIEW = "admin/jacred?view=overview"
      var catalogLoading by remember(s.config.scope,s.config.managedUrl) {mutableStateOf(false)}
      var catalogError by remember(s.config.scope,s.config.managedUrl) {mutableStateOf("")}
      var catalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
+     var requestedCatalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      if(editing) {
       key(s.config.managedUrl){SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it})}
      } else {
       val separateCatalog=diagnostics?.optBoolean("separateCatalogStats")==true
+      val canRebuildCatalog=diagnostics?.optBoolean("refreshCatalogStats")==true
       val installed=diagnostics?.optBoolean("installed")==true
       val lastRun=diagnostics?.optJSONObject("index")?.optJSONArray("history")?.optJSONObject(0)?.optLong("updatedAt")
-      LaunchedEffect(s.config.scope,s.config.managedUrl,separateCatalog,installed,lastRun,catalogRefresh) {
+      LaunchedEffect(s.config.scope,s.config.managedUrl,separateCatalog,canRebuildCatalog,installed,lastRun,catalogRefresh) {
        if(separateCatalog&&installed) {
         catalogLoading=true
         catalogError=""
         try {
-         val fresh=withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/jacred/stats")}
-         if(fresh.has("catalogCount")||catalog==null)catalog=fresh
+         val api=ManagedApi(s.config,model.secrets)
+         if(canRebuildCatalog&&catalogRefresh!=requestedCatalogRefresh) {
+          withContext(Dispatchers.IO){api.authorized("admin/jacred/stats","POST")}
+          requestedCatalogRefresh=catalogRefresh
+         }
+         do {
+          val fresh=withContext(Dispatchers.IO){api.authorized("admin/jacred/stats")}
+          if(fresh.has("catalogCount")||catalog==null)catalog=fresh
+          val refreshState=fresh.optString("refreshState")
+          if(refreshState=="failed")catalogError="JacRed не смог пересчитать статистику. Повторите попытку."
+          if(refreshState=="running")delay(2_000)
+         } while(refreshState=="running")
         } catch(e:CancellationException) {
          throw e
         } catch(e:Exception) {
