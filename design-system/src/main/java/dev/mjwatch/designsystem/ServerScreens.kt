@@ -50,7 +50,7 @@ import java.util.UUID
   do {controller.load(load);if(page=="server-overview")delay(15000)} while(page=="server-overview")
  }}
  val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(screenScroll).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-  if(managed.busy&&page!="server-overview") LinearProgressIndicator(Modifier.fillMaxWidth())
+  if(managed.busy&&page!="server-overview"&&page!="server-jacred") LinearProgressIndicator(Modifier.fillMaxWidth())
   when(page) {
    "connection-choice"->{
     Text("Как подключиться",fontSize=28.sp,fontWeight=FontWeight.Bold)
@@ -342,7 +342,7 @@ import java.util.UUID
  TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
  if(!jacred)ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
  }
- if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+ if(busy&&!jacred)LinearProgressIndicator(Modifier.fillMaxWidth())
  if(install){
   if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
   if(advanced)Action("Восстановить запуск по SSH",tv,secondary=true,enabled=!busy){askConfirmation{perform{target->ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("recovery")).put("confirmed",true));connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
@@ -352,7 +352,7 @@ import java.util.UUID
  }else if(jacred){
   fun refresh()=perform{target->data=ssh.readJacred(target);connectionOpen=false;message=""}
   val snapshot=data
-  if(connectionOpen) Action("Загрузить состояние JacRed",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){refresh()}
+  if(connectionOpen) Action("Загрузить состояние JacRed",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank(),loading=busy){refresh()}
   if(snapshot==null&&!connectionOpen) SettingsCard("Установка и настройки",Icons.Outlined.Build,tv){
    SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
    Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}

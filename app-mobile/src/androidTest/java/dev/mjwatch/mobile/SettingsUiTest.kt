@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.runner.RunWith
@@ -102,6 +103,23 @@ class SettingsUiTest {
     compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить"))
     compose.onNodeWithText("Сохранить").performClick()
     compose.waitUntil(5000){model.state.value.config.externalReleaseSearch}
+ }
+ @Test fun jacredHeadingStaysInPlaceDuringRefresh(){
+    lateinit var model:WatchModel
+    compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java];model.page("server-jacred")}
+    val heading=compose.onNodeWithText("JacRed")
+    val before=heading.fetchSemanticsNode().boundsInRoot
+    val finish=CompletableDeferred<Unit>()
+    try {
+        compose.runOnIdle{model.managed.run{finish.await()}}
+        compose.waitUntil(5000){model.managed.state.value.busy}
+        Assert.assertEquals(before,heading.fetchSemanticsNode().boundsInRoot)
+        finish.complete(Unit)
+        compose.waitUntil(5000){!model.managed.state.value.busy}
+        Assert.assertEquals(before,heading.fetchSemanticsNode().boundsInRoot)
+    } finally {
+        finish.complete(Unit)
+    }
  }
  @Test fun longRawTitleNeverOverlapsBackOrBottomAction() {
     lateinit var model:WatchModel

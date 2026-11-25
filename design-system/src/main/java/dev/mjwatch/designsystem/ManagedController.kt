@@ -89,6 +89,12 @@ class ManagedController(private val context:android.content.Context,private val 
   val data=if(path=="history"&&method=="DELETE") SyncEngine(api,db.syncDao()).clearHistory()
    else api.authorized(path,method,body,revision)
   if(config().scope!=api.config.scope)throw CancellationException("Account changed")
+  if(path=="admin/jacred/collect"&&reload!=null) {
+   val fresh=api.authorized(reload)
+   if(config().scope!=api.config.scope)throw CancellationException("Account changed")
+   mutable.update {it.copy(data=fresh)}
+   return@run
+  }
   mutable.update {it.copy(data=data,message="Операция подтверждена сервером")}
   if(reload!=null){val fresh=api.authorized(reload);mutable.update {it.copy(data=fresh)}}
  }
