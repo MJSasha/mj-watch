@@ -76,7 +76,7 @@ class NovemberIssuesUiTest {
             val body="""{"Results":[{"Title":"Sintel 720p","Tracker":"Fixture","Seeders":1,"MagnetUri":"magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10"}],"jacred":true}"""
             repeat(2) {server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(body).setBodyDelay(3,java.util.concurrent.TimeUnit.SECONDS))}
             val url=server.url("/parser").toString()
-            runBlocking {Settings(compose.activity).save(config.copy(demo=false,jackett=url,releaseApi="jacred",localHttp=true))}
+            runBlocking {Settings(compose.activity).save(config.copy(demo=false,jackett=url,releaseApi="jacred",localHttp=true,externalReleaseSearch=true))}
             compose.waitUntil(10000) {m.state.value.config.jackett==url}
             compose.runOnIdle {m.search("Sintel")}
             compose.onNodeWithContentDescription("Поиск…").assertIsDisplayed()
