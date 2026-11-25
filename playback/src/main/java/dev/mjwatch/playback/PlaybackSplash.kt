@@ -52,7 +52,7 @@ internal fun PlaybackSplash(
     artwork: PlaybackArtwork?,
     tv: Boolean,
     metrics: PlaybackLoadingMetrics?,
-    progress: Float?,
+    progress: StartupLoadingProgress?,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onAudioRecovery: () -> Unit,
@@ -75,7 +75,7 @@ private fun SplashContent(
     artwork: PlaybackArtwork?,
     tv: Boolean,
     metrics: PlaybackLoadingMetrics?,
-    progress: Float?,
+    progress: StartupLoadingProgress?,
     active: Boolean,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
@@ -107,7 +107,7 @@ private fun SplashContent(
         val logoReady = logoAspect != null
         val logoHeight = if (short) 84.dp else 150.dp
         val reveal = progress.takeIf { status.loading }
-        val progressFill = Modifier.titleProgress(status.loading,reveal)
+        val progressFill = Modifier.titleProgress(status.loading,reveal?.fraction)
         Box(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),

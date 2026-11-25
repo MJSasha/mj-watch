@@ -57,7 +57,7 @@ import kotlinx.coroutines.delay
     onRetry:()->Unit, onVisibility:(Boolean)->Unit, onBack:()->Unit, onTracks:()->Unit, onVideo:()->Unit,
     episodes:List<PlaybackEpisode>, episodeIndex:Int, onEpisode:(Int)->Unit, externalPanel:Boolean,
     onBackHandler:((()->Unit)?)->Unit, mediaInteraction:Int=0, now:()->Long={SystemClock.uptimeMillis()},
-    startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, metrics:PlaybackLoadingMetrics?=null, progress:Float?=null,
+    startup:PlaybackStatus?=null, artwork:PlaybackArtwork?=null, metrics:PlaybackLoadingMetrics?=null, progress:StartupLoadingProgress?=null,
     skipSegments:List<SkipSegment> = emptyList(), advanceAfterCredits:(Boolean)->Boolean={false},
 ) {
     val statusRipple=LocalRippleConfiguration.current

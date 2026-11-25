@@ -954,6 +954,8 @@ private class ReleaseOptions(
                     val metadata=s.selectedMetadata
                     Intent(context,PlaybackActivity::class.java)
                         .putExtra("recoveryRelease",recovery.toString()).putExtra("torrentHandle",handle.hash)
+                        .putExtra(PlaybackActivity.EXTRA_FILE_BYTES,file.size)
+                        .putExtra(PlaybackActivity.EXTRA_RUNTIME_MS,(metadata?.runtimeMinutes ?: 0) * 60_000L)
                         .putExtra("remoteContentId","${handle.contentHash}:${file.serverFileId}")
                         .putExtra("metadataId",metadata?.id).putExtra("artMetadataId",metadata?.id)
                         .putExtra("segmentSeason",season ?: -1).putExtra("segmentEpisode",episode ?: -1)

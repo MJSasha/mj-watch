@@ -75,7 +75,7 @@ internal fun PlaybackStatusOverlay(
     focusAction: Boolean = false,
     active: Boolean = true,
     metrics: PlaybackLoadingMetrics? = null,
-    progress: Float? = null,
+    progress: StartupLoadingProgress? = null,
     onAudioRecovery: () -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
@@ -125,7 +125,7 @@ internal fun PlaybackStatusOverlay(
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             if (status.loading) {
-                Row(
+                if (showStatus || progress != null || transferred == null) Row(
                     Modifier.heightIn(min = 18.dp).semantics {
                         if (!metricsAvailable && progress == null) liveRegion = LiveRegionMode.Polite
                         else stateDescription = status.title
@@ -134,12 +134,19 @@ internal fun PlaybackStatusOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showStatus) Text(status.title, color = foreground, style = MaterialTheme.typography.bodyMedium)
-                    val bar = Modifier.width(34.dp).height(3.dp).testTag("playback-start-progress")
-                    if (progress == null) LinearProgressIndicator(bar, color = foreground, trackColor = Color.DarkGray)
-                    else {
-                        LinearProgressIndicator(progress = {progress}, modifier = bar, color = foreground, trackColor = Color.DarkGray)
-                        Text("${(progress * 100f).roundToInt()}%", color = foreground,
+                    if (status.compact) LinearProgressIndicator(
+                        Modifier.width(34.dp).height(3.dp), color = foreground, trackColor = Color.DarkGray,
+                    )
+                    if (progress == null) {
+                        if (!showStatus && transferred == null) Text("Ждём данные", color = foreground,
+                            style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text("≈${(progress.fraction * 100f).roundToInt()}%", color = foreground,
                             fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        progress.remainingSeconds?.let { seconds ->
+                            Text("≈ $seconds с", color = foreground,
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
                 if (metricsAvailable) {

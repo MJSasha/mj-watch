@@ -119,6 +119,7 @@ internal fun remotePlaybackIntent(context: Context, base: HttpUrl, response: JSO
 
     return Intent(context, PlaybackActivity::class.java)
         .putExtra("torrentHandle", handle)
+        .putExtra(PlaybackActivity.EXTRA_FILE_BYTES, selected.size)
         .putExtra("remoteSession", command.getString("id"))
         .putExtra("remotePosition", command.optLong("position"))
         .putExtra("remoteContentId", "$hash:${current.fileId}")

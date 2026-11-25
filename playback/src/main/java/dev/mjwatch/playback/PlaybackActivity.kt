@@ -55,6 +55,8 @@ class PlaybackActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_OFFLINE="offlinePlayback"
         const val EXTRA_SEGMENT_QUEUE_SEASON = "segmentQueueSeason"
+        const val EXTRA_FILE_BYTES = "playbackFileBytes"
+        const val EXTRA_RUNTIME_MS = "playbackRuntimeMs"
 
         fun offlineIntent(
             context:Context,
@@ -153,7 +155,9 @@ class PlaybackActivity : ComponentActivity() {
     private var streamBytesReceived by androidx.compose.runtime.mutableLongStateOf(0)
     private var streamBytesPerSecond by androidx.compose.runtime.mutableStateOf<Double?>(null)
     private var torrentStats by androidx.compose.runtime.mutableStateOf<TorrentPlaybackStats?>(null)
-    private var startupProgress by androidx.compose.runtime.mutableStateOf<Float?>(null)
+    private var startupProgress by androidx.compose.runtime.mutableStateOf<StartupLoadingProgress?>(null)
+    private var startupEstimate = StartupLoadingEstimate()
+    private var startupExpectedBytes = startupByteTarget(0, 0, INITIAL_BUFFER_MS)
 
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -326,6 +330,11 @@ class PlaybackActivity : ComponentActivity() {
                 }
             })
             val progress=if(config.historyEnabled) db.syncDao().resumeProgress(config.scope,releaseId,contentIdentity.ifBlank {"$releaseId|$path"}) else null
+            startupExpectedBytes = startupByteTarget(
+                intent.getLongExtra(EXTRA_FILE_BYTES, 0),
+                progress?.durationMs ?: intent.getLongExtra(EXTRA_RUNTIME_MS, 0),
+                INITIAL_BUFFER_MS,
+            )
             player.setMediaItem(mediaItem(uri),savedInstanceState?.getLong("position") ?: if(intent.hasExtra("remotePosition"))intent.getLongExtra("remotePosition",0).coerceAtLeast(0) else progress?.takeUnless { it.completed }?.positionMs ?: 0)
             startedAt=System.currentTimeMillis(); player.prepare(); player.playWhenReady=savedInstanceState?.getBoolean("playing",true) ?: true
             view.requestFocus()
@@ -378,10 +387,18 @@ class PlaybackActivity : ComponentActivity() {
             snapshotFlow { status?.loading == true && !firstFrameSeen }.collectLatest { loading ->
                 if (!loading) return@collectLatest
                 while (isActive) {
-                    if (::player.isInitialized && player.playbackState == Player.STATE_BUFFERING && player.totalBufferedDuration > 0) {
-                        // This is the player's start buffer in playout time, independent of TorrServer's cache.
-                        val target = INITIAL_BUFFER_MS * player.playbackParameters.speed
-                        startupProgress = (player.totalBufferedDuration / target).coerceIn(0f, .99f)
+                    if (!released && ::player.isInitialized) {
+                        val speed = player.playbackParameters.speed
+                        val bufferedFraction = if (player.playbackState == Player.STATE_BUFFERING) {
+                            player.totalBufferedDuration / (INITIAL_BUFFER_MS * speed)
+                        } else 0f
+                        startupProgress = startupEstimate.sample(
+                            android.os.SystemClock.elapsedRealtime(),
+                            streamBytesReceived,
+                            torrentStats?.cachedBytes,
+                            (startupExpectedBytes * speed.toDouble()).toLong().coerceAtLeast(1),
+                            bufferedFraction,
+                        )
                     }
                     delay(200)
                 }
@@ -496,6 +513,7 @@ class PlaybackActivity : ComponentActivity() {
         segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
         resetLoadingProgress()
+        startupExpectedBytes = startupByteTarget(0, 0, INITIAL_BUFFER_MS)
         frozenFrame.clear()
         view.setKeepContentOnPlayerReset(false)
         player.stop();decoderFallback.reset()
@@ -654,6 +672,7 @@ class PlaybackActivity : ComponentActivity() {
 
     private fun resetLoadingProgress() {
         startupProgress = null
+        startupEstimate = StartupLoadingEstimate()
         torrentStats = null
         streamByteBaseline = networkBytes.get()
         streamBytesReceived = 0
