@@ -319,14 +319,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Action(action,tv,if(tv) Modifier else Modifier.fillMaxWidth(),icon=Icons.Outlined.Search,onClick=onClick)
     }
 }
-@Composable private fun ReleaseCard(release:Release,tv:Boolean,focus:Boolean=false,selected:Boolean=false,onLongClick:(()->Unit)?=null,compact:Boolean=false,onClick:()->Unit) {
+@Composable private fun ReleaseCard(release:Release,tv:Boolean,focus:Boolean=false,selected:Boolean=false,onLongClick:(()->Unit)?=null,onClick:()->Unit) {
     val requester=remember {FocusRequester()}
     LaunchedEffect(focus) {if(tv&&focus) {delay(100);requester.requestFocus()}}
     NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester),selected,onLongClick,onClick) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal=if(tv) 18.dp else 16.dp,vertical=if(compact) 8.dp else if(tv) 18.dp else 16.dp),
-            verticalArrangement=Arrangement.spacedBy(if(compact) 4.dp else 10.dp),
-        ) {
+        Column(Modifier.fillMaxWidth().padding(if(tv) 18.dp else 16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text(release.title,fontSize=if(tv) 17.sp else 16.sp,lineHeight=22.sp,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             val codec = Regex("(?i)(HEVC|H[ .]?265|x265|H[ .]?264|x264|AV1)").find(release.title)?.value
             val hdr = Regex("(?i)(HDR10\\+?|HDR|SDR)").find(release.title)?.value
@@ -525,7 +522,7 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Тестовые раздачи")}}
                 items(DemoReleases.items.chunked(columns),key={it.first().id}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                        row.forEach {r->Box(Modifier.weight(1f)) {ReleaseCard(r,tv,s.focusKey==r.id,compact=true) {model.open(r)}}}
+                        row.forEach {r->Box(Modifier.weight(1f)) {ReleaseCard(r,tv,s.focusKey==r.id) {model.open(r)}}}
                         repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
                     }
                 }
@@ -1218,8 +1215,10 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         metadata?.let(::titleSubtitle) ?: e.source
     }
     val colors=MaterialTheme.colorScheme
+    val surface=colors.surface
+    val secondary=colors.onSurfaceVariant
     val track=colors.outline.copy(alpha=.48f)
-    val artHeight=if(tv) tvUnit(176f) else 88.dp
+    val artHeight=if(tv) tvUnit(176f) else 96.dp
     val demoArt=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null
     val playbackProgress:(@Composable ()->Unit)? = if(position!=null&&duration!=null) {{
         val fraction by animateFloatAsState(
@@ -1254,25 +1253,20 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                         }
                     }} else null)
             }
-        } else Row(
-            Modifier.fillMaxWidth().background(colors.surface)
-                .padding(start=if(tv) 0.dp else 4.dp,top=if(tv) 0.dp else 4.dp,bottom=if(tv) 0.dp else 4.dp),
-            verticalAlignment=Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(width=artHeight*PosterAspectRatio,height=artHeight)
-                .then(if(tv) Modifier else Modifier.clip(MaterialTheme.shapes.small))
-                .testTag("library-poster-${e.id}")) {
+        } else Row(Modifier.fillMaxWidth().background(surface),
+            verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.size(width=artHeight*PosterAspectRatio,height=artHeight).testTag("library-poster-${e.id}")) {
                 Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,demo=demoArt,posterFirst=true)
             }
             Column(Modifier.weight(1f).padding(
                 start=if(tv) tvUnit(24f) else 12.dp,end=if(tv) tvUnit(24f) else 12.dp,
                 top=if(tv) tvUnit(20f) else 8.dp,bottom=if(tv) tvUnit(20f) else 8.dp
             ), verticalArrangement=Arrangement.spacedBy(if(tv) tvUnit(8f) else 4.dp)) {
-                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 16.sp,
-                    lineHeight=if(tv) tvUnit(32f).value.sp else 20.sp,color=colors.onSurface,
+                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 18.sp,
+                    lineHeight=if(tv) tvUnit(32f).value.sp else 22.sp,color=colors.onSurface,
                     maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 if(subtitle.isNotEmpty()) Text(subtitle,fontSize=if(tv) tvUnit(18f).value.sp else 14.sp,
-                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=colors.onSurfaceVariant)
+                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=secondary)
                 playbackProgress?.invoke()
             }
             if(showMenu&&!tv) IconButton(onClick={menu=true}) {Icon(Icons.Outlined.MoreVert,"Действия с «${e.title}»")}
