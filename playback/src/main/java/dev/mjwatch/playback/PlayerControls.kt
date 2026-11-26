@@ -125,7 +125,7 @@ internal val PlayerMint=Color(0xFF31F5C8)
                     Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding()
                         .onSizeChanged { footerHeight = it.height }.padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
+                            Text(playerTime(position,duration),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                             Slider(
                                 value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),
                                 onValueChange={scrubbing=true;position=it.toLong();interaction++},
@@ -137,7 +137,7 @@ internal val PlayerMint=Color(0xFF31F5C8)
                                 thumb={},
                                 track={PlayerTimelineTrack(position,duration,segments,PlayerMint)},
                             )
-                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                            Text(playerTime(duration,position),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
                         FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
@@ -201,7 +201,14 @@ internal fun PlayerChrome(visible: Boolean, modifier: Modifier, content: @Compos
     ) { content() }
 }
 
-internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
+internal fun playerTime(ms: Long, timelineMs: Long = 0L): String {
+    val seconds = ms.coerceAtLeast(0) / 1_000
+    return if (maxOf(ms, timelineMs) >= 3_600_000L) {
+        "%d:%02d:%02d".format(seconds / 3_600, seconds / 60 % 60, seconds % 60)
+    } else {
+        "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+}
 
 @Composable internal fun Modifier.playerFocus():Modifier {
     var focused by remember {mutableStateOf(false)}

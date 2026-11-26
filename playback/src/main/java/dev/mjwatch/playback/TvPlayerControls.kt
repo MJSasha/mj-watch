@@ -259,7 +259,7 @@ import kotlinx.coroutines.delay
                         .onSizeChanged { footerHeight = it.height }.padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Text(playerTime(shown),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
+                        Text(playerTime(shown,duration),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
                         modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").describeSkipSegments(episodeSegments,duration).then(controlFocus(timelineFocus)).onFocusChanged {timelineFocused=it.isFocused;if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
                             val down=event.type==KeyEventType.KeyDown
@@ -276,7 +276,7 @@ import kotlinx.coroutines.delay
                         },thumb={},track={
                             PlayerTimelineTrack(shown,duration,episodeSegments,PlayerMint,focused=timelineFocused&&!modal)
                         })
-                        Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF4F4FA),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                        Text(playerTime(duration,shown),fontSize=12.sp,color=Color(0xFFF4F4FA),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                     }
                     Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         @Composable fun buttonModifier(target:FocusRequester=remember {FocusRequester()})=Modifier.size(48.dp).then(controlFocus(target)).focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal)

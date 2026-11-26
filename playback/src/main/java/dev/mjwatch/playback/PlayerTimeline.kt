@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 internal fun Modifier.describeSkipSegments(segments: List<SkipSegment>, duration: Long): Modifier {
     val description = remember(segments, duration) {
         segments.filter { it.isValidFor(duration) }.joinToString(". ") {
-            "${it.kind.label}, ${playerTime(it.startMs)} – ${playerTime(it.endMs)}"
+            "${it.kind.label}, ${playerTime(it.startMs, duration)} – ${playerTime(it.endMs, duration)}"
         }
     }
     if (description.isEmpty()) return this
