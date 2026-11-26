@@ -373,22 +373,33 @@ private fun DetailTabs(labels:List<String>,current:String,focus:FocusRequester,t
 private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: Dp, header: @Composable () -> Unit) {
     val m=s.selectedMetadata
     val release=s.selected
-    var candidates by remember(m?.id,release?.id) { mutableStateOf<List<Release>?>(
-        if(m==null) listOfNotNull(release) else null
-    ) }
-    var retry by remember { mutableIntStateOf(0) }
-    var error by remember(m?.id,release?.id) { mutableStateOf("") }
-    LaunchedEffect(m?.id,release?.id,s.config,retry) {
+    var result by remember(m?.id,s.config) { mutableStateOf<SearchResult?>(null) }
+    var retry by remember(m?.id,s.config) { mutableIntStateOf(0) }
+    var page by remember(m?.id,s.config) { mutableIntStateOf(0) }
+    var loadingNext by remember(m?.id,s.config) { mutableStateOf(false) }
+    var error by remember(m?.id,s.config) { mutableStateOf("") }
+    LaunchedEffect(m?.id,s.config,retry,page) {
         if (m==null) return@LaunchedEffect
         error=""
         try {
-            val result=model.titleReleases(m.title,refresh=retry>0)
-            candidates=(listOfNotNull(release)+result.releases).distinctBy { it.id }
-            if (candidates.isNullOrEmpty()) error=result.failures.joinToString("\n")
+            val next=model.titleReleases(m.title,refresh=retry>0&&page==0,loadMore=page>0)
+            result=next
+            error=next.failures.joinToString("\n")
         } catch (cancel:CancellationException) { throw cancel }
         catch (e:Exception) { error=safeError(e) }
+        finally { loadingNext=false }
     }
-    val showStatus = error.isNotBlank() || candidates.isNullOrEmpty()
+    val cursor=result?.nextCursor
+    val candidates=result?.let {(it.releases+listOfNotNull(release)).distinctBy {row->row.hash ?: row.id}}
+        ?: if(m==null) listOfNotNull(release) else null
+    val retrySearch = {
+        result=null
+        error=""
+        page=0
+        retry++
+        Unit
+    }
+    val showStatus = cursor==null && (candidates.isNullOrEmpty() || error.isNotEmpty())
     val status: (@Composable () -> Unit)? = if (!showStatus) null else {{
         Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
             when {
@@ -396,11 +407,17 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
                 candidates==null -> LoadingIndicator("Ищем раздачи…")
                 else -> Text("Раздачи пока не найдены.",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if(error.isNotEmpty()||candidates!=null) Action("Повторить поиск",tv,secondary=true) {candidates=null;retry++}
+            if(error.isNotEmpty()||candidates!=null) Action("Повторить поиск",tv,secondary=true,onClick=retrySearch)
             if(error.isNotEmpty()) Action("Настроить источник",tv,secondary=true) {model.page("settings-search")}
         }
     }}
-    val shown = s.copy(results=candidates.orEmpty(),busy=false,releaseSeason=null,releaseEpisode=null,
+    val shown = s.copy(results=candidates.orEmpty(),busy=false,more=cursor!=null,nextReleaseCursor=cursor,
+        loadingMore=loadingNext,failures=listOf(error).filter {it.isNotEmpty()},releaseSeason=null,releaseEpisode=null,
         episodeDownload=false,episodeTargetId=null)
-    ReleasesScreen(shown,model,tv,header,inset,status)
+    ReleasesScreen(shown,model,tv,header,inset,status,onLoadMore={
+        if(cursor!=null&&!loadingNext) {
+            loadingNext=true
+            page++
+        }
+    },onRetrySearch=retrySearch)
 }

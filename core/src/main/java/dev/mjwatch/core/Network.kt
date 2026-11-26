@@ -123,20 +123,21 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
     private val sources get()=if(internalSearch!=null) listOf("all")
         else config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
-    private suspend fun managedSearch(api:ManagedApi,query:String):JSONObject {
+    private suspend fun managedSearch(api:ManagedApi,query:String,cursor:String?=null):JSONObject {
         val encoded=java.net.URLEncoder.encode(query,"UTF-8")
-        try {return api.authorized("search/releases?query=$encoded")}
-        catch(e:HttpFailure) {if(e.status!=404)throw e}
+        val next=cursor?.let {"&cursor="+java.net.URLEncoder.encode(it,"UTF-8")}.orEmpty()
+        try {return api.authorized("search/releases?query=$encoded&pageSize=20$next")}
+        catch(e:HttpFailure) {
+            if(cursor!=null&&e.status==409) throw IOException("Результаты устарели. Повторите поиск.",e)
+            if(e.status!=404||cursor!=null)throw e
+        }
         try {return api.authorized("search/jacred?indexer=all&query=$encoded")}
         catch(e:HttpFailure) {if(e.status!=404)throw e}
         error("Обновите сервер MJWatch для поиска раздач.")
     }
 
     private suspend fun jacredReleases(source:String,query:String):List<Release> {
-        val api=internalSearch ?: return JacredJson.releases(String(read(url(source,"search",query))),source)
-        val data=managedSearch(api,query)
-        return if(data.optString("provider")=="prowlarr") prowlarrReleases(data)
-            else JacredJson.releases(data.toString(),source)
+        return JacredJson.releases(String(read(url(source,"search",query))),source)
     }
     private suspend fun read(url:HttpUrl):ByteArray {
         val request=Request.Builder().url(url).build()
@@ -185,34 +186,40 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         sources.forEach { capabilities(it) }; return "Torznab: проверено источников ${sources.size}"
     }
     override suspend fun search(query: String): SearchResult = searchPage(query)
-    suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null):SearchResult = supervisorScope {
+    suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null,cursor:String?=null):SearchResult = supervisorScope {
         val selected=sources.filter {onlySources==null||it in onlySources}
         require(selected.isNotEmpty()) {"Добавьте индексаторы в настройках"}
-        val more=java.util.concurrent.atomic.AtomicBoolean(false)
-        val responses=java.util.concurrent.ConcurrentHashMap<String,Pair<List<Release>,String?>>()
+        val responses=java.util.concurrent.ConcurrentHashMap<String,SearchResult>()
         val jobs=selected.map {source -> async {permits.withPermit {
             val result=try {withTimeout(20_000) {
-                if(internalSearch!=null || config.usesJacred()) {
-                    if(page>0) return@withTimeout Pair(emptyList<Release>(),null)
-                    return@withTimeout Pair(jacredReleases(source,query),null)
+                if(internalSearch!=null) {
+                    if(page>0&&cursor==null) return@withTimeout SearchResult(emptyList())
+                    val data=managedSearch(internalSearch,query,cursor)
+                    val next=data.optString("nextCursor").takeIf {it.isNotBlank()}
+                    val releases=if(data.optString("provider")=="prowlarr") prowlarrReleases(data)
+                        else JacredJson.releases(data.toString(),source)
+                    return@withTimeout SearchResult(releases,more=next!=null,nextCursor=next)
+                }
+                if(config.usesJacred()) {
+                    return@withTimeout SearchResult(if(page==0) jacredReleases(source,query) else emptyList())
                 }
                 val cap=capabilities(source)
-                if(page>0&&!cap.offset) return@withTimeout Pair(emptyList<Release>(),null)
+                if(page>0&&!cap.offset) return@withTimeout SearchResult(emptyList())
                 val u=url(source,"search",query).newBuilder().addQueryParameter("limit",cap.max.toString())
                     .apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
                 val items=TorznabXml.releases(String(read(u)),source)
-                if(cap.offset&&items.size>=cap.max) more.set(true)
-                Pair(items,null)
-            }} catch(e:TimeoutCancellationException) {Pair(emptyList<Release>(),"$source: Время ожидания истекло")}
+                SearchResult(items,more=cap.offset&&items.size>=cap.max)
+            }} catch(e:TimeoutCancellationException) {SearchResult(emptyList(),listOf("$source: Время ожидания истекло"))}
             catch(e:CancellationException) {throw e}
-            catch(e:Exception) {Pair(emptyList<Release>(),"$source: ${safeError(e)}")}
+            catch(e:Exception) {SearchResult(emptyList(),listOf("$source: ${safeError(e)}"))}
             responses[source]=result
         }}}
         val complete=withTimeoutOrNull(25_000) {jobs.awaitAll();true}==true
         if(!complete) jobs.forEach {it.cancel()}
         jobs.forEach {it.join()}
-        val results=selected.map {responses[it] ?: Pair(emptyList<Release>(),"$it: Общий срок поиска истёк")}
-        SearchResult(results.flatMap {it.first}.distinctBy {it.hash ?: it.id},results.mapNotNull {it.second},more.get())
+        val results=selected.map {responses[it] ?: SearchResult(emptyList(),listOf("$it: Общий срок поиска истёк"))}
+        SearchResult(results.flatMap {it.releases}.distinctBy {it.hash ?: it.id},results.flatMap {it.failures},
+            results.any {it.more},results.firstNotNullOfOrNull {it.nextCursor})
     }
     suspend fun resolve(release: Release, managedApi: ManagedApi? = null): TorrentInput {
         val raw=release.download ?: error("Нет magnet или torrent")
@@ -380,7 +387,8 @@ fun safeError(e: Throwable): String = when(e) {
         "jacred_job_login_required"->"JacRed не смог войти на трекер. Проверьте учётные данные в админке JacRed."
         "jacred_job_start_failed"->"JacRed не подтвердил запуск. Проверьте список фоновых задач."
         "credential_rejected","provider_credential_rejected"->"TMDB отклонил ключ. Прежний ключ не заменён."
-        "provider_rate_limited"->"TMDB ограничил запросы. Повторите позже."
+        "provider_rate_limited"->e.retryAfterSeconds?.let {"TMDB ограничил запросы. Повторите через $it с."}
+            ?: "TMDB ограничил запросы. Повторите позже."
         "provider_unavailable"->"TMDB временно недоступен. Поиск раздач работает."
         "admin_required"->"Для этой операции нужны права администратора"
         "revision_conflict","conflict"->"Данные изменились на другом устройстве. Перечитайте перед применением."

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -11,11 +12,14 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const prowlarrOrigin = "http://127.0.0.1:19696"
+const prowlarrPageSize = 20
 
 var prowlarrDownloadPath = regexp.MustCompile(`^/[1-9][0-9]*/download$`)
 
@@ -41,9 +45,14 @@ func (s *Server) prowlarrGet(ctx context.Context, key, path string) (*http.Respo
 	return s.Client.Do(req)
 }
 
-func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identity) {
 	provider := s.searchProvider()
+	cursor := r.URL.Query().Get("cursor")
 	if provider.Provider != "prowlarr" {
+		if cursor != "" {
+			fail(w, 409, "search_expired")
+			return
+		}
 		s.searchJacred(w, r, "all")
 		return
 	}
@@ -54,6 +63,33 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	if len(query) > 512 {
 		fail(w, 400, "invalid_search")
+		return
+	}
+	pageSize := r.URL.Query().Get("pageSize")
+	paged := pageSize == strconv.Itoa(prowlarrPageSize)
+	if (pageSize != "" && !paged) || (cursor != "" && !paged) {
+		fail(w, 400, "invalid_search_page")
+		return
+	}
+	owner := i.Session
+	upstream := Hash(provider.APIKey)
+	if cursor != "" {
+		id, offset, separator := strings.Cut(cursor, ".")
+		start, err := strconv.Atoi(offset)
+		if !separator || len(id) != base64.RawURLEncoding.EncodedLen(32) || err != nil ||
+			start < prowlarrPageSize || start%prowlarrPageSize != 0 {
+			fail(w, 400, "invalid_search_page")
+			return
+		}
+		s.mu.Lock()
+		snapshot := s.prowlarrPages[id]
+		s.mu.Unlock()
+		if snapshot.owner != owner || snapshot.query != query || snapshot.upstream != upstream ||
+			!snapshot.expires.After(time.Now()) || start >= len(snapshot.rows) {
+			fail(w, 409, "search_expired")
+			return
+		}
+		writeProwlarrPage(w, snapshot.rows, id, start)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 18*time.Second)
@@ -111,12 +147,64 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request) {
 			if item.Magnet != "" || item.Download != "" {
 				results = append(results, item)
 			}
-			if len(results) == 500 {
-				break
+		}
+		seedCount := func(release prowlarrRelease) int {
+			if release.Seeds == nil || *release.Seeds < 0 {
+				return -1
 			}
+			return *release.Seeds
+		}
+		slices.SortStableFunc(results, func(a, b prowlarrRelease) int {
+			return cmp.Compare(seedCount(b), seedCount(a))
+		})
+		if len(results) > 500 {
+			results = results[:500]
 		}
 	}
+	if paged && len(results) > prowlarrPageSize {
+		id := s.saveProwlarrSnapshot(owner, query, upstream, results)
+		writeProwlarrPage(w, results, id, 0)
+		return
+	}
 	respond(w, 200, map[string]any{"provider": "prowlarr", "Results": results})
+}
+
+type prowlarrSnapshot struct {
+	owner, query, upstream string
+	expires                time.Time
+	rows                   []prowlarrRelease
+}
+
+func (s *Server) saveProwlarrSnapshot(owner, query, upstream string, rows []prowlarrRelease) string {
+	now := time.Now()
+	id := Token()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.prowlarrPages == nil {
+		s.prowlarrPages = make(map[string]prowlarrSnapshot)
+	}
+	oldest, expiry := "", now.Add(10*time.Minute)
+	for key, entry := range s.prowlarrPages {
+		if !entry.expires.After(now) {
+			delete(s.prowlarrPages, key)
+		} else if oldest == "" || entry.expires.Before(expiry) {
+			oldest, expiry = key, entry.expires
+		}
+	}
+	if len(s.prowlarrPages) >= 16 {
+		delete(s.prowlarrPages, oldest)
+	}
+	s.prowlarrPages[id] = prowlarrSnapshot{owner, query, upstream, now.Add(10 * time.Minute), rows}
+	return id
+}
+
+func writeProwlarrPage(w http.ResponseWriter, rows []prowlarrRelease, id string, start int) {
+	end := min(start+prowlarrPageSize, len(rows))
+	result := map[string]any{"provider": "prowlarr", "Results": rows[start:end]}
+	if end < len(rows) {
+		result["nextCursor"] = id + "." + strconv.Itoa(end)
+	}
+	respond(w, 200, result)
 }
 
 type prowlarrRelease struct {

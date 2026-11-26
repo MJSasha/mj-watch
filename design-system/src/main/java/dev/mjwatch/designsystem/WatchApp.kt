@@ -537,6 +537,31 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
         }
     }
 }}}
+private const val ReleasePageFooter = "release-page-footer"
+
+@Composable private fun LoadReleasePageOnScroll(
+    listState:LazyListState,cursor:String?,enabled:Boolean,load:()->Unit
+) {
+    val action by rememberUpdatedState(load)
+    LaunchedEffect(listState,cursor,enabled) {
+        if(cursor!=null&&enabled) {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.any {it.key==ReleasePageFooter} }.first {it}
+            action()
+        }
+    }
+}
+
+@Composable private fun ReleasePageAction(s:WatchState,tv:Boolean,load:()->Unit,retry:()->Unit) {
+    when {
+        s.loadingMore -> LoadingIndicator("Загружаем раздачи…")
+        s.nextReleaseCursor!=null&&s.failures.isNotEmpty() -> Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Text(s.failures.joinToString("\n"),color=MaterialTheme.colorScheme.error)
+            Action("Повторить поиск",tv,secondary=true,onClick=retry)
+        }
+        else -> Action("Загрузить ещё",tv,secondary=true,onClick=load)
+    }
+}
+
 @Composable private fun SearchScreen(s:WatchState,model:WatchModel,tv:Boolean,listState:LazyListState) {
     val keyboard=LocalSoftwareKeyboardController.current
     val fieldFocus=remember {FocusRequester()}
@@ -546,6 +571,8 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
         if(tv&&focusResultsOnReady&&!s.busy) {withFrameNanos {};focusManager.moveFocus(FocusDirection.Down);focusResultsOnReady=false}
     }
     var resultTab by rememberSaveable {mutableStateOf("Каталог")}
+    val showReleases=s.metadata.isEmpty()||resultTab=="Раздачи"
+    LoadReleasePageOnScroll(listState,s.nextReleaseCursor,showReleases&&!s.busy&&!s.loadingMore&&s.failures.isEmpty()) {model.loadMore()}
     val context=LocalContext.current
     val voice=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {result -> if(result.resultCode==android.app.Activity.RESULT_OK) result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(model::search)}
     val voiceAvailable=remember {context.packageManager.resolveActivity(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH),0)!=null}
@@ -569,7 +596,7 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
         }
     }
     LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
-        if(s.failures.isNotEmpty()) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
+        if(s.failures.isNotEmpty()&&s.nextReleaseCursor==null) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {Empty(if(s.message.startsWith("Ничего")) "Ничего не найдено" else "Поиск недоступен",s.message.ifBlank {"Попробуйте другое название или проверьте подключение поиска."},tv,"Изменить запрос") {model.search("");fieldFocus.requestFocus();keyboard?.show()}}
         else if(s.message.isNotEmpty()&&s.metadata.isEmpty()) item {Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -578,12 +605,14 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
             row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
             repeat(posterColumns-row.size) {Spacer(Modifier.weight(1f))}
         }}
-        if(s.metadata.isEmpty()||resultTab=="Раздачи") items(s.results,key={it.id}) {r->
+        if(showReleases) items(s.results,key={it.id}) {r->
             Box(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))) {
                 ReleaseCard(r,tv,s.focusKey==r.id) {keyboard?.hide();model.open(r)}
             }
         }
-        if(s.more&&!s.busy) item {Action("Загрузить ещё",tv) {model.loadMore()} }
+        if(showReleases&&s.more&&!s.busy) item(key=ReleasePageFooter) {
+            ReleasePageAction(s,tv,{model.loadMore()},model::retryReleaseSearch)
+        }
     }
 }
 }
@@ -690,7 +719,9 @@ private class ReleaseOptions(
     s:WatchState,model:WatchModel,tv:Boolean,
     detailHeader:(@Composable () -> Unit)?=null,
     detailInset:Dp=0.dp,
-    sourceStatus:(@Composable () -> Unit)?=null
+    sourceStatus:(@Composable () -> Unit)?=null,
+    onLoadMore:()->Unit={model.loadMore()},
+    onRetrySearch:()->Unit=model::retryReleaseSearch,
 ) {
     val remote by model.remote.collectAsStateWithLifecycle()
     val preferences=LocalContext.current.getSharedPreferences("playback-preferences",0)
@@ -737,9 +768,10 @@ private class ReleaseOptions(
         }.map {it.release}
     }
     val filtering=readyReleases==null
-    var previousReleases by remember(options) {mutableStateOf<List<Release>?>(null)}
+    var previousReleases by remember(s.query,s.selectedMetadata?.id) {mutableStateOf<List<Release>?>(null)}
     SideEffect {if(readyReleases!=null) previousReleases=readyReleases}
     val releases=(readyReleases ?: previousReleases).orEmpty()
+    LoadReleasePageOnScroll(releaseScroll,s.nextReleaseCursor,!filtering&&!s.loadingMore&&s.failures.isEmpty(),onLoadMore)
     val seasons=options?.seasons.orEmpty()
     val voices=options?.voices.orEmpty()
     val activeFilters=listOf(filter!="Все",season!=null,voice!=null,source!="Все источники",seeds!="Любые сиды",language!="Любой язык").count {it}
@@ -801,6 +833,9 @@ private class ReleaseOptions(
                 }
             }}
             if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
+            else if(s.nextReleaseCursor!=null||s.loadingMore) item(key=ReleasePageFooter) {
+                Box(Modifier.padding(horizontal=detailInset)) {ReleasePageAction(s,tv,onLoadMore,onRetrySearch)}
+            }
             else if(!filtering&&releases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {
                 if(options?.rows.isNullOrEmpty()&&s.message.isNotBlank()&&s.selectedMetadata!=null) {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {

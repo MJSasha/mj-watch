@@ -116,6 +116,96 @@ func TestTMDBRotationCacheAndBoundedRoutes(t *testing.T) {
 		t.Fatal("credential delete ineffective")
 	}
 }
+func TestTMDBArtworkScrollAndUpstreamCooldown(t *testing.T) {
+	s, owner := fixture(t)
+	s.Config.SecretKey = filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(s.Config.SecretKey, bytes.Repeat([]byte("k"), 32), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := s.sealCredential("fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec("INSERT INTO settings VALUES('tmdb_credential',?),('tmdb',?)",
+		sealed, `{"enabled":true,"language":"ru-RU","cacheMiB":1}`); err != nil {
+		t.Fatal(err)
+	}
+	imageCalls, apiCalls := 0, 0
+	imageLimited, apiLimited := false, false
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		header := http.Header{"Content-Type": {"application/json"}}
+		status, body := http.StatusOK, `{"results":[]}`
+		limited := apiLimited
+		if r.URL.Host == "image.tmdb.org" {
+			imageCalls++
+			limited = imageLimited
+			header.Set("Content-Type", "image/jpeg")
+			body = "image"
+		} else {
+			apiCalls++
+		}
+		if limited {
+			status = http.StatusTooManyRequests
+			header.Set("Retry-After", "120")
+		}
+		return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	get := func(path string, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, requestForTest("GET", "/api/v1/"+path, nil, owner))
+		if w.Code != status {
+			t.Fatalf("%s: got %d %s, want %d", path, w.Code, w.Body.String(), status)
+		}
+		return w
+	}
+
+	for n := range 75 {
+		get(fmt.Sprintf("metadata/images/w500/photo%d.jpg", n), 200)
+	}
+	if _, err := s.DB.Exec("INSERT INTO cache VALUES('old-image',zeroblob(1048500),'image/jpeg',?)",
+		time.Now().Add(-time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	get("metadata/home", 200)
+	const cachedImage = "metadata/images/w500/photo0.jpg"
+	if cacheControl := get(cachedImage, 200).Header().Get("Cache-Control"); cacheControl != "private, max-age=3600" {
+		t.Fatal(cacheControl)
+	}
+	var oldEntries int
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM cache WHERE key='old-image'").Scan(&oldEntries); err != nil || oldEntries != 0 {
+		t.Fatalf("old cache entry was not evicted: %d, %v", oldEntries, err)
+	}
+	imageLimited = true
+	if retry := get("metadata/images/w500/cold.jpg", 429).Header().Get("Retry-After"); retry != "120" {
+		t.Fatal(retry)
+	}
+	get("metadata/images/w500/another.jpg", 429)
+	get(cachedImage, 200)
+	get("metadata/movie/1", 200)
+	if imageCalls != 76 || apiCalls != 2 {
+		t.Fatalf("unexpected calls during CDN cooldown: image=%d api=%d", imageCalls, apiCalls)
+	}
+
+	apiLimited = true
+	if _, err := s.DB.Exec("UPDATE cache SET expires=? WHERE key=?", time.Now().Add(-time.Minute).Unix(),
+		Hash("metadata/home"+url.Values{"language": {"ru-RU"}, "category": {""}}.Encode())); err != nil {
+		t.Fatal(err)
+	}
+	get("metadata/movie/2", 429)
+	get("metadata/movie/3", 429)
+	get("metadata/home", 200)
+	if apiCalls != 3 {
+		t.Fatalf("unexpected calls during API cooldown: %d", apiCalls)
+	}
+	s.tmdbAPIPause = time.Now().Add(-time.Second)
+	apiLimited = false
+	get("metadata/movie/2", 200)
+	if apiCalls != 4 {
+		t.Fatalf("TMDB did not resume: %d calls", apiCalls)
+	}
+}
+
 func TestSnapshotWatermarkPaginationAndOwnership(t *testing.T) {
 	s, owner := fixture(t)
 	i, _ := s.identity(owner)

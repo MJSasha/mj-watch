@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -35,7 +37,11 @@ func TestManagedProwlarrSearchAndDownload(t *testing.T) {
 				t.Fatal(r.URL.Query())
 			}
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[
+				{"title":"Unknown","protocol":"torrent","magnetUrl":"` + magnet + `"},
 				{"title":"Film","indexer":"Test","protocol":"torrent","seeders":12,"downloadUrl":"` + prowlarrOrigin + `/1/download?apikey=` + key + `&link=opaque&file=Test"},
+				{"title":"Zero","protocol":"torrent","seeders":0,"magnetUrl":"` + magnet + `"},
+				{"title":"Top","protocol":"torrent","seeders":40,"magnetUrl":"` + magnet + `"},
+				{"title":"Tie","protocol":"torrent","seeders":12,"magnetUrl":"` + magnet + `"},
 				{"title":"News","protocol":"usenet","magnetUrl":"` + magnet + `"},
 				{"title":"External","protocol":"torrent","downloadUrl":"https://example.org/1/download?link=opaque&file=Test"}
 			]`))}, nil
@@ -65,10 +71,14 @@ func TestManagedProwlarrSearchAndDownload(t *testing.T) {
 		t.Fatal(code, body)
 	}
 	results := body["Results"].([]any)
-	if len(results) != 1 {
-		t.Fatal(results)
+	titles := make([]string, 0, len(results))
+	for _, row := range results {
+		titles = append(titles, row.(map[string]any)["title"].(string))
 	}
-	release := results[0].(map[string]any)
+	if !slices.Equal(titles, []string{"Top", "Film", "Tie", "Zero", "Unknown"}) {
+		t.Fatal(titles)
+	}
+	release := results[1].(map[string]any)
 	token := release["download"].(string)
 	if release["title"] != "Film" || release["seeds"] != float64(12) ||
 		token != prowlarrDownloadToken(key, "/1/download?file=Test&link=opaque") {
@@ -104,5 +114,69 @@ func TestManagedReleaseSearchChoosesJacredIndexersOnServer(t *testing.T) {
 	})
 	if code, body := call(t, s, owner, "GET", "search/releases?query=Film&indexer=client-choice", nil); code != 200 {
 		t.Fatal(code, body)
+	}
+}
+
+func TestManagedProwlarrPagesKeepSeedOrder(t *testing.T) {
+	s, owner := fixture(t)
+	dir := t.TempDir()
+	s.Config.SecretKey = filepath.Join(dir, "secret.key")
+	if err := os.WriteFile(filepath.Join(dir, "search-provider.json"), []byte(`{"provider":"prowlarr","apiKey":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rows := make([]map[string]any, 43)
+	for seeds := range rows {
+		rows[seeds] = map[string]any{
+			"title": "Film", "protocol": "torrent", "seeders": seeds,
+			"magnetUrl": "magnet:?xt=urn:btih:1234567890123456789012345678901234567890",
+		}
+	}
+	payload, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	searches := 0
+	s.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		searches++
+		if r.URL.Path != "/api/v1/search" || r.URL.Query().Get("query") != "Film" {
+			t.Fatal(r.URL)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(payload))}, nil
+	})
+	const search = "search/releases?query=Film&pageSize=20"
+	next := ""
+	expectedSeeds := 42
+	for _, size := range []int{20, 20, 3} {
+		code, body := call(t, s, owner, "GET", search+next, nil)
+		if code != 200 {
+			t.Fatal(code, body)
+		}
+		page := body["Results"].([]any)
+		if len(page) != size {
+			t.Fatalf("got %d releases, want %d", len(page), size)
+		}
+		for _, row := range page {
+			if row.(map[string]any)["seeds"] != float64(expectedSeeds) {
+				t.Fatalf("got %v, want %d seeders", row, expectedSeeds)
+			}
+			expectedSeeds--
+		}
+		cursor, _ := body["nextCursor"].(string)
+		if size == 3 {
+			if cursor != "" {
+				t.Fatal("unexpected cursor on final page")
+			}
+		} else {
+			if cursor == "" {
+				t.Fatal("missing next cursor")
+			}
+			next = "&cursor=" + cursor
+			if code, _ := call(t, s, owner, "GET", "search/releases?query=Other&pageSize=20"+next, nil); code != 409 {
+				t.Fatalf("got %d for a cursor from another search", code)
+			}
+		}
+	}
+	if searches != 1 {
+		t.Fatalf("requested Prowlarr %d times", searches)
 	}
 }

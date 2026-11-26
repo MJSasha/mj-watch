@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.21"
+var Version = "0.1.22"
 
 type Server struct {
 	maxStreams         int
@@ -63,10 +63,13 @@ type Server struct {
 	active         map[string]int
 	streamRequests map[string]int
 	tmdbMu         sync.Mutex
+	tmdbAPIPause   time.Time
+	tmdbImagePause time.Time
 	remoteMu       sync.Mutex
 	cpu            resources.CPUSampler
 	jacredStatsMu  sync.Mutex
 	jacredRefresh  string
+	prowlarrPages  map[string]prowlarrSnapshot
 }
 
 func New(db *sql.DB, c Config) *Server {
@@ -192,6 +195,8 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	rateKey, rateLimit := "api:"+i.User, 300
 	if strings.HasPrefix(path, "remote/") {
 		rateKey, rateLimit = "remote:"+i.Device, 240
+	} else if strings.HasPrefix(path, "metadata/images/") {
+		rateKey = "artwork:" + i.User
 	}
 	if !s.limit(rateKey, rateLimit, time.Minute) {
 		w.Header().Set("Retry-After", "30")
@@ -211,7 +216,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case path == "search/releases" && r.Method == "GET":
-		s.releaseSearch(w, r)
+		s.releaseSearch(w, r, i)
 	case path == "search/prowlarr-download" && r.Method == "GET":
 		s.prowlarrDownload(w, r)
 	case path == "search/jacred" && r.Method == "GET":

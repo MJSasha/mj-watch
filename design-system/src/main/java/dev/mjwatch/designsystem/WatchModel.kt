@@ -12,6 +12,7 @@ import okhttp3.Credentials
 data class WatchState(val initializing:Boolean=true,val legacyHistoryRecords:Int=0,val page:String="home", val query:String="", val results:List<Release> = emptyList(),
     val catalogSection:CatalogSection=CatalogSection.FOR_YOU,val catalog:List<Metadata> = emptyList(),val catalogBusy:Boolean=false,val catalogMessage:String="",val metadataCached:Boolean=false,val more:Boolean=false, val metadata:List<Metadata> = emptyList(), val selectedMetadata:Metadata?=null,val resumePath:String?=null,val releaseSeason:Int?=null,val releaseEpisode:Int?=null, val selected:Release?=null,val handle:TorrentHandle?=null,val busy:Boolean=false,val message:String="",val failures:List<String> = emptyList(),
     val episodeTargetId:String?=null,val episodeDownload:Boolean=false,
+    val nextReleaseCursor:String?=null,val loadingMore:Boolean=false,
     val remotePlayback:Boolean=false,val downloadSelection:Boolean=false,val openDownloadsRequested:Boolean=false,val removed:LibraryRemoval?=null,val originPage:String="home", val config:Config=Config(),val configured:Boolean=false,val focusKey:String="",val checkJackett:String="Не проверено",val checkTorr:String="Не проверено",val checkingJackett:Boolean=false,val checkingTorr:Boolean=false)
 data class LibraryRemoval(
     val profileKey:String,
@@ -88,7 +89,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         var first=true;var catalogSource:Triple<String,String,String>?=null
         combine(settings.config,settings.destination) {c,d->c to d}.collect {(c,d) ->
             val changed=state.value.config.profileKey!=c.profileKey
-            if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="",openDownloadsRequested=false)}}
+            if(changed){discardDraft();this@WatchModel.cancel();catalogJob?.cancel();cachedRepositories=null;update{it.copy(query="",results=emptyList(),more=false,nextReleaseCursor=null,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,metadata=emptyList(),catalog=emptyList(),selected=null,selectedMetadata=null,handle=null,resumePath=null,removed=null,message="",focusKey="",openDownloadsRequested=false)}}
             update {it.copy(initializing=false,config=c,configured=c.demo||c.torrServer.isNotBlank()||c.historyEnabled,page=if(first&&it.page!="invitation-register") if(!c.demo&&c.torrServer.isBlank()&&!c.historyEnabled) "connection-choice" else d else it.page)}
             val source=Triple(c.profileKey,c.metadataProvider,c.managedUrl)
             if(catalogSource!=source) {catalogSource=source;refreshCatalog()}
@@ -131,7 +132,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         update {it.copy(page=target,message="",openDownloadsRequested=false)}
         if(target in setOf("home","search","library","history","settings")) viewModelScope.launch {settings.destination(target)}
     }
-    fun cancel() { generation++; work?.cancel(); update { it.copy(busy=false) } }
+    fun cancel() { generation++; work?.cancel(); update { it.copy(busy=false,loadingMore=false) } }
     @Synchronized private fun repositories(c:Config=state.value.config):Pair<ReleaseRepository,StreamGateway> {
         if(cachedConfig==c) cachedRepositories?.let {return it}
         if(c.demo) return DemoReleases to DemoGateway
@@ -179,7 +180,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         val activeQuery=term.length>=2||releasesOnly&&term.isNotEmpty()
         val config=state.value.config
         cancel(); pageIndex=0; val token=generation
-        update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==term},metadata=emptyList(),results=emptyList(),more=false,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,page=if(releasesOnly) "releases" else "search",busy=activeQuery,message="",failures=emptyList()) }
+        update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==term},metadata=emptyList(),results=emptyList(),more=false,nextReleaseCursor=null,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,page=if(releasesOnly) "releases" else "search",busy=activeQuery,message="",failures=emptyList()) }
         if(!activeQuery) return
         work=viewModelScope.launch {
             if(!releasesOnly) delay(400)
@@ -190,7 +191,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                 }
                 try {
                     val result=withContext(Dispatchers.IO) {repositories(config).first.search(term)}
-                    if(token==generation) update {it.copy(results=result.releases,more=result.more,failures=result.failures,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
+                    if(token==generation) update {it.copy(results=result.releases,more=result.more,nextReleaseCursor=result.nextCursor,failures=result.failures,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
                 } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(message=safeError(e))}}
             }
             if(token==generation) update {it.copy(busy=false)}
@@ -198,22 +199,35 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
 
     fun loadMore(retryFailed:Boolean=false) {
-        val previous=state.value; if(previous.busy) return
-        cancel();val token=generation;update {it.copy(busy=true)}
+        val previous=state.value
+        if(previous.busy || previous.loadingMore || (!retryFailed && !previous.more)) return
+        cancel();val token=generation;update {it.copy(loadingMore=true)}
         work=viewModelScope.launch {
             try {
                 val page=if(retryFailed) pageIndex else pageIndex+1
                 val result=withContext(Dispatchers.IO) {
                     val repository=repositories(previous.config).first as? TorznabRepository ?: return@withContext null
-                    val next=repository.searchPage(previous.query.trim(),page,if(retryFailed) previous.failures.map {it.substringBefore(':')}.toSet() else null)
-                    next.copy(releases=(previous.results+next.releases).distinctBy {it.hash ?: it.id})
+                    val next=repository.searchPage(previous.query.trim(),page,
+                        if(retryFailed&&previous.nextReleaseCursor==null) previous.failures.map {it.substringBefore(':')}.toSet() else null,
+                        cursor=previous.nextReleaseCursor)
+                    if(previous.nextReleaseCursor!=null && next.releases.isEmpty() && next.failures.isNotEmpty()) {
+                        next.copy(releases=previous.results,more=previous.more,nextCursor=previous.nextReleaseCursor)
+                    } else next.copy(releases=(previous.results+next.releases).distinctBy {it.hash ?: it.id})
                 }
                 if(token==generation) {
                     if(result!=null&&!retryFailed) pageIndex=page
-                    update {if(result==null) it.copy(busy=false) else it.copy(results=result.releases,more=result.more,failures=result.failures,busy=false)}
+                    update {if(result==null) it.copy(loadingMore=false) else it.copy(results=result.releases,more=result.more,nextReleaseCursor=result.nextCursor,failures=result.failures,loadingMore=false)}
                 }
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(busy=false,message=safeError(e))}}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(loadingMore=false,failures=listOf(safeError(e)))}}
         }
+    }
+    fun retryReleaseSearch() {
+        val current=state.value
+        if(current.page=="releases") {
+            if(current.releaseSeason!=null && current.selectedMetadata!=null) findSeriesReleases(current.selectedMetadata,current.releaseSeason,
+                current.releaseEpisode,current.episodeTargetId,current.episodeDownload)
+            else search(current.query,releasesOnly=true)
+        } else search(current.query)
     }
     fun metadata(item:Metadata,focusKey:String=item.id,cache:Boolean=true) {
         detailOrigin=null
@@ -227,11 +241,19 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     private var detailSourceResult:SearchResult?=null
 
     /** Look up sources for the detail tab without replacing the user's search results. */
-    suspend fun titleReleases(title:String,refresh:Boolean=false):SearchResult {
+    suspend fun titleReleases(title:String,refresh:Boolean=false,loadMore:Boolean=false):SearchResult {
         val key=state.value.config to title
-        if(!refresh && detailSourceKey==key) detailSourceResult?.let {return it}
+        val previous=detailSourceResult.takeIf {detailSourceKey==key}
+        if(!refresh && !loadMore && previous!=null) return previous
         val repository=repositories().first
-        return withContext(Dispatchers.IO) {repository.search(title)}.also {result ->
+        return withContext(Dispatchers.IO) {
+            if(!loadMore) repository.search(title)
+            else if(previous?.nextCursor!=null && repository is TorznabRepository) {
+                val next=repository.searchPage(title,page=1,cursor=previous.nextCursor)
+                if(next.releases.isEmpty() && next.failures.isNotEmpty()) previous.copy(failures=next.failures)
+                else next.copy(releases=(previous.releases+next.releases).distinctBy {it.hash ?: it.id})
+            } else previous ?: SearchResult(emptyList())
+        }.also {result ->
             if (result.releases.isNotEmpty() || result.failures.isEmpty()) {
                 detailSourceKey=key
                 detailSourceResult=result

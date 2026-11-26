@@ -71,6 +71,9 @@ func (s *Server) sealCredential(v string) (string, error) {
 	return base64.RawStdEncoding.EncodeToString(a.Seal(iv, iv, []byte(v), []byte("tmdb"))), nil
 }
 func (s *Server) tmdbRequest(ctx context.Context, path string, q url.Values, credential string) ([]byte, string, int, error) {
+	if time.Now().Before(s.tmdbAPIPause) {
+		return nil, "", http.StatusTooManyRequests, fmt.Errorf("tmdb_paused")
+	}
 	u := "https://api.themoviedb.org/3/" + path
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if regexp.MustCompile(`^[a-fA-F0-9]{32}$`).MatchString(credential) {
@@ -84,6 +87,9 @@ func (s *Server) tmdbRequest(ctx context.Context, path string, q url.Values, cre
 		return nil, "", 502, e
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		s.tmdbAPIPause = tmdbRetryDeadline(resp.Header.Get("Retry-After"), time.Now())
+	}
 	if resp.StatusCode != 200 {
 		return nil, "", resp.StatusCode, fmt.Errorf("tmdb_failed")
 	}
@@ -92,6 +98,25 @@ func (s *Server) tmdbRequest(ctx context.Context, path string, q url.Values, cre
 		return nil, "", 502, fmt.Errorf("response_limit")
 	}
 	return b, resp.Header.Get("Content-Type"), 200, e
+}
+
+func tmdbRetryDeadline(header string, now time.Time) time.Time {
+	if seconds, err := strconv.ParseInt(header, 10, 32); err == nil && seconds >= 0 {
+		return now.Add(time.Duration(max(seconds, 1)) * time.Second)
+	}
+	if deadline, err := http.ParseTime(header); err == nil {
+		if deadline.After(now) {
+			return deadline
+		}
+		return now.Add(time.Second)
+	}
+	return now.Add(30 * time.Second)
+}
+
+func tmdbRateLimited(w http.ResponseWriter, until time.Time, code string) {
+	seconds := max(1, int64((time.Until(until)+time.Second-1)/time.Second))
+	w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	fail(w, http.StatusTooManyRequests, code)
 }
 func (s *Server) adminTMDB(w http.ResponseWriter, r *http.Request, path string, i identity) {
 	s.tmdbMu.Lock()
@@ -133,8 +158,7 @@ func (s *Server) adminTMDB(w http.ResponseWriter, r *http.Request, path string, 
 				if code == 401 || code == 403 {
 					fail(w, 422, "credential_rejected")
 				} else if code == 429 {
-					w.Header().Set("Retry-After", "30")
-					fail(w, 429, "provider_rate_limited")
+					tmdbRateLimited(w, s.tmdbAPIPause, "provider_rate_limited")
 				} else {
 					fail(w, 502, "provider_unavailable")
 				}
@@ -225,10 +249,6 @@ var detailPath = regexp.MustCompile(`^metadata/(movie|tv)/[1-9][0-9]{0,9}(/seaso
 var creditsPath = regexp.MustCompile(`^metadata/((movie|tv)/[1-9][0-9]{0,9}/credits|person/[1-9][0-9]{0,9}/combined_credits)$`)
 
 func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i identity) {
-	if !s.limit("tmdb:"+i.User, 60, time.Minute) || !s.limit("tmdb:global", 240, time.Minute) {
-		fail(w, 429, "rate_limited")
-		return
-	}
 	v := s.tmdbPublic()
 	if !v.Enabled {
 		fail(w, 409, "provider_disabled")
@@ -287,13 +307,43 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 	defer s.tmdbMu.Unlock() // coalesces identical cache misses and caps upstream concurrency
 	var cached []byte
 	var mime string
-	e := s.DB.QueryRow("SELECT value,mime FROM cache WHERE key=? AND expires>?", key, time.Now().Unix()).Scan(&cached, &mime)
-	if e == nil {
+	var expires int64
+	cachedOK := s.DB.QueryRow("SELECT value,mime,expires FROM cache WHERE key=?", key).Scan(&cached, &mime, &expires) == nil
+	writeCached := func() {
 		w.Header().Set("Content-Type", mime)
+		if image != nil && expires > time.Now().Unix() {
+			w.Header().Set("Cache-Control", "private, max-age=3600")
+		}
 		w.Write(cached)
+	}
+	now := time.Now()
+	if cachedOK && expires > now.Unix() {
+		writeCached()
+		return
+	}
+	pause, bucket, perUser, global := &s.tmdbAPIPause, "tmdb", 60, 240
+	if image != nil {
+		pause, bucket, perUser, global = &s.tmdbImagePause, "tmdb-image", 180, 480
+	}
+	if now.Before(*pause) {
+		if cachedOK {
+			writeCached()
+		} else {
+			tmdbRateLimited(w, *pause, "provider_rate_limited")
+		}
+		return
+	}
+	if !s.limit(bucket+":"+i.User, perUser, time.Minute) || !s.limit(bucket+":global", global, time.Minute) {
+		if cachedOK {
+			writeCached()
+		} else {
+			tmdbRateLimited(w, now.Add(time.Minute), "rate_limited")
+		}
 		return
 	}
 	var data []byte
+	var e error
+	var fetchedMIME string
 	status := 200
 	if image != nil {
 		req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://image.tmdb.org/t/p/"+image[1]+"/"+image[2], nil)
@@ -304,8 +354,11 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 		}
 		defer resp.Body.Close()
 		status = resp.StatusCode
-		mime = resp.Header.Get("Content-Type")
-		if status == 200 && strings.HasPrefix(mime, "image/") {
+		fetchedMIME = resp.Header.Get("Content-Type")
+		if status == http.StatusTooManyRequests {
+			*pause = tmdbRetryDeadline(resp.Header.Get("Retry-After"), time.Now())
+		}
+		if status == 200 && strings.HasPrefix(fetchedMIME, "image/") {
 			data, e = io.ReadAll(io.LimitReader(resp.Body, (8<<20)+1))
 			if len(data) > 8<<20 {
 				e = fmt.Errorf("image_limit")
@@ -320,16 +373,19 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			return
 		}
 		if strings.HasPrefix(api, "catalog/") {
-			data, mime, status, e = s.catalogRequest(r.Context(), strings.TrimPrefix(api, "catalog/"), q.Get("language"), credential)
+			data, fetchedMIME, status, e = s.catalogRequest(r.Context(), strings.TrimPrefix(api, "catalog/"), q.Get("language"), credential)
 		} else {
 			q.Del("category")
-			data, mime, status, e = s.tmdbRequest(r.Context(), api, q, credential)
+			data, fetchedMIME, status, e = s.tmdbRequest(r.Context(), api, q, credential)
 		}
 	}
 	if e != nil {
 		if status == 429 {
-			w.Header().Set("Retry-After", "30")
-			fail(w, 429, "provider_rate_limited")
+			if cachedOK {
+				writeCached()
+			} else {
+				tmdbRateLimited(w, *pause, "provider_rate_limited")
+			}
 		} else if status == 401 || status == 403 {
 			fail(w, 502, "provider_credential_rejected")
 		} else {
@@ -348,17 +404,26 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request, path string, i
 			rewriteTitleLogos(obj)
 		}
 		data, _ = json.Marshal(obj)
-		mime = "application/json"
-	}
-	var size int64
-	s.DB.QueryRow("SELECT COALESCE(SUM(length(value)),0) FROM cache").Scan(&size)
-	if size+int64(len(data)) > v.CacheMiB<<20 {
-		s.DB.Exec("DELETE FROM cache")
+		fetchedMIME = "application/json"
 	}
 	if int64(len(data)) <= v.CacheMiB<<20 {
-		s.DB.Exec("INSERT OR REPLACE INTO cache VALUES(?,?,?,?)", key, data, mime, time.Now().Unix()+86400)
+		var size int64
+		s.DB.QueryRow("SELECT COALESCE(SUM(length(value)),0) FROM cache WHERE key<>?", key).Scan(&size)
+		if excess := size + int64(len(data)) - (v.CacheMiB << 20); excess > 0 {
+			s.DB.Exec(`DELETE FROM cache WHERE key IN (
+				SELECT key FROM (
+					SELECT key, SUM(length(value)) OVER (
+						ORDER BY expires, key ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+					) AS preceding_bytes FROM cache WHERE key<>?
+				) WHERE COALESCE(preceding_bytes,0) < ?
+			)`, key, excess)
+		}
+		s.DB.Exec("INSERT OR REPLACE INTO cache VALUES(?,?,?,?)", key, data, fetchedMIME, time.Now().Unix()+86400)
 	}
-	w.Header().Set("Content-Type", mime)
+	if image != nil {
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+	}
+	w.Header().Set("Content-Type", fetchedMIME)
 	w.Write(data)
 }
 
