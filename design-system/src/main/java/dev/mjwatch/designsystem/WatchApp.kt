@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material.icons.outlined.*
@@ -301,7 +300,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
 }
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,pill:Boolean=false,onClick:()->Unit) {
+@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,pill:Boolean=false,gradient:Brush?=null,onClick:()->Unit) {
     if(tv) {TvActionButton(text,modifier,enabled,secondary,icon,loading,onClick=onClick);return}
     val colors=MaterialTheme.colorScheme
     val shape=if(pill)RoundedCornerShape(50) else MaterialTheme.shapes.medium
@@ -310,7 +309,19 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(loading) CircularProgressIndicator(Modifier.size(20.dp).clearAndSetSemantics {},color=contentColor,strokeWidth=2.dp) else if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=contentColor)
         Text(text,fontSize=16.sp,lineHeight=24.sp,fontWeight=FontWeight.Medium,color=contentColor,textAlign=androidx.compose.ui.text.style.TextAlign.Center,modifier=Modifier.weight(1f,fill=false))
     }}
-    Button(onClick=onClick,enabled=enabled&&!loading,modifier=(if(LocalConfiguration.current.screenWidthDp>=600) Modifier.widthIn(max=320.dp) else Modifier).then(modifier).semantics {if(loading){stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}}.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
+    Button(
+        onClick=onClick,enabled=enabled&&!loading,shape=shape,
+        modifier=(if(LocalConfiguration.current.screenWidthDp>=600) Modifier.widthIn(max=320.dp) else Modifier)
+            .then(modifier).semantics {
+                if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
+            }.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape)
+            .then(if(gradient==null) Modifier else Modifier.background(gradient,shape)),
+        colors=ButtonDefaults.buttonColors(
+            containerColor=when {gradient!=null -> Color.Transparent; secondary -> colors.surface; else -> colors.primary},
+            contentColor=when {gradient!=null -> Color.White; secondary -> colors.onSurface; else -> colors.onPrimary},
+        ),
+        contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp),
+    ) {content()}
 }
 @Composable internal fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     val short=!tv&&LocalConfiguration.current.screenHeightDp<480
@@ -452,36 +463,51 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                     Column(Modifier.padding(horizontal=16.dp).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section,gradient=true) {model.catalogSection(section)}}}
                         if (cinematic) {
-                            val compact = LocalConfiguration.current.screenHeightDp < 480
+                            val compact=LocalConfiguration.current.screenHeightDp<480
+                            val background=MaterialTheme.colorScheme.background
+                            var captionHeight by remember {mutableIntStateOf(0)}
+                            var actionHeight by remember {mutableIntStateOf(0)}
                             Box(
-                                Modifier.fillMaxWidth()
-                                    .heightIn(min=if(compact) 200.dp else 250.dp)
-                                    .clip(MaterialTheme.shapes.large)
-                                    .border(1.dp,Color.White.copy(alpha=.08f),MaterialTheme.shapes.large)
-                                    .clickable(
-                                        role=Role.Button,
-                                        onClickLabel=if(hero?.kind=="tv") "О сериале" else "О фильме",
-                                    ) {
-                                        if(hero!=null) model.metadata(hero,"hero:${hero.id}")
-                                        else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")
-                                    }
-                                    .testTag("hero-open"),
+                                Modifier.fillMaxWidth().heightIn(min=if(compact) 226.dp else 296.dp)
+                                    .clip(RoundedCornerShape(topStart=20.dp,topEnd=20.dp)),
                             ) {
-                                Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo)
-                                ArtScrim(Modifier.matchParentSize())
+                                Artwork(hero,s.config,Modifier.matchParentSize().blurPosterCaption(captionHeight),
+                                    backdrop=true,demo=hero==null&&s.config.demo)
+                                Box(Modifier.matchParentSize().drawWithCache {
+                                    val shadeEnd=(size.height-captionHeight+20.dp.toPx()).coerceIn(1f,size.height)
+                                    val shade=Brush.verticalGradient(
+                                        colors=listOf(Color.Transparent,Color(0xE610141E)),
+                                        startY=(shadeEnd-60.dp.toPx()).coerceAtLeast(0f),endY=shadeEnd,
+                                    )
+                                    val fade=Brush.verticalGradient(
+                                        0f to Color.Transparent,.46f to background.copy(alpha=.30f),1f to background,
+                                        startY=(size.height-actionHeight-22.dp.toPx()).coerceIn(0f,size.height-1f),
+                                        endY=size.height,
+                                    )
+                                    onDrawBehind {drawRect(shade);drawRect(fade)}
+                                })
                                 Column(
-                                    Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(16.dp),
-                                    verticalArrangement=Arrangement.spacedBy(3.dp),
+                                    Modifier.align(Alignment.BottomStart).widthIn(max=640.dp).fillMaxWidth()
+                                        .onSizeChanged {captionHeight=it.height}
+                                        .padding(start=16.dp,end=16.dp,top=14.dp,bottom=8.dp),
+                                    verticalArrangement=Arrangement.spacedBy(4.dp),
                                 ) {
-                                    val metadataInk = Color(0xFFE5E8EE)
+                                    val metadataInk=Color(0xFFE5E8EE)
                                     Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",
                                         fontSize=11.sp,letterSpacing=1.sp,color=metadataInk)
                                     Text(hero?.title ?: "Тихая орбита",
                                         fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold,color=Color.White)
-                                    Row(verticalAlignment=Alignment.CenterVertically) {
-                                        Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",
-                                            fontSize=13.sp,color=metadataInk,modifier=Modifier.weight(1f))
-                                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight,null,tint=Color.White)
+                                    Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",
+                                        fontSize=13.sp,color=metadataInk)
+                                    Action(
+                                        if(hero?.kind=="tv") "О сериале" else "О фильме",false,
+                                        Modifier.fillMaxWidth().padding(top=6.dp).onSizeChanged {actionHeight=it.height}
+                                            .testTag("hero-open"),
+                                        icon=Icons.Outlined.PlayArrow,pill=true,
+                                        gradient=Brush.horizontalGradient(listOf(Color(0xFF006E48),Color(0xFF006D7B))),
+                                    ) {
+                                        if(hero!=null) model.metadata(hero,"hero:${hero.id}")
+                                        else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")
                                     }
                                 }
                             }
