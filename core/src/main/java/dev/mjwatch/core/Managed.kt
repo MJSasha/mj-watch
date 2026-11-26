@@ -181,6 +181,25 @@ fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpCl
   chain.proceed(if(request.url.origin()==origin&&c.scope.isNotBlank()&&request.header("Authorization")==null&&token.isNotBlank()) request.newBuilder().header("Authorization","Bearer $token").build() else request)
  }.build()
 }
+
+private val managedImagePath = Regex("/api/v1/metadata/images/(?:w92|w154|w185|w342|w500|w780|w1280|original)/[A-Za-z0-9_-]{1,128}\\.(?:jpg|png|webp)$")
+
+fun managedImageClient(config: Config, secrets: SecretStore): OkHttpClient {
+    val base = endpoint(config.managedUrl)
+    val builder = managedClient(config, secrets).newBuilder()
+    // Cached artwork stores absolute URLs. Rebase recognized image paths before the origin check.
+    builder.interceptors().add(0, Interceptor { chain ->
+        val request = chain.request()
+        val url = request.url
+        val path = if (request.method == "GET" && url.isHttps && url.origin() != base.origin() && url.encodedQuery == null) {
+            managedImagePath.find(url.encodedPath)?.value
+        } else null
+        if (path == null) chain.proceed(request)
+        else chain.proceed(request.newBuilder().url(base.child(path)).removeHeader("Authorization").build())
+    })
+    return builder.build()
+}
+
 class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=null) {
  companion object {private val refreshMutex=Mutex()}
  val client=managedClient(config,secrets,caOverride)

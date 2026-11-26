@@ -12,6 +12,28 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk=[35],manifest=org.robolectric.annotation.Config.NONE)
 class CatalogTest {
+    @Test fun cachedManagedArtworkUsesTheNewServerAfterMoving() {
+        val config = Config(connectionMode = "managed", managedUrl = "https://new.example:8443",
+            serverId = "server", userId = "user")
+        val secrets = SecretStore(org.robolectric.RuntimeEnvironment.getApplication())
+        val requests = mutableListOf<Request>()
+        val client = managedImageClient(config, secrets).newBuilder().addInterceptor { chain ->
+            requests += chain.request()
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200)
+                .message("OK").body("".toResponseBody()).build()
+        }.build()
+        for (image in listOf("w500/poster.jpg", "w1280/banner.webp")) {
+            val request = Request.Builder().url("https://old.example/api/v1/metadata/images/$image")
+                .header("Authorization", "Bearer old-token").build()
+            client.newCall(request).execute().use { assertTrue(it.isSuccessful) }
+            assertEquals("https://new.example:8443/api/v1/metadata/images/$image", requests.last().url.toString())
+            assertNull(requests.last().header("Authorization"))
+        }
+        val control = Request.Builder().url("https://old.example/api/v1/me").build()
+        assertTrue(runCatching { client.newCall(control).execute().close() }.exceptionOrNull() is NetworkPolicyFailure)
+        assertEquals(2, requests.size)
+    }
+
     @Test fun everyCategoryLoadsItsOwnSourceAndAssignsMediaType()=runBlocking {
         val requests=mutableListOf<Request>()
         val client=OkHttpClient.Builder().addInterceptor {chain->

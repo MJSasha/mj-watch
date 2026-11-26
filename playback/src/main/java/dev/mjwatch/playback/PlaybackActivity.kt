@@ -473,7 +473,7 @@ class PlaybackActivity : ComponentActivity() {
             try {
                 val (secrets,client) = withContext(Dispatchers.IO) {
                     val secrets=SecretStore(applicationContext)
-                    secrets to if (config.managed) managedClient(config, secrets) else guardedClient(config)
+                    secrets to if (config.managed) managedImageClient(config, secrets) else guardedClient(config)
                 }
                 val loader = ImageLoader.Builder(applicationContext).okHttpClient(client).memoryCache(null).build()
                 artwork = PlaybackArtwork(loader, backdrop, poster, logo)

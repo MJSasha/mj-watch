@@ -149,7 +149,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val context=LocalContext.current.applicationContext
     val imageConfig=state.config
     val images=remember(imageConfig) {ImageLoader.Builder(context).okHttpClient {
-        if(imageConfig.managed) managedClient(imageConfig,model.secrets) else guardedClient(imageConfig)
+        if(imageConfig.managed) managedImageClient(imageConfig,model.secrets) else guardedClient(imageConfig)
     }.build()}
     DisposableEffect(images) {onDispose {images.shutdown()}}
     val focusClearance=with(LocalDensity.current) {8.dp.toPx()}
