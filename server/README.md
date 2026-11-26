@@ -52,11 +52,17 @@ Service units are `mjwatch.service`, `mjwatch-torrserver.service`, `mjwatch-rene
 
 Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair](../docs/testing/PYTHON314-HEALTH.md). Server 0.1.3 preserves existing CA trust and adds explicit critical signing key usage for new CAs.
 
+## Managed release search
+
+Open **My server → Release search** as the owner and choose **JacRed** or **Prowlarr**. Prowlarr requires MJWatch server 0.1.21 or later. Open its tab, connect over SSH and install Prowlarr. Then open the web admin, set up a login, and enable a torrent indexer that supports search. Refresh the status and select **Use Prowlarr for search** to switch managed clients to Prowlarr. Clients need an app version that supports Prowlarr. Switch back from the same tab while JacRed is running.
+
+The installer verifies the upstream Prowlarr archive for Linux x64 or arm64 and runs a separate systemd service on loopback. The web admin opens over the owner’s SSH connection. Each service keeps its own settings.
+
 ## Internal JacRed (0.1.14)
 
-Install or update the managed server from the app, then open **My server → JacRed** as the owner. The SSH workflow installs the pinned JacRed release for Linux AMD64 or ARM64, verifies its SHA-256, and starts a dedicated systemd service. JacRed listens on loopback. Signed-in clients search through the existing MJWatch HTTPS endpoint.
+Install or update the managed server from the app, then open **My server → Release search → JacRed** as the owner. The SSH workflow installs the pinned JacRed release for Linux AMD64 or ARM64, verifies its SHA-256, and starts a dedicated systemd service. JacRed listens on loopback. Signed-in clients search through the existing MJWatch HTTPS endpoint.
 
-Choose trackers and a collection interval, or enter an HTTPS synchronization server you can access. A new catalog fills as collection or synchronization runs. **Settings → Jackett / JacRed** selects internal or external search on each client. Internal is the default for managed profiles. Direct TorrServer profiles use the configured external source.
+Choose trackers and a collection interval, or enter an HTTPS synchronization server you can access. A new catalog fills as collection or synchronization runs. Managed clients use the source selected on the server. Direct TorrServer profiles use the external source configured on the device.
 
 In **My server → JacRed → Settings → Tracker proxy**, enter an existing HTTP or SOCKS5 proxy listening on `127.0.0.1` on the JacRed server and the exact tracker domains to route through it. Saving checks that the proxy port accepts TCP connections, applies the settings and restarts JacRed. Clear both fields to remove the route.
 

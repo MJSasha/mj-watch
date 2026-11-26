@@ -15,13 +15,13 @@ import org.robolectric.annotation.Config
 @Config(sdk=[35],manifest=Config.NONE)
 class ContractsTest {
     private fun fixture(name:String)=javaClass.classLoader!!.getResource(name)!!.readText()
-    @Test fun managedSearchDefaultsToInternalAndPreservesExternalChoice() {
-        val managed=decodeConfig("""{"connectionMode":"managed","managedUrl":"https://server.invalid"}""")
-        assertTrue(managed.internalJacred)
-        assertFalse(managed.copy(connectionMode="direct").internalJacred)
-        val external=managed.withSearchSettings(managed.copy(externalReleaseSearch=true))
-        assertFalse(decodeConfig(encodeConfig(external)).internalJacred)
-        assertEquals(managed.managedUrl,external.managedUrl)
+    @Test fun legacyExternalPreferenceDoesNotOverrideManagedSearch() {
+        val managed=decodeConfig("""{"connectionMode":"managed","managedUrl":"https://server.invalid","jackett":{"baseUrl":"https://source.invalid","external":true}}""")
+        assertTrue(managed.managed)
+        assertEquals("https://source.invalid",managed.jackett)
+        val saved=encodeConfig(managed)
+        assertFalse(org.json.JSONObject(saved).getJSONObject("jackett").has("external"))
+        assertEquals(managed,decodeConfig(saved))
     }
     @Test fun jacredJsonContractAndConfigRoundTrip() {
         val items=JacredJson.releases(fixture("jacred.json"),"all")

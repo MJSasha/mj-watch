@@ -111,7 +111,7 @@ fun encodeConfig(c: Config,includeAccount:Boolean=true): String {
     require(c.connectionMode in setOf("direct","managed"))
     if(c.managedUrl.isNotBlank()) require(endpoint(c.managedUrl).scheme=="https") {"MJWatch требует HTTPS"}
     return JSONObject().put("schemaVersion",2).put("connectionMode",c.connectionMode).put("managedUrl",c.managedUrl).put("serverId",if(includeAccount)c.serverId else "").put("userId",if(includeAccount)c.userId else "").put("demo",c.demo)
-        .put("jackett",JSONObject().put("baseUrl",c.jackett).put("api",c.releaseApi).put("credentialRef","jackett-api-key").put("indexers",indexers).put("external",c.externalReleaseSearch))
+        .put("jackett",JSONObject().put("baseUrl",c.jackett).put("api",c.releaseApi).put("credentialRef","jackett-api-key").put("indexers",indexers))
         .put("torrServer",JSONObject().put("baseUrl",c.torrServer).put("credentialRef","torrserver-auth").put("saveToDatabase",false))
         .put("metadata",JSONObject().put("provider",c.metadataProvider).put("language","ru-RU").put("credentialRef","metadata-api-token"))
         .put("network",JSONObject().put("localHttpOptIn",c.localHttp).put("allowedLocalHttpOrigins",org.json.JSONArray(listOf(c.jackett,c.torrServer).filter {it.startsWith("http://")}.map {endpoint(it).origin()})))
@@ -133,7 +133,7 @@ fun decodeConfig(raw: String): Config {
         torrServer=server?.optString("baseUrl") ?: j.optString("torrServer"),
         localHttp=j.optJSONObject("network")?.optBoolean("localHttpOptIn") ?: j.optBoolean("localHttp"),
         demo=j.optBoolean("demo"),theme=j.optJSONObject("appearance")?.optString("theme","system") ?: j.optString("theme","system"),
-        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths,releaseApi=api,connectionMode=j.optString("connectionMode","direct").also {require(it in setOf("direct","managed"))},managedUrl=j.optString("managedUrl"),serverId=j.optString("serverId"),userId=j.optString("userId"),externalReleaseSearch=jackett?.optBoolean("external") ?: false)
+        metadataProvider=j.optJSONObject("metadata")?.optString("provider","none") ?: j.optString("metadataProvider","none"),torznabPaths=paths,releaseApi=api,connectionMode=j.optString("connectionMode","direct").also {require(it in setOf("direct","managed"))},managedUrl=j.optString("managedUrl"),serverId=j.optString("serverId"),userId=j.optString("userId"))
 }
 
 fun Release.json(): String = JSONObject().put("id", id).put("title", title).put("source", source)

@@ -25,7 +25,7 @@ class PlaybackAfterPairingTest {
             Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("playbackPairing")=="true")
             val c=InstrumentationRegistry.getInstrumentation().targetContext
             val fixture=JSONObject(java.net.URL("http://127.0.0.1:18644/bootstrap").readText())
-            val config=Config(connectionMode="managed",managedUrl=fixture.getString("url"),serverId=fixture.getString("serverId"),userId=fixture.getString("userId"),jackett=fixture.getString("url")+"/fixture-source",releaseApi="jacred",externalReleaseSearch=true,theme="dark")
+            val config=Config(connectionMode="managed",managedUrl=fixture.getString("url"),serverId=fixture.getString("serverId"),userId=fixture.getString("userId"),theme="dark")
             c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit()
             c.getSharedPreferences("playback-preferences",0).edit().clear().commit()
             val secrets=SecretStore(c)

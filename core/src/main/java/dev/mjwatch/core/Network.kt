@@ -123,14 +123,20 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
     private val sources get()=if(internalSearch!=null) listOf("all")
         else config.indexers.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty {listOf("all")}
+    private suspend fun managedSearch(api:ManagedApi,query:String):JSONObject {
+        val encoded=java.net.URLEncoder.encode(query,"UTF-8")
+        try {return api.authorized("search/releases?query=$encoded")}
+        catch(e:HttpFailure) {if(e.status!=404)throw e}
+        try {return api.authorized("search/jacred?indexer=all&query=$encoded")}
+        catch(e:HttpFailure) {if(e.status!=404)throw e}
+        error("Обновите сервер MJWatch для поиска раздач.")
+    }
+
     private suspend fun jacredReleases(source:String,query:String):List<Release> {
-        val data=if(internalSearch==null) String(read(url(source,"search",query))) else try {
-            internalSearch.authorized("search/jacred?indexer=$source&query="+java.net.URLEncoder.encode(query,"UTF-8")).toString()
-        } catch(e:HttpFailure) {
-            if(e.status!=404) throw e
-            throw IOException("Обновите сервер MJWatch, чтобы включить внутренний JacRed.",e)
-        }
-        return JacredJson.releases(data,source)
+        val api=internalSearch ?: return JacredJson.releases(String(read(url(source,"search",query))),source)
+        val data=managedSearch(api,query)
+        return if(data.optString("provider")=="prowlarr") prowlarrReleases(data)
+            else JacredJson.releases(data.toString(),source)
     }
     private suspend fun read(url:HttpUrl):ByteArray {
         val request=Request.Builder().url(url).build()
@@ -166,9 +172,15 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         return TorznabXml.caps(String(read(url(source,"caps")))).also { caps[source]=System.currentTimeMillis() to it }
     }
     override suspend fun check(): String {
-        if(internalSearch!=null || config.usesJacred()) {
+        if(internalSearch!=null) {
+            val result=managedSearch(internalSearch,"")
+            if(result.optString("provider")=="prowlarr") return "Prowlarr: торрент-трекеры настроены"
+            JacredJson.releases(result.toString(),"all")
+            return "Внутренний JacRed отвечает"
+        }
+        if(config.usesJacred()) {
             sources.forEach {jacredReleases(it,"")}
-            return if(internalSearch!=null) "Внутренний JacRed отвечает" else "JacRed JSON: подключение проверено"
+            return "JacRed JSON: подключение проверено"
         }
         sources.forEach { capabilities(it) }; return "Torznab: проверено источников ${sources.size}"
     }
@@ -202,10 +214,15 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
         val results=selected.map {responses[it] ?: Pair(emptyList<Release>(),"$it: Общий срок поиска истёк")}
         SearchResult(results.flatMap {it.first}.distinctBy {it.hash ?: it.id},results.mapNotNull {it.second},more.get())
     }
-    suspend fun resolve(release: Release): TorrentInput {
+    suspend fun resolve(release: Release, managedApi: ManagedApi? = null): TorrentInput {
         val raw=release.download ?: error("Нет magnet или torrent")
-        val u=raw.toHttpUrl(); require(u.origin()==endpoint(config.jackett).origin()) { "Torrent должен загружаться с настроенного Jackett" }
-        val body=client.bytes(Request.Builder().url(u).build(),allowMagnetRedirect=true)
+        val body=if(raw.startsWith("prowlarr:")&&release.id.startsWith("prowlarr:")&&config.managed) {
+            requireNotNull(managedApi).prowlarrTorrent(raw.removePrefix("prowlarr:"))
+        } else {
+            val u=raw.toHttpUrl()
+            require(u.origin()==endpoint(config.jackett).origin()) { "Torrent должен загружаться с настроенного Jackett" }
+            client.bytes(Request.Builder().url(u).build(),allowMagnetRedirect=true)
+        }
         if(body.firstOrNull()?.toInt()==109) {val magnet=String(body);validateMagnet(magnet);return TorrentInput.Magnet(magnet)}
         validateTorrent(body); return TorrentInput.File(body)
     }
@@ -347,7 +364,10 @@ fun safeError(e: Throwable): String = when(e) {
         "migration_in_progress"->"Идёт перенос сервера. Приложение повторит подключение."
         "provider_disabled"->"Каталог выключен владельцем. Поиск раздач и просмотр доступны."
         "credential_missing"->"Владелец ещё не настроил TMDB"
-        "jacred_not_installed"->"Установите JacRed в настройках сервера или выберите внешний источник."
+        "prowlarr_unavailable"->"Prowlarr не отвечает. Проверьте службу на сервере."
+        "prowlarr_indexer_required"->"Включите торрент-трекер с поддержкой поиска в Prowlarr."
+        "prowlarr_download_failed","invalid_release"->"Prowlarr не вернул раздачу. Повторите поиск или проверьте настройки трекера."
+        "jacred_not_installed"->"Настройте источник раздач в разделе «Мой сервер → Поиск раздач»."
         "jacred_unavailable"->"Внутренний JacRed не отвечает. Проверьте его состояние в настройках сервера."
         "jacred_stats_unavailable"->"JacRed не вернул статистику каталога. Повторите попытку."
         "jacred_collect_unavailable"->"Ручной запуск пока недоступен. Загрузите и примените настройки JacRed."

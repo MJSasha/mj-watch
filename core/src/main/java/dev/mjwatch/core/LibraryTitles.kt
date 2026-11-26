@@ -18,7 +18,7 @@ fun libraryTitles(entries:List<LibraryEntry>,metadata:Map<String,Metadata>):List
 
 /** A section editor cannot replace the current account with an old draft. */
 fun Config.withSearchSettings(draft:Config)=copy(jackett=draft.jackett.trim().ifBlank {Config().jackett},
-    indexers=draft.indexers,releaseApi=draft.releaseApi,torznabPaths=draft.torznabPaths,localHttp=draft.localHttp,externalReleaseSearch=draft.externalReleaseSearch)
+    indexers=draft.indexers,releaseApi=draft.releaseApi,torznabPaths=draft.torznabPaths,localHttp=draft.localHttp)
 
 /** Episode identity comes from the saved file, including its season directory. */
 fun Progress.episodeLabel():String? {

@@ -259,7 +259,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         if(!(tv&&(cinematic||page=="search"))&&page!="detail"&&!(tv&&page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                                val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->"Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
+                                val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->if(state.config.managed) "Поиск раздач" else "Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 if(page=="home") HomeServerButton(state,model,tv)
                                 else if(state.config.demo&&page!="settings"&&page!="connections"&&!page.startsWith("settings-")) Badge("ДЕМО",accent=true)
@@ -1292,19 +1292,13 @@ private class ReleaseOptions(
             Heading(if(setupStep==1)"Добавьте источник раздач" else "Подключите TorrServer")
         }} else if(section==null)item{Heading("Подключения")}
         if((!setup||setupStep==1)&&(section==null||section=="search"))item {SettingsCard("Источник раздач",Icons.Outlined.Search,tv){
-            if(c.managed&&!c.demo) {
+            if(c.managed) {
                 val account by model.managed.state.collectAsStateWithLifecycle()
-                SettingsChoiceTabs("Внутренний JacRed",Icons.Outlined.Dns,"Внешний источник",Icons.Outlined.Language,c.externalReleaseSearch,tv) {
-                    changed(c.copy(externalReleaseSearch=it))
+                SettingsHint("Источник поиска задаёт администратор сервера MJWatch.")
+                if(account.scope==c.scope&&account.me?.optString("role")=="admin") {
+                    Action("Управление поиском",tv,secondary=true,icon=Icons.Outlined.Tune){model.page("server-jacred")}
                 }
-                if(c.internalJacred) {
-                    SettingsHint("Поиск идёт через JacRed, установленный на вашем сервере MJWatch.")
-                    if(account.scope==c.scope&&account.me?.optString("role")=="admin") {
-                        Action("Управление JacRed",tv,secondary=true,icon=Icons.Outlined.Tune){model.page("server-jacred")}
-                    }
-                }
-            }
-            if(!c.internalJacred) {
+            } else {
             Text("Jackett / JacRed находит раздачи для просмотра.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
@@ -1319,7 +1313,7 @@ private class ReleaseOptions(
             Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingTorr){model.check(false,c,key,user,password)}
             OperationMessage(s.checkTorr)
         }}
-        if(section=="search"&&!c.internalJacred)item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){
+        if(section=="search"&&!c.managed)item {SettingsDisclosure("Параметры поиска","Протокол, индексаторы и локальный HTTP",Icons.Outlined.Tune,tv){
             Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
             SettingsHint("Авто подходит для большинства серверов. Выберите протокол вручную, если автоматическая проверка не распознала источник.")
@@ -1351,7 +1345,7 @@ private class ReleaseOptions(
             Text("Оформление",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach{(id,label)->Pill(label,c.theme==id,tv){c=c.copy(theme=id)}}}
         }}
-        if(section!=null||!setup||setupStep==2||c.demo)item {Action(if(s.busy)"Сохранение…" else if(section==null)"Сохранить и продолжить" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy){applySettings()}}
+        if(!(section=="search"&&c.managed)&&(section!=null||!setup||setupStep==2||c.demo))item {Action(if(s.busy)"Сохранение…" else if(section==null)"Сохранить и продолжить" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy){applySettings()}}
         if(s.message.isNotBlank())item {OperationMessage(s.message,error=true)}
         if(section==null)item {SettingsCard("Перенос настроек",Icons.Outlined.ImportExport,tv){
             Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {try {val request=filePickerIntent(context,ActivityResultContracts.OpenDocument().createIntent(context,arrayOf("application/json")));if(request==null) importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную." else importer.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную."}}
@@ -1495,9 +1489,9 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
     val managed=account.takeIf {it.scope==s.config.scope}
     val admin=managed?.me?.optString("role")=="admin"
     SettingsGroup(tv) {
-        SettingsActionRow(Icons.Outlined.Search,"Jackett / JacRed",when {
+        SettingsActionRow(Icons.Outlined.Search,if(s.config.managed) "Поиск раздач" else "Jackett / JacRed",when {
             s.config.demo -> "Демонстрационный режим"
-            s.config.internalJacred -> "Внутренний JacRed"
+            s.config.managed -> "Сервер MJWatch"
             else -> s.config.jackett
         },tv) {model.page("settings-search")}
         if(!s.config.managed) {

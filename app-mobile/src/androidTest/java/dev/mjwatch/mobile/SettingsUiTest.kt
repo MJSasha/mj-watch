@@ -85,29 +85,24 @@ class SettingsUiTest {
     Assert.assertEquals("jacred",model.state.value.config.releaseApi)
     Assert.assertEquals("fixture-password",model.secrets.get("torrPassword:http://127.0.0.1:8090"))
  }
- @Test fun managedSearchTabsSwitchAndSaveTheSource(){
+ @Test fun managedSearchSourceIsConfiguredOnTheServer(){
     lateinit var model:WatchModel
     compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
     val context=InstrumentationRegistry.getInstrumentation().targetContext
     runBlocking {Settings(context).save(Config(connectionMode="managed",managedUrl="https://127.0.0.1:1",
         serverId="source-tabs",userId="owner",theme="dark"))}
-    compose.waitUntil(10000){model.state.value.config.internalJacred}
+    compose.waitUntil(10000){model.state.value.config.managed}
     compose.runOnIdle{model.page("settings-search")}
-    val internal=compose.onNodeWithText("Внутренний JacRed")
-    val external=compose.onNodeWithText("Внешний источник")
-    internal.assertIsSelected()
+    compose.onNodeWithText("Источник поиска задаёт администратор сервера MJWatch.").assertExists()
+    compose.onNodeWithText("Проверить поиск").assertExists()
+    compose.onNodeWithText("Внешний источник").assertDoesNotExist()
     compose.onNodeWithText("Адрес Jackett / JacRed").assertDoesNotExist()
-    external.performClick().assertIsSelected()
-    internal.assertIsNotSelected()
-    compose.onNodeWithText("Адрес Jackett / JacRed").assertExists()
-    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Сохранить"))
-    compose.onNodeWithText("Сохранить").performClick()
-    compose.waitUntil(5000){model.state.value.config.externalReleaseSearch}
+    compose.onNodeWithText("Сохранить").assertDoesNotExist()
  }
  @Test fun jacredHeadingStaysInPlaceDuringRefresh(){
     lateinit var model:WatchModel
     compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java];model.page("server-jacred")}
-    val heading=compose.onNodeWithText("JacRed")
+    val heading=compose.onNodeWithText("Поиск раздач")
     val before=heading.fetchSemanticsNode().boundsInRoot
     val finish=CompletableDeferred<Unit>()
     try {

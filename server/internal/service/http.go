@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.20"
+var Version = "0.1.21"
 
 type Server struct {
 	maxStreams         int
@@ -210,6 +210,10 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case path == "search/releases" && r.Method == "GET":
+		s.releaseSearch(w, r)
+	case path == "search/prowlarr-download" && r.Method == "GET":
+		s.prowlarrDownload(w, r)
 	case path == "search/jacred" && r.Method == "GET":
 		s.jacredSearch(w, r)
 	case path == "me" && r.Method == "GET":

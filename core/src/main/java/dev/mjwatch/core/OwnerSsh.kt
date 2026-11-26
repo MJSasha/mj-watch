@@ -13,7 +13,7 @@ import android.util.Base64
 
 class HostKeyRequired(val fingerprint:String,val changed:Boolean):java.io.IOException(if(changed) "SSH host key изменился. Сверьте отпечаток с консолью сервера." else "Подтвердите SSH host key после сверки с консолью провайдера.")
 class MaintenanceFailure(val code:String):java.io.IOException("Операция обслуживания: $code")
-class JacredAdminAddress(val port: Int, val cookie: String, val token: String) {
+class SearchAdminAddress(val port: Int, val cookie: String? = null, val token: String? = null) {
  val origin get() = "http://127.0.0.1:$port"
 }
 data class SshTarget(val host:String,val port:Int=22,val user:String="root",val password:String) {
@@ -63,7 +63,7 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   return JSONObject(exec(session,"/usr/bin/python3 $path status"))
  }
  suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)
- suspend fun browseJacred(target: SshTarget, serverId: String, onReady: (JacredAdminAddress) -> Unit) =
+ suspend fun browseJacred(target: SshTarget, serverId: String, onReady: (SearchAdminAddress) -> Unit) =
   session(target) { connection ->
    check(serverId.isNotBlank() && JSONObject(exec(connection, "/usr/local/sbin/mjwatchctl identity"))
     .getString("serverId") == serverId) { "SSH относится к другому серверу" }
@@ -90,11 +90,49 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
     check(remotePort in 1..65535 && cookie == "mjwatch_jacred_$remotePort" &&
      token.matches(Regex("[A-Za-z0-9_-]{43}"))) { "Сервер вернул неверные параметры админки." }
     val port = connection.setPortForwardingL("127.0.0.1", 0, "127.0.0.1", remotePort)
-    onReady(JacredAdminAddress(port, cookie, token))
+    onReady(SearchAdminAddress(port, cookie, token))
     while (connection.isConnected && channel.isConnected && !channel.isClosed) Thread.sleep(250)
    } finally {
     try { runCatching { input.close() } } finally { channel.disconnect() }
    }
+  }
+ private fun prowlarrCommand(connection:Session,action:String):JSONObject {
+  require(action in setOf("status","install","prowlarr","jacred"))
+  val helper="/opt/mjwatch/current/prowlarr.py"
+  val output=exec(connection,"if [ -x $helper ]; then /usr/bin/python3 -B $helper $action; fi")
+  check(output.isNotBlank()) {"Обновите сервер MJWatch, чтобы установить Prowlarr."}
+  val result=JSONObject(output)
+  when(result.optString("error")) {
+   "indexer_required" -> error("Добавьте и включите торрент-трекер с поддержкой поиска в Prowlarr.")
+   "jacred_unavailable" -> error("Запустите JacRed перед переключением поиска.")
+   "install_failed" -> error("Не удалось запустить установку Prowlarr.")
+  }
+  return result
+ }
+ suspend fun readProwlarr(target:SshTarget)=session(target){prowlarrCommand(it,"status")}
+ suspend fun selectSearchProvider(target:SshTarget,prowlarr:Boolean)=
+  session(target){prowlarrCommand(it,if(prowlarr)"prowlarr" else "jacred")}
+ suspend fun installProwlarr(target:SshTarget)=session(target){connection->
+  prowlarrCommand(connection,"install")
+  val deadline=android.os.SystemClock.elapsedRealtime()+490_000
+  var current:JSONObject
+  do {
+   Thread.sleep(1500)
+   current=prowlarrCommand(connection,"status")
+   check(android.os.SystemClock.elapsedRealtime()<deadline) {"Обновите состояние установки Prowlarr."}
+  } while(current.optJSONObject("operation")?.optString("state")=="running")
+  current
+ }
+ suspend fun browseProwlarr(target:SshTarget,serverId:String,onReady:(SearchAdminAddress)->Unit)=
+  session(target){connection->
+   check(serverId.isNotBlank()&&JSONObject(exec(connection,"/usr/local/sbin/mjwatchctl identity"))
+    .getString("serverId")==serverId) {"SSH относится к другому серверу"}
+   check(prowlarrCommand(connection,"status").optBoolean("ready")) {"Запустите Prowlarr на сервере."}
+   connection.setServerAliveInterval(15_000)
+   connection.serverAliveCountMax=2
+   val port=connection.setPortForwardingL("127.0.0.1",0,"127.0.0.1",19696)
+   onReady(SearchAdminAddress(port))
+   while(connection.isConnected) Thread.sleep(250)
   }
  suspend fun applyJacred(target:SshTarget,settings:JSONObject,onStage:(String)->Unit)=session(target){connection->
   val before=jacredStatus(connection).optJSONObject("operation")

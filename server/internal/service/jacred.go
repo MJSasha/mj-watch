@@ -55,7 +55,10 @@ func (s *Server) jacredGet(ctx context.Context, path, key string, parameters url
 }
 
 func (s *Server) jacredSearch(w http.ResponseWriter, r *http.Request) {
-	source := r.URL.Query().Get("indexer")
+	s.searchJacred(w, r, r.URL.Query().Get("indexer"))
+}
+
+func (s *Server) searchJacred(w http.ResponseWriter, r *http.Request, source string) {
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	if !jacredIndexer.MatchString(source) || len(query) > 512 {
 		fail(w, 400, "invalid_search")

@@ -37,18 +37,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import dev.mjwatch.core.JacredAdminAddress
+import dev.mjwatch.core.SearchAdminAddress
 import dev.mjwatch.core.safeError
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CancellationException
 
 @Composable
-internal fun JacredAdminScreen(
+internal fun SearchAdminScreen(
     tv: Boolean,
+    service: String,
     onClose: () -> Unit,
-    connect: suspend ((JacredAdminAddress) -> Unit) -> Unit,
+    connect: suspend ((SearchAdminAddress) -> Unit) -> Unit,
 ) {
-    var address by remember { mutableStateOf<JacredAdminAddress?>(null) }
+    var address by remember { mutableStateOf<SearchAdminAddress?>(null) }
     var error by remember { mutableStateOf("") }
     val window = LocalActivity.current?.window
     DisposableEffect(window) {
@@ -89,12 +90,12 @@ internal fun JacredAdminScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Админка JacRed", style = MaterialTheme.typography.titleLarge)
+                Text("Админка $service", style = MaterialTheme.typography.titleLarge)
                 Action("Закрыть", tv, secondary = true, onClick = onClose)
             }
             val connection = address
             if (connection != null && error.isBlank()) {
-                JacredAdminWebView(connection, Modifier.weight(1f)) { error = it }
+                SearchAdminWebView(connection, service, Modifier.weight(1f)) { error = it }
             } else if (error.isNotBlank()) {
                 Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             } else {
@@ -107,7 +108,7 @@ internal fun JacredAdminScreen(
 
 @android.annotation.SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun JacredAdminWebView(address: JacredAdminAddress, modifier: Modifier, onError: (String) -> Unit) {
+private fun SearchAdminWebView(address: SearchAdminAddress, service: String, modifier: Modifier, onError: (String) -> Unit) {
     val cookies = remember { CookieManager.getInstance() }
     fun belongsToTunnel(uri: Uri): Boolean =
         uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == address.port && uri.userInfo == null
@@ -132,29 +133,34 @@ private fun JacredAdminWebView(address: JacredAdminAddress, modifier: Modifier, 
                         )
 
                     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                        if (request.isForMainFrame) onError("Не удалось открыть веб-админку JacRed.")
+                        if (request.isForMainFrame) onError("Не удалось открыть веб-админку $service.")
                     }
 
                     override fun onReceivedHttpError(
                         view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse,
                     ) {
-                        if (request.isForMainFrame) onError("Веб-админка JacRed ответила HTTP ${errorResponse.statusCode}.")
+                        if (request.isForMainFrame) onError("Веб-админка $service ответила HTTP ${errorResponse.statusCode}.")
                     }
                 }
                 val browser = this
-                cookies.setCookie(
+                if (address.cookie == null) {
+                    loadUrl(address.origin)
+                } else cookies.setCookie(
                     address.origin, "${address.cookie}=${address.token}; Path=/; HttpOnly; SameSite=Strict",
                 ) { stored ->
                     if (browser.tag == true) {
                         if (stored) browser.loadUrl("${address.origin}/settings")
-                        else onError("Устройство не сохранило сеанс админки JacRed.")
+                        else onError("Устройство не сохранило сеанс админки $service.")
                     }
                 }
             }
         },
         onRelease = { browser ->
             browser.tag = false
-            cookies.setCookie(address.origin, "${address.cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict")
+            val names = address.cookie?.let(::listOf) ?: cookies.getCookie(address.origin).orEmpty()
+                .split(';').map { it.substringBefore('=').trim() }.filter { it.isNotEmpty() }
+            names.forEach { cookies.setCookie(address.origin, "$it=; Path=/; Max-Age=0") }
+            if (address.cookie == null) android.webkit.WebStorage.getInstance().deleteOrigin(address.origin)
             browser.stopLoading()
             browser.destroy()
         },

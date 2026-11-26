@@ -233,20 +233,29 @@ class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=nu
   val remaining=((secrets.get("expires:$key").toLongOrNull() ?: 0)-System.currentTimeMillis())/1000
   return JSONObject().put("accessToken",access()).put("refreshToken",secrets.get("refresh:$key")).put("expiresIn",remaining.coerceAtLeast(0))
  }
- suspend fun authorized(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null):JSONObject {
+ suspend fun authorized(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null):JSONObject =
+  withAuthorization {token->request(path,method,body,revision,headers=mapOf("Authorization" to "Bearer $token"))}
+
+ internal suspend fun prowlarrTorrent(token:String):ByteArray {
+  require(token.length<=8192&&token.matches(Regex("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"))) {"Некорректная ссылка на раздачу"}
+  val url=base.child("api/v1/search/prowlarr-download").newBuilder().addQueryParameter("token",token).build()
+  return withAuthorization {access->
+   client.bytes(Request.Builder().url(url).header("Authorization","Bearer $access").build())
+  }
+ }
+
+ private suspend fun <T> withAuthorization(send:suspend (String)->T):T {
   val expiry=secrets.get("expires:${base.origin()}:${config.scope}").toLongOrNull()
   if(expiry!=null&&System.currentTimeMillis()+60000>=expiry) refresh()
   val previous=access()
-  // Explicit authorization also works before /me establishes the account scope.
-  suspend fun send()=request(path,method,body,revision,headers=mapOf("Authorization" to "Bearer ${access()}"))
-  return try {send()} catch(e:HttpFailure) {if(e.status!=401)throw e;refreshIfCurrent(previous);send()}
+  return try {send(previous)} catch(e:HttpFailure) {if(e.status!=401)throw e;refreshIfCurrent(previous);send(access())}
  }
 
 }
 class ManagedGateway(private val api:ManagedApi,private val releases:TorznabRepository):StreamGateway {
  override suspend fun check():String {api.authorized("me");return "MJWatch: подключение проверено"}
  private fun parse(j:JSONObject):TorrentHandle {val torrent=j.getJSONObject("torrent");val files=torrent.optJSONArray("file_stats") ?: JSONArray();return TorrentHandle(j.getString("id"),(0 until files.length()).map {val f=files.getJSONObject(it);TorrentFile(f.getInt("id"),f.getString("path"),f.optLong("length"))},j.getString("hash"))}
- override suspend fun add(release:Release):TorrentHandle {val input=release.magnet?.let {validateMagnet(it);TorrentInput.Magnet(it)} ?: releases.resolve(release);val json=when(input){is TorrentInput.Magnet->JSONObject().put("magnet",input.link);is TorrentInput.File->JSONObject().put("torrent",android.util.Base64.encodeToString(input.bytes,android.util.Base64.NO_WRAP))};val bytes=when(input){is TorrentInput.Magnet->input.link.toByteArray();is TorrentInput.File->input.bytes};val digest=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)};val key="playbackRequest:${api.config.scope}:${release.id}:$digest";val id=api.secrets.get(key).ifBlank {java.util.UUID.randomUUID().toString().also {api.secrets.put(key,it)}};json.put("requestId",id);val response=try {api.authorized("playback","POST",json)}catch(e:HttpFailure){if(e.status!=404)throw e;val next=UUID.randomUUID().toString();api.secrets.put(key,next);api.authorized("playback","POST",json.put("requestId",next))};return parse(response).also {api.secrets.put("playbackHandle:${api.config.scope}:${it.hash}",key)}}
+ override suspend fun add(release:Release):TorrentHandle {val input=release.magnet?.let {validateMagnet(it);TorrentInput.Magnet(it)} ?: releases.resolve(release,api);val json=when(input){is TorrentInput.Magnet->JSONObject().put("magnet",input.link);is TorrentInput.File->JSONObject().put("torrent",android.util.Base64.encodeToString(input.bytes,android.util.Base64.NO_WRAP))};val bytes=when(input){is TorrentInput.Magnet->input.link.toByteArray();is TorrentInput.File->input.bytes};val digest=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)};val key="playbackRequest:${api.config.scope}:${release.id}:$digest";val id=api.secrets.get(key).ifBlank {java.util.UUID.randomUUID().toString().also {api.secrets.put(key,it)}};json.put("requestId",id);val response=try {api.authorized("playback","POST",json)}catch(e:HttpFailure){if(e.status!=404)throw e;val next=UUID.randomUUID().toString();api.secrets.put(key,next);api.authorized("playback","POST",json.put("requestId",next))};return parse(response).also {api.secrets.put("playbackHandle:${api.config.scope}:${it.hash}",key)}}
  override suspend fun status(hash:String):TorrentHandle=try {parse(api.authorized("playback/$hash"))}catch(e:HttpFailure){if(e.status==404){val release=api.secrets.get("playbackHandle:${api.config.scope}:$hash");if(release.startsWith("playbackRequest:${api.config.scope}:"))api.secrets.put(release,"")};throw e}
  override fun stream(handle:TorrentHandle,file:TorrentFile)=StreamRequest(api.base.child("api/v1/playback/${handle.hash}/stream").newBuilder().addQueryParameter("file",file.serverFileId.toString()).build().toString())
 }

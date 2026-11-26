@@ -87,7 +87,7 @@ class NovemberIssuesUiTest {
                 }
             }
             val url=server.url("/parser").toString()
-            runBlocking {Settings(compose.activity).save(config.copy(demo=false,jackett=url,releaseApi="jacred",localHttp=true,externalReleaseSearch=true))}
+            runBlocking {Settings(compose.activity).save(config.copy(connectionMode="direct",demo=false,jackett=url,releaseApi="jacred",localHttp=true))}
             compose.waitUntil(10000) {m.state.value.config.jackett==url}
             compose.runOnIdle {m.search("Sintel")}
             Assert.assertNotNull("Search request reached JacRed",server.takeRequest(10,TimeUnit.SECONDS))

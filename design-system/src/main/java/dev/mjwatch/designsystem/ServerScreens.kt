@@ -51,9 +51,9 @@ private enum class JacredSection(val title: String) {
  LaunchedEffect(page,mobileQr) {screenScroll.scrollTo(0)}
  var dirty by remember(page) {mutableStateOf(false)}
  var leave by remember {mutableStateOf(false)}
- var jacredAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<SshTarget?>(null)}
- val adminTarget=jacredAdmin?.takeIf {managed.me?.optString("role")=="admin"}
- val back:()->Unit={if(adminTarget!=null)jacredAdmin=null else if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
+ var searchAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<Pair<SshTarget,Boolean>?>(null)}
+ val adminTarget=searchAdmin?.takeIf {managed.me?.optString("role")=="admin"}
+ val back:()->Unit={if(adminTarget!=null)searchAdmin=null else if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
  DisposableEffect(page,dirty,adminTarget!=null){registerBack(back);onDispose{registerBack(null)}}
  BackHandler(enabled=adminTarget==null) {back()}
  if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
@@ -143,7 +143,7 @@ private enum class JacredSection(val title: String) {
    "server-overview"->{
     Text("Мой сервер",fontSize=28.sp,fontWeight=FontWeight.Bold)
     ServerStatusOverview(s.config.managedUrl,managed.me?.optString("role"),managed.data?.takeIf {it.has("databaseHealthy")&&it.has("torrserverHealthy")},managed.busy,managed.message.isNotBlank(),managed.statusCheckedAt,tv){controller.load("admin/status")}
-    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Ресурсы сервера","server-resources",Icons.Outlined.Speed),Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("JacRed","server-jacred",Icons.Outlined.Search),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-resources"->"Процессор, память и диск";"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
+    if(managed.me?.optString("role")=="admin") SettingsGroup(tv){listOf(Triple("Ресурсы сервера","server-resources",Icons.Outlined.Speed),Triple("Пользователи","server-users",Icons.Outlined.People),Triple("TorrServer","server-torr",Icons.Outlined.Dns),Triple("Поиск раздач","server-jacred",Icons.Outlined.Search),Triple("TMDB и каталог","server-tmdb",Icons.Outlined.Movie),Triple("История и копии","server-history",Icons.Outlined.History),Triple("Обслуживание","server-maintenance",Icons.Outlined.Build)).forEach {(title,destination,icon)->SettingsActionRow(icon,title,when(destination){"server-resources"->"Процессор, память и диск";"server-users"->managed.data?.takeIf {it.has("users")}?.let {"Пользователей: ${it.getInt("users")}"} ?: "Не загружено";"server-tmdb"->managed.data?.optJSONObject("tmdb")?.let {if(it.optBoolean("credentialConfigured"))"Ключ настроен" else "Ключ не настроен"} ?: "Не загружено";else->"Настройки и состояние"},tv){model.page(destination)};SettingsDivider()}}
    }
    "server-tmdb"->{
     var enabled by remember {mutableStateOf(false)};var language by rememberSaveable {mutableStateOf("ru-RU")};var cache by rememberSaveable {mutableStateOf("256")};var credential by remember {mutableStateOf("")};var revision by remember {mutableStateOf("")}
@@ -237,9 +237,19 @@ private enum class JacredSection(val title: String) {
     else SettingsHint("Ресурсы сервера доступны администратору.")
    }
    "server-jacred"->{
-    Text("JacRed",fontSize=28.sp,fontWeight=FontWeight.Bold)
+    Text("Поиск раздач",fontSize=28.sp,fontWeight=FontWeight.Bold)
     val admin=managed.me?.optString("role")=="admin"
     if(admin) {
+     var prowlarr by rememberSaveable(s.config.scope){mutableStateOf(false)}
+     SettingsChoiceTabs("JacRed",Icons.Outlined.Dns,"Prowlarr",Icons.Outlined.Search,prowlarr,tv) {next->
+      if(next!=prowlarr) {
+       if(dirty)confirm="Отбросить несохранённые изменения JacRed?" to {dirty=false;prowlarr=next}
+       else prowlarr=next
+      }
+     }
+     if(prowlarr) key(s.config.managedUrl,"prowlarr") {
+      SshPanel(s,model,tv,false,prowlarr=true,onSearchAdmin={searchAdmin=it to true})
+     } else {
      var section by rememberSaveable(s.config.scope,s.config.managedUrl){mutableStateOf(JacredSection.Overview)}
      LaunchedEffect(section) {screenScroll.scrollTo(0)}
      JacredSectionTabs(section,tv) {next->
@@ -258,7 +268,7 @@ private enum class JacredSection(val title: String) {
      var requestedCatalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      when(section) {
       JacredSection.Settings -> key(s.config.managedUrl) {
-       SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onJacredAdmin={jacredAdmin=it})
+       SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onSearchAdmin={searchAdmin=it to false})
       }
       JacredSection.Jobs -> key(s.config.scope,s.config.managedUrl) {
        if(installed&&diagnostics!=null) {
@@ -332,7 +342,8 @@ private enum class JacredSection(val title: String) {
        while(true){delay(6_000);controller.load(JACRED_OVERVIEW)}
       }
      }
-    } else if(managed.me!=null) SettingsHint("Панель JacRed доступна администратору сервера.")
+     }
+    } else if(managed.me!=null) SettingsHint("Настройки поиска доступны администратору сервера.")
    }
    "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
    "server-torr"->{
@@ -349,7 +360,7 @@ private enum class JacredSection(val title: String) {
  BoxWithConstraints(if(adminTarget==null) Modifier.fillMaxSize() else Modifier.fillMaxSize().alpha(0f).clearAndSetSemantics { hideFromAccessibility() }) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","JacRed" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second !in setOf("server-jacred","server-resources")||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
+    listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","Поиск раздач" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second !in setOf("server-jacred","server-resources")||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
    Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
   }else BoundedPane(!tv){content()}
@@ -357,13 +368,15 @@ private enum class JacredSection(val title: String) {
  if(adminTarget!=null) {
   val context=LocalContext.current
   val ssh=remember(context,model.secrets){OwnerSsh(context,model.secrets)}
-  JacredAdminScreen(tv,onClose={keyboard?.hide();jacredAdmin=null}) { opened ->
+  val (target,prowlarr)=adminTarget
+  SearchAdminScreen(tv,if(prowlarr)"Prowlarr" else "JacRed",onClose={keyboard?.hide();searchAdmin=null}) { opened ->
    val config=s.config
    val me=withContext(Dispatchers.IO){ManagedApi(config,model.secrets).authorized("me")}
    check(me.optString("role")=="admin"&&me.optString("serverId")==config.serverId) {
-    "Админка JacRed доступна владельцу сервера."
+    "Веб-админка доступна владельцу сервера."
    }
-   ssh.browseJacred(adminTarget,config.serverId,opened)
+   if(prowlarr) ssh.browseProwlarr(target,config.serverId,opened)
+   else ssh.browseJacred(target,config.serverId,opened)
   }
  }
  }
@@ -395,7 +408,8 @@ private enum class JacredSection(val title: String) {
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
-@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,onDirty:(Boolean)->Unit={},onJacredAdmin:(SshTarget)->Unit={}) {
+@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,prowlarr:Boolean=false,onDirty:(Boolean)->Unit={},onSearchAdmin:(SshTarget)->Unit={}) {
+ val searchService=jacred||prowlarr
  val keyboard=LocalSoftwareKeyboardController.current
  val focus=LocalFocusManager.current
  val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
@@ -403,7 +417,7 @@ private enum class JacredSection(val title: String) {
  var connectionOpen by rememberSaveable{mutableStateOf(false)}
  var refreshedLimits by remember{mutableIntStateOf(limitsRevision)}
  val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
- var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||jacred)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
+ var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||searchService)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
  var jacredDirty by remember{mutableStateOf(false)}
  var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
@@ -459,19 +473,64 @@ private enum class JacredSection(val title: String) {
  if(!install||progress==null){
  if(install){Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Остальное MJWatch сделает сам")}
  if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
- if(settings||jacred)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Подключение по SSH",tv){connectionOpen=!connectionOpen}}
- if((!settings&&!jacred)||connectionOpen){
+ if(settings||searchService)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Подключение по SSH",tv){connectionOpen=!connectionOpen}}
+ if((!settings&&!searchService)||connectionOpen){
  ServerField(host,{host=it},"IP или домен сервера");if(!settings)ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
  if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
  TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
- if(!jacred)ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
+ if(!searchService)ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
  }
- if(busy&&!jacred)LinearProgressIndicator(Modifier.fillMaxWidth())
+ if(busy&&!searchService)LinearProgressIndicator(Modifier.fillMaxWidth())
  if(install){
   if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
   if(advanced)Action("Восстановить запуск по SSH",tv,secondary=true,enabled=!busy){askConfirmation{perform{target->ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("recovery")).put("confirmed",true));connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
   Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){startInstallation()}
   Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){showProgress(InstallationProgress());checkInstallation()}
+
+ }else if(prowlarr){
+  val hasSsh=host.isNotBlank()&&password.isNotBlank()
+  val snapshot=data
+  val operation=snapshot?.optJSONObject("operation")
+  val installing=operation?.optString("state")=="running"
+  val installed=snapshot?.optBoolean("installed")==true
+  val running=snapshot?.optBoolean("ready")==true
+  val configured=snapshot?.optBoolean("configured")==true
+  val selected=snapshot?.optString("provider")=="prowlarr"
+  fun refresh()=perform{target->data=ssh.readProwlarr(target);connectionOpen=false;message=""}
+  SettingsCard("Prowlarr",Icons.Outlined.Search,tv) {
+   SettingsHint("Prowlarr ищет раздачи в подключённых торрент-трекерах.")
+   if(snapshot!=null) {
+    Text(if(selected)"Внутренний поиск через Prowlarr" else "Внутренний поиск через JacRed")
+    Text(when {
+     installing -> "Идёт установка Prowlarr…"
+     configured -> "Торрент-трекеры настроены"
+     running -> "Добавьте торрент-трекер в веб-админке"
+     installed -> "Prowlarr установлен. Служба не отвечает."
+     else -> "Prowlarr ещё не установлен"
+    })
+    if(operation?.optString("state")=="failed") SettingsHint(prowlarrInstallError(operation.optString("code")))
+   }
+   if(!connectionOpen&&snapshot==null) Action("Подключить SSH",tv,enabled=!busy){connectionOpen=true}
+   else Action("Обновить состояние",tv,secondary=true,enabled=!busy&&hasSsh,loading=busy){refresh()}
+   if(snapshot!=null&&!running&&!installing) {
+    Action(if(installed)"Запустить Prowlarr" else "Установить Prowlarr",tv,enabled=!busy&&hasSsh) {
+     perform{target->message="Устанавливаем и проверяем Prowlarr…";data=ssh.installProwlarr(target);message=""}
+    }
+   }
+   if(running) {
+    SettingsHint("При первом входе создайте логин и пароль Prowlarr, затем добавьте трекер в Indexers и обновите состояние.")
+    Action("Открыть админку Prowlarr",tv,secondary=true,enabled=!busy&&hasSsh) {
+     focus.clearFocus(force=true)
+     keyboard?.hide()
+     onSearchAdmin(target())
+    }
+   }
+   if(selected||configured) {
+    Action(if(selected)"Переключить поиск на JacRed" else "Использовать Prowlarr для поиска",tv,enabled=!busy&&hasSsh) {
+     perform{target->data=ssh.selectSearchProvider(target,!selected);message=""}
+    }
+   }
+  }
 
  }else if(jacred){
   fun refresh()=perform{target->data=ssh.readJacred(target);connectionOpen=false;message=""}
@@ -495,7 +554,7 @@ private enum class JacredSection(val title: String) {
     enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank()) {
     focus.clearFocus(force=true)
     keyboard?.hide()
-    onJacredAdmin(target())
+    onSearchAdmin(target())
    }
   }
  }else if(settings){
@@ -551,3 +610,14 @@ private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchMo
 }
 
 private fun installationLabel(result:JSONObject):String {val stage=when(result.optString("stage")){"checking"->"Проверяем сервер";"installing_torrserver"->"Устанавливаем TorrServer";"installing_mjwatch"->"Устанавливаем MJWatch";"securing"->"Настраиваем защиту и автозапуск";"verifying","awaiting_app_verification"->"Проверяем и подключаем приложение";"failed"->"Установка прервана";else->"Проверяем состояние"};return stage+result.optString("code").takeIf{it.isNotBlank()}?.let{" · $it"}.orEmpty()}
+
+private fun prowlarrInstallError(code:String):String=when(code){
+ "unsupported_architecture"->"Установка Prowlarr поддерживается на Linux x64 и arm64."
+ "existing_service_conflict"->"На сервере уже есть служба или файлы Prowlarr с именем MJ Watch."
+ "port_in_use"->"Порт 19696 на сервере уже занят."
+ "download_failed"->"Сервер не смог скачать Prowlarr с GitHub. Проверьте подключение."
+ "dependency_install_failed"->"Не удалось установить SQLite. Проверьте репозитории пакетов сервера."
+ "checksum_mismatch"->"Контрольная сумма архива Prowlarr не совпала."
+ "service_unavailable"->"Prowlarr не ответил после запуска. Проверьте состояние службы."
+ else->"Установка Prowlarr прервана. Обновите состояние и повторите попытку."
+}

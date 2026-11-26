@@ -17,11 +17,21 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
+
+type fixtureTransport struct{ host string }
+
+func (t fixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host == "127.0.0.1:19117" {
+		r = r.Clone(r.Context())
+		r.URL.Host, r.Host = t.host, t.host
+	}
+	return http.DefaultTransport.RoundTrip(r)
+}
 
 func main() {
 	if len(os.Args) != 3 {
@@ -55,6 +65,9 @@ func main() {
 	secret := make([]byte, 32)
 	rand.Read(secret)
 	os.WriteFile(filepath.Join(dir, "secret.key"), secret, 0600)
+	if err := os.WriteFile(filepath.Join(dir, "jacred-access.json"), []byte(`{"apiKey":"fixture"}`), 0600); err != nil {
+		log.Fatal(err)
+	}
 	torr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/echo":
@@ -66,6 +79,9 @@ func main() {
 				files = append(files, map[string]any{"id": 18, "path": "fixture/second.mp4", "length": videoInfo.Size()})
 			}
 			json.NewEncoder(w).Encode(map[string]any{"hash": "0123456789012345678901234567890123456789", "file_stats": files})
+		case "/api/v2.0/indexers/all/results":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"Results":[{"Title":"Managed fixture 720p","Tracker":"fixture","MagnetUri":"magnet:?xt=urn:btih:0123456789012345678901234567890123456789","Seeders":1}]}`)
 		case "/stream":
 			http.ServeFile(w, r, video)
 		default:
@@ -80,16 +96,11 @@ func main() {
 	defer db.Close()
 	config := service.Config{Database: filepath.Join(dir, "state.db"), TorrURL: torr.URL, Certificate: filepath.Join(dir, "tls.crt"), PrivateKey: filepath.Join(dir, "tls.key"), SecretKey: filepath.Join(dir, "secret.key"), BackupDir: filepath.Join(dir, "backups")}
 	server := service.New(db, config)
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/", server)
-	mux.HandleFunc("/fixture-source/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if !strings.Contains(r.URL.Path, "results") {
-			http.NotFound(w, r)
-			return
-		}
-		io.WriteString(w, `{"Results":[{"Title":"Managed fixture 720p","Tracker":"fixture","MagnetUri":"magnet:?xt=urn:btih:0123456789012345678901234567890123456789","Seeders":1}]}`)
-	})
+	upstream, err := url.Parse(torr.URL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	server.Client.Transport = fixtureTransport{host: upstream.Host}
 	go func() {
 		control := http.NewServeMux()
 		control.HandleFunc("/torrent", func(w http.ResponseWriter, r *http.Request) {
@@ -120,5 +131,5 @@ func main() {
 		}
 	}()
 	fmt.Printf("Isolated fixture listening on %s (TLS) and %s (test bootstrap)\n", listen, controlListen)
-	log.Fatal(http.ListenAndServeTLS(listen, config.Certificate, config.PrivateKey, mux))
+	log.Fatal(http.ListenAndServeTLS(listen, config.Certificate, config.PrivateKey, server))
 }
