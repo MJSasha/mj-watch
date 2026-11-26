@@ -16,6 +16,15 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35], manifest = org.robolectric.annotation.Config.NONE)
 class OfflineDownloadsTest {
+    @Test fun managedPosterKeepsOnlyTheImagePathAfterServerMigration() {
+        val config = Config(connectionMode = "managed", managedUrl = "https://new.example:8443")
+        assertEquals("w500/series.jpg", offlinePosterPath(config,
+            "https://old.example/api/v1/metadata/images/w500/series.jpg"))
+        assertNull(offlinePosterPath(config, "https://old.example/api/v1/metadata/tv/12"))
+        assertNull(offlinePosterPath(config, "https://old.example/api/v1/metadata/images/w500/series.jpg?token=value"))
+        assertNull(offlinePosterPath(Config(), "https://old.example/t/p/w500/series.jpg"))
+    }
+
     @Test fun seasonQueuesOnlyItsVideosAndKeepsExistingItems() = runBlocking {
         val app = RuntimeEnvironment.getApplication()
         val config = Config(torrServer = "http://127.0.0.1:8090", localHttp = true)

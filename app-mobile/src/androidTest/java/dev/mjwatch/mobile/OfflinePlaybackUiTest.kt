@@ -67,8 +67,10 @@ class OfflinePlaybackUiTest {
     }
 
     @Test fun downloadMovieAndSeason() {
-        val bytes=fileIds.associateWith {id ->
-            // A valid trailing MP4 free box distinguishes the three server responses.
+        val selectSubset=viewport=="phone"
+        val unselectedEpisode=42 to "Северный сигнал S01E03.mp4"
+        val bytes=(fileIds+unselectedEpisode.first).associateWith {id ->
+            // A valid trailing MP4 free box distinguishes the server responses.
             video+Buffer().writeInt(12).writeUtf8("free").writeInt(id).readByteArray()
         }
         MockWebServer().use {server ->
@@ -82,7 +84,8 @@ class OfflinePlaybackUiTest {
                             val raw=request.body.readUtf8()
                             val media=listOf(film,series).singleOrNull {it.hash in raw}
                                 ?: return MockResponse().setResponseCode(404)
-                            val files=JSONArray().apply {media.files.forEach {(id,path) ->
+                            val available=if(media===series&&selectSubset)media.files+unselectedEpisode else media.files
+                            val files=JSONArray().apply {available.forEach {(id,path) ->
                                 put(JSONObject().put("id",id).put("path",path).put("length",bytes.getValue(id).size))
                             }}
                             MockResponse().setBody(JSONObject().put("hash",media.hash).put("file_stats",files).toString())
@@ -134,8 +137,17 @@ class OfflinePlaybackUiTest {
                         ui.waitUntil(5000) {
                             runCatching { ui.onNodeWithTag("file-list").performScrollToNode(hasTestTag("file-$id")) }.isSuccess
                         }
-                        ui.onNodeWithTag("file-$id").performClick()
+                        ui.onNodeWithTag("file-$id").assertIsOn()
                         ui.onNodeWithTag("file-download").performClick()
+                    } else if (selectSubset) {
+                        val list=ui.onNodeWithTag("file-list")
+                        for ((id, _) in media.files) {
+                            list.performScrollToNode(hasTestTag("file-$id"))
+                            ui.onNodeWithTag("file-$id").assertIsOff().performClick().assertIsOn()
+                        }
+                        list.performScrollToNode(hasTestTag("file-${unselectedEpisode.first}"))
+                        ui.onNodeWithTag("file-${unselectedEpisode.first}").assertIsOff()
+                        ui.onNodeWithTag("file-download").assertTextEquals("Скачать (2)").performClick()
                     } else {
                         awaitTag("file-download-season")
                         ui.onNodeWithTag("file-download-season").performClick()
@@ -179,6 +191,17 @@ class OfflinePlaybackUiTest {
                         assertFalse("Downloading must not start the player",PlaybackActivity.hasActivePlayback())
                         val local=runBlocking {store.localFile(config,item.id)} ?: error("Download is not readable")
                         assertArrayEquals("Downloaded bytes for #$id",bytes.getValue(id),local.readBytes())
+                        if(id==24) File(context.noBackupFilesDir,"offline-media/${item.id}.poster").writeText("invalid artwork")
+                        if(id==31) {
+                            // A valid cover on a later episode is available even if the first image failed.
+                            val bitmap=android.graphics.Bitmap.createBitmap(12,18,android.graphics.Bitmap.Config.ARGB_8888)
+                            try {
+                                bitmap.eraseColor(android.graphics.Color.CYAN)
+                                File(context.noBackupFilesDir,"offline-media/${item.id}.poster").outputStream().use {
+                                    assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it))
+                                }
+                            } finally {bitmap.recycle()}
+                        }
                     }
                 }
             }
@@ -200,9 +223,15 @@ class OfflinePlaybackUiTest {
             awaitTag("offline-list")
             ui.onNodeWithTag("offline-home").assertIsDisplayed()
             ui.onNodeWithText("Без сети").assertIsDisplayed()
-            ui.onNodeWithText("Поиск").assertDoesNotExist()
-            ui.onNodeWithText("Настройки").assertDoesNotExist()
+            ui.onNodeWithTag("bottom-navigation").assertDoesNotExist()
             ui.waitUntil(8000) {ui.onAllNodesWithText(series.title).fetchSemanticsNodes().isNotEmpty()}
+            val seriesEpisodes=downloads.filter { it.title==series.title }.sortedBy { it.episode }
+            val poster=runBlocking {store.localPoster(config,seriesEpisodes.map {it.id},allowNetwork=false)}
+            assertEquals("${seriesEpisodes[1].id}.poster",poster?.name)
+            val list=ui.onNodeWithTag("offline-list")
+            list.performScrollToNode(hasTestTag("offline-season"))
+            ui.onNode(hasTestTag("offline-poster") and hasAnyAncestor(hasTestTag("offline-season")),
+                useUnmergedTree=true).assertIsDisplayed()
             capture("$viewport-ready")
             for(id in fileIds) {
                 val download=downloads.single {item->item.fileId==id}
@@ -216,6 +245,13 @@ class OfflinePlaybackUiTest {
                 leavePlayer()
                 awaitTag("offline-list")
             }
+            ui.onNodeWithTag("offline-select").performClick()
+            list.performScrollToNode(hasTestTag("offline-select-season"))
+            ui.onNodeWithTag("offline-select-season").performClick().assertIsOn()
+            ui.onNodeWithTag("offline-delete-selected").assertTextEquals("Удалить (2)").performClick()
+            ui.onNodeWithTag("offline-confirm-delete").performClick()
+            runBlocking {withTimeout(5000) {store.observe(config).first { rows -> rows.map {it.fileId}==listOf(17) }}}
+            ui.onNodeWithTag("offline-season").assertDoesNotExist()
         }
 
         // The managed player has an expired token and no usable server listener.

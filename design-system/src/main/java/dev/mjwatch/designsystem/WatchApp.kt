@@ -7,7 +7,6 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
@@ -15,7 +14,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -32,7 +30,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -191,9 +188,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            val detailNav=page=="detail" && !rail && width<600 && LocalConfiguration.current.screenHeightDp>=480 &&
-                (LocalConfiguration.current.fontScale<1.5f || LocalConfiguration.current.screenHeightDp>=740)
+            val detailNav=page=="detail" && width<600 && LocalConfiguration.current.screenHeightDp>=480
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
+            val activeDestination=if(detailNav) state.originPage else page
             Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
                 if(!imeVisible) Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))) {
                     AnimatedVisibility(
@@ -201,42 +198,24 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         enter=fadeIn(tween(180))+expandVertically(tween(240)),
                         exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
                     ) {
-                        AnimatedContent(
-                            targetState=detailNav,
-                            transitionSpec={fadeIn(tween(170)) togetherWith fadeOut(tween(130))},
-                            label="Bottom navigation",
-                        ) {compact->
-                            val active=showBottomBar&&compact==detailNav
-                            val semantics=if(active) Modifier else Modifier.clearAndSetSemantics { hideFromAccessibility() }
-                            if(compact) {
-                                val navBackground=if(colors.background.luminance()<.5f) androidx.compose.ui.graphics.Color(0xff0c1015) else colors.background
-                                Column(semantics.background(navBackground).windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))) {
-                                    HorizontalDivider(color=colors.onSurface.copy(alpha=.12f))
-                                    val columns=if(LocalConfiguration.current.fontScale>=1.5f&&width<512) 2 else destinations.size
-                                    destinations.chunked(columns).forEach { row ->
-                                        Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                                            row.forEach {d->
-                                                val selected=d.id==state.originPage || d.id=="library"&&state.originPage=="history"
-                                                val tint=if(selected)colors.primary else colors.onSurfaceVariant
-                                                Column(Modifier.weight(1f).heightIn(min=52.dp).clip(RoundedCornerShape(12.dp))
-                                                    .background(if(selected) colors.primary.copy(alpha=.10f) else navBackground)
-                                                    .selectable(selected,enabled=active,role=Role.Tab,onClick={model.page(d.id)}).padding(horizontal=2.dp,vertical=3.dp),
-                                                    verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-                                                    Icon(d.icon,null,Modifier.size(22.dp),tint=tint)
-                                                    Text(d.title,fontSize=11.sp,lineHeight=15.sp,color=tint,maxLines=1)
-                                                }
-                                            }
-                                        }
-                                        }
-                                }
-                            } else Column(semantics.background(colors.surface).windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))) {
-                                val fontScale=LocalConfiguration.current.fontScale
-                                val columns=if(fontScale>=1.5f&&width<512) 2 else destinations.size
-                                destinations.chunked(columns).forEach {row->
-                                    NavigationBar(Modifier.fillMaxWidth().height(if(fontScale>=1.5f) 88.dp else 74.dp),containerColor=colors.surface,tonalElevation=0.dp,windowInsets=WindowInsets(0)) {
-                                        row.forEach {d->NavigationBarItem(selected=state.page==d.id,enabled=active,onClick={model.page(d.id)},colors=NavigationBarItemDefaults.colors(selectedIconColor=colors.primary,selectedTextColor=colors.onSurface,unselectedIconColor=colors.onSurfaceVariant,unselectedTextColor=colors.onSurfaceVariant,indicatorColor=colors.primaryContainer),icon={Icon(d.icon,null,Modifier.size(24.dp))},label={Text(d.title,fontSize=11.sp,maxLines=1,softWrap=false)})}
-                                    }
-                                }
+                        NavigationBar(
+                            modifier=Modifier.fillMaxWidth().height(56.dp).testTag("bottom-navigation"),
+                            containerColor=colors.surface,
+                            tonalElevation=0.dp,
+                            windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
+                        ) {
+                            destinations.forEach { destination ->
+                                NavigationBarItem(
+                                    selected=destination.id==activeDestination||destination.id=="library"&&activeDestination=="history",
+                                    enabled=showBottomBar,
+                                    onClick={model.page(destination.id)},
+                                    colors=NavigationBarItemDefaults.colors(
+                                        selectedIconColor=colors.primary,
+                                        unselectedIconColor=colors.onSurfaceVariant,
+                                        indicatorColor=colors.primaryContainer,
+                                    ),
+                                    icon={Icon(destination.icon,destination.title,Modifier.size(24.dp))},
+                                )
                             }
                         }
                     }
@@ -647,14 +626,24 @@ private const val PosterAspectRatio = 2f / 3f
     action:(@Composable BoxScope.()->Unit)?=null,
     progress:(@Composable ()->Unit)?=null
 ) {
+    CinematicArtworkTile(title,subtitle,artworkTag,PosterAspectRatio,action,progress) { modifier ->
+        Artwork(metadata,config,modifier,backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true)
+    }
+}
+
+@Composable internal fun CinematicArtworkTile(
+    title:String,
+    subtitle:String,
+    artworkTag:String,
+    aspectRatio:Float,
+    action:(@Composable BoxScope.()->Unit)?=null,
+    progress:(@Composable ()->Unit)?=null,
+    artwork:@Composable (Modifier)->Unit,
+) {
     val captionBackground = Color(0xFF161B24)
     var captionHeight by remember {mutableIntStateOf(0)}
-    Box(Modifier.fillMaxWidth().aspectRatio(PosterAspectRatio).clip(RoundedCornerShape(16.dp))) {
-        Artwork(
-            metadata,config,
-            Modifier.matchParentSize().testTag(artworkTag).blurPosterCaption(captionHeight),
-            backdrop=true,demo=demo,alignment=Alignment.Center,posterFirst=true
-        )
+    Box(Modifier.fillMaxWidth().aspectRatio(aspectRatio).clip(RoundedCornerShape(16.dp))) {
+        artwork(Modifier.matchParentSize().testTag(artworkTag).blurPosterCaption(captionHeight))
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {captionHeight=it.height}
                 .background(Brush.verticalGradient(
@@ -945,6 +934,9 @@ private class ReleaseOptions(
     var selection by rememberSaveable(s.handle?.hash,s.downloadSelection,s.releaseSeason,s.releaseEpisode) {
         mutableStateOf<Int?>(null)
     }
+    var downloadSelection by rememberSaveable(handle?.hash,release?.id,s.releaseSeason,s.releaseEpisode) {
+        mutableStateOf<List<Int>?>(null)
+    }
     fun launch(file:TorrentFile) {
         if(s.downloadSelection||launching||handle==null||release==null||!model.isFileSelectionActive(handle.hash,release.id)) return
         if(!tv&&s.remotePlayback) {
@@ -1019,7 +1011,7 @@ private class ReleaseOptions(
     LaunchedEffect(handle?.hash,s.resumePath,indexed,s.downloadSelection,awaitingRemote) {
         if(indexed==null) return@LaunchedEffect
         if(s.downloadSelection) {
-            if(selection==null) selection=videos.singleOrNull()?.serverFileId
+            if(downloadSelection==null) downloadSelection=listOfNotNull(videos.singleOrNull {it.canDownload}?.serverFileId)
             return@LaunchedEffect
         }
         if(autoLaunched||awaitingRemote) return@LaunchedEffect
@@ -1029,6 +1021,10 @@ private class ReleaseOptions(
         if(s.resumePath!=null) {if(target==null) selection=null;model.consumeResume(target==null)}
     }
     val file=visibleFiles.firstOrNull {it.serverFileId==selection&&it.video}
+    val downloadFiles=remember(indexed,downloadSelection) {
+        val ids=downloadSelection.orEmpty().toSet()
+        indexed.orEmpty().map {it.first}.filter {it.serverFileId in ids&&it.canDownload}
+    }
     val seasonToDownload = (season ?: implicitSeason).takeIf { episode == null }
     val seasonFiles = remember(indexed, release, seasonToDownload, s.downloadSelection, tv) {
         if (!tv && s.downloadSelection && seasonToDownload != null && release != null && indexed != null)
@@ -1088,7 +1084,14 @@ private class ReleaseOptions(
             Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(1.3f).clip(RoundedCornerShape(18.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)
             Text(file?.let {fileLabel(it.path)} ?: "Выберите видеофайл",fontSize=20.sp,fontWeight=FontWeight.Bold)
         }
-        if(file!=null) {
+        if(!tv&&s.downloadSelection&&release!=null&&handle!=null) {
+            val count=downloadFiles.size
+            Action(if(count>1)"Скачать ($count)" else "Скачать",false,Modifier.fillMaxWidth().testTag("file-download"),
+                enabled=!s.config.demo&&!queueing&&count>0,icon=Icons.Outlined.FileDownload) {
+                enqueue { it.enqueueFiles(s.config,release,handle,downloadFiles,s.selectedMetadata,implicitSeason,
+                    episode.takeIf {count==1}) }
+            }
+        } else if(file!=null) {
             val p=positionByPath[file.path]
             if(p!=null&&tv) Text("Сохранено ${time(p.positionMs)}${if(p.completed) " · завершено" else ""}")
             if(!s.downloadSelection) {
@@ -1097,13 +1100,6 @@ private class ReleaseOptions(
                 Action(if(launching) "Открываем видео…" else label+if(p!=null&&!p.completed) " с ${time(p.positionMs)}" else "",
                     tv,Modifier.fillMaxWidth().testTag("file-continue"),enabled=!onTv||remote.canLaunch&&remote.profileKey==s.config.profileKey,
                     icon=Icons.Outlined.PlayArrow,loading=launching) {launch(file)}
-            }
-            if(!tv && s.downloadSelection && release != null && handle != null) {
-                Action("Скачать", false, Modifier.fillMaxWidth().testTag("file-download"),
-                    enabled = !s.config.demo && !queueing && file.size > 0 && file.serverFileId > 0,
-                    icon = Icons.Outlined.FileDownload) {
-                    enqueue { it.enqueue(s.config, release, handle, file, s.selectedMetadata, implicitSeason, episode) }
-                }
             }
         } else Text(if(s.downloadSelection)"Выберите файл для загрузки" else "Выберите файл для просмотра",color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}
@@ -1128,7 +1124,7 @@ private class ReleaseOptions(
                 false, Modifier.fillMaxWidth().testTag("file-download-season"),
                 enabled = !queueing, icon = Icons.Outlined.FileDownload) { confirmSeason = true }
         } else if (!tv && s.downloadSelection && indexed != null && seasonToDownload != null && !s.config.demo) {
-            Text("В раздаче не удалось определить файлы сезона. Выберите другую раздачу или скачайте нужные файлы по одному.",
+            Text("В раздаче не удалось определить файлы сезона. Отметьте нужные файлы в списке.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(tv)SettingsGroup(true){SettingsCheckbox("Все файлы и sample",showAll){showAll=it}}
@@ -1150,13 +1146,20 @@ private class ReleaseOptions(
                 else if(visibleFiles.isEmpty())item {Empty("Нет файлов для выбранного сезона или серии","Попробуйте другой сезон или покажите все серии.",tv,"Показать все серии"){season=null;episode=null;selection=null}}
                 items(visibleFiles,key={it.serverFileId}) {f->
                     Box(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))) {
-                        FileCard(f,tv,selection==f.serverFileId,progress=positionByPath[f.path],focus=tv&&f.serverFileId==(selection ?: videos.firstOrNull()?.serverFileId)) {
-                            if(f.video&&!launching) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}
+                        val selected=if(s.downloadSelection)f.serverFileId in downloadSelection.orEmpty() else selection==f.serverFileId
+                        FileCard(f,tv,selected,progress=positionByPath[f.path],multiSelect=s.downloadSelection,
+                            focus=tv&&f.serverFileId==(selection ?: videos.firstOrNull()?.serverFileId)) {
+                            if(s.downloadSelection) {
+                                if(f.canDownload&&!queueing) {
+                                    val ids=downloadSelection.orEmpty()
+                                    downloadSelection=if(selected)ids-f.serverFileId else ids+f.serverFileId
+                                }
+                            } else if(f.video&&!launching) {if(tv&&selection==f.serverFileId)launch(f) else selection=f.serverFileId}
                         }
                     }
                 }
             }
-            if(!tv&&file!=null) controls()
+        if(!tv&&(file!=null||s.downloadSelection)) controls()
         }
         if(tv) Box(Modifier.width(tvUnit(320f)).fillMaxHeight().verticalScroll(rememberScrollState())) {controls()}
     }

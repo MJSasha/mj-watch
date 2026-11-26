@@ -44,6 +44,7 @@ class OfflineDownloads private constructor(private val app: Context) {
     private val directory get() = File(app.noBackupFilesDir, "offline-media")
     private val commands = Mutex()
     private val drainLock = Mutex()
+    private val posterWrites = Mutex()
     private var active: Pair<String, Job>? = null
 
     // JobScheduler may still report a finished job until it processes jobFinished.
@@ -77,9 +78,9 @@ class OfflineDownloads private constructor(private val app: Context) {
         metadata: Metadata? = null
     ): List<String> = enqueueFiles(config, release, handle, seasonDownloadFiles(handle.files, release.title, season), metadata, season)
 
-    private suspend fun enqueueFiles(
+    suspend fun enqueueFiles(
         config: Config, release: Release, handle: TorrentHandle, files: List<TorrentFile>,
-        metadata: Metadata?, season: Int?, episode: Int? = null
+        metadata: Metadata? = null, season: Int? = null, episode: Int? = null
     ): List<String> = withContext(Dispatchers.IO) {
         require(eligible(config)) { "Загрузка доступна для реального источника на мобильном устройстве" }
         val byId = handle.files.groupBy { it.serverFileId }
@@ -89,7 +90,7 @@ class OfflineDownloads private constructor(private val app: Context) {
         val hash = if (config.managed) requireNotNull(handle.contentHash) else handle.hash
         val profile = profile(config)
         val source = source(config)
-        val posterPath = metadata?.poster?.let { posterPath(config, it) }
+        val posterPath = metadata?.poster?.let { offlinePosterPath(config, it) }
         val createdAt = System.currentTimeMillis()
         val records = files.map { file ->
             val key = contentKey(hash, file.path, file.size)
@@ -160,8 +161,14 @@ class OfflineDownloads private constructor(private val app: Context) {
         }
     }
 
-    suspend fun localPoster(config: Config, id: String): File? = withContext(Dispatchers.IO) {
-        if (entry(config, id)?.item?.state == OfflineState.READY) poster(id).takeIf { it.isFile } else null
+    suspend fun localPoster(config: Config, ids: List<String>, allowNetwork: Boolean): File? = withContext(Dispatchers.IO) {
+        val rows = ids.mapNotNull { entry(config, it) }
+        rows.firstNotNullOfOrNull { row -> existingPoster(row.item.id) }
+            ?: if (allowNetwork) {
+                val row = rows.firstOrNull { it.posterPath != null }
+                    ?: rows.firstOrNull { it.item.metadataId != null }
+                row?.let { optionalOfflineMetadata { savePoster(config, it) } }
+            } else null
     }
 
     suspend fun localSegments(config: Config, id: String): List<SkipSegment> = withContext(Dispatchers.IO) {
@@ -171,6 +178,12 @@ class OfflineDownloads private constructor(private val app: Context) {
 
     private fun poster(id: String) = File(directory, "$id.poster")
     private fun posterPart(id: String) = File(directory, "$id.poster.part")
+    private fun existingPoster(id: String): File? {
+        val file = poster(id).takeIf { it.isFile && it.length() > 0 } ?: return null
+        val bounds = android.graphics.BitmapFactory.Options().also { it.inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        return file.takeIf { bounds.outWidth > 0 && bounds.outHeight > 0 }
+    }
     private fun media(item: OfflineDownload) = File(directory, "${item.id}.${item.path.substringAfterLast('.').lowercase()}")
     private fun partial(id: String) = File(directory, "$id.part")
     private fun verifiedFile(item: OfflineDownload) = media(item).takeIf { it.isFile && it.length() == item.totalBytes }
@@ -299,28 +312,40 @@ class OfflineDownloads private constructor(private val app: Context) {
         }
     }
 
-    private fun posterPath(config: Config, raw: String): String? {
-        val url = raw.toHttpUrlOrNull() ?: return null
-        val base = endpoint(if (config.managed) config.managedUrl else "https://image.tmdb.org")
-        val prefix = if (config.managed) base.child("api/v1/metadata/images/").encodedPath else "/t/p/"
-        return url.encodedPath.takeIf { url.origin() == base.origin() && it.startsWith(prefix) }
-            ?.removePrefix(prefix)?.takeIf { posterImagePath.matches(it) }
-    }
-
-    private suspend fun savePoster(config: Config, row: OfflineRecord) {
-        val path = row.posterPath ?: return
+    private suspend fun savePoster(config: Config, row: OfflineRecord): File? = posterWrites.withLock {
         val id = row.item.id
-        if (poster(id).isFile) return
-        val url = if (config.managed) endpoint(config.managedUrl).child("api/v1/metadata/images/$path")
-            else endpoint("https://image.tmdb.org").child("t/p/$path")
-        val client = if (config.managed) managedClient(config, secrets) else guardedClient(config)
-        val bytes = client.bytes(Request.Builder().url(url).build(), limit = 512 * 1024L)
-        val part = posterPart(id)
-        try {
-            part.writeBytes(bytes)
-            Files.move(part.toPath(), poster(id).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } finally {
-            part.delete()
+        val target = poster(id)
+        existingPoster(id)?.let { return@withLock it }
+        val api = if (config.managed) ManagedApi(config, secrets) else null
+        val path = row.posterPath ?: run {
+            val metadataId = row.item.metadataId?.takeIf { tmdbDownloadId.matches(it) } ?: return@withLock null
+            val adapter = if (api != null) ManagedMetadata(api) else {
+                val token = secrets.get("tmdb").takeIf { it.isNotBlank() && config.metadataProvider == "tmdb" }
+                    ?: return@withLock null
+                TmdbAdapter(token, guardedClient(config))
+            }
+            adapter.details(metadataId)?.poster?.let { offlinePosterPath(config, it) } ?: return@withLock null
+        }
+        val bytes = if (api != null) api.poster(path) else {
+            require(posterImagePath.matches(path))
+            val url = endpoint("https://image.tmdb.org").child("t/p/$path")
+            guardedClient(config.copy(metadataProvider = "tmdb")).bytes(Request.Builder().url(url).build(), limit = 2L * 1024 * 1024)
+        }
+        val image = android.graphics.BitmapFactory.Options().also { it.inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, image)
+        if (image.outWidth <= 0 || image.outHeight <= 0) return@withLock null
+        commands.withLock commit@ {
+            val current = entry(config, id)?.item ?: return@commit null
+            if (current.state == OfflineState.CANCELLED) return@commit null
+            if (!directory.isDirectory && !directory.mkdirs()) return@commit null
+            val part = posterPart(id)
+            try {
+                part.writeBytes(bytes)
+                Files.move(part.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                target
+            } finally {
+                part.delete()
+            }
         }
     }
 
@@ -391,6 +416,15 @@ class OfflineDownloads private constructor(private val app: Context) {
 
 // Keep existing download IDs and source isolation after a verified managed-server move.
 private val posterImagePath = Regex("[a-zA-Z0-9_-]+/[a-zA-Z0-9._-]+\\.(jpg|jpeg|png|webp)", RegexOption.IGNORE_CASE)
+private val tmdbDownloadId = Regex("tmdb:(movie|tv):[1-9][0-9]{0,9}")
+
+internal fun offlinePosterPath(config: Config, raw: String): String? {
+    val url = raw.toHttpUrlOrNull() ?: return null
+    if (config.managed) return managedArtworkPath(url)?.removePrefix(MANAGED_IMAGE_PREFIX)
+    if (url.origin() != "https://image.tmdb.org:443" || url.encodedQuery != null) return null
+    return url.encodedPath.takeIf { it.startsWith("/t/p/") }?.removePrefix("/t/p/")
+        ?.takeIf { posterImagePath.matches(it) }
+}
 
 private suspend fun <T> optionalOfflineMetadata(load: suspend () -> T): T? = withTimeoutOrNull(8_000) {
     try {

@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,13 +59,26 @@ import kotlinx.coroutines.delay
     }
 }
 
-@Composable internal fun FileCard(file:TorrentFile,tv:Boolean,selected:Boolean,progress:Progress?=null,focus:Boolean=false,onClick:()->Unit) {
+internal val TorrentFile.canDownload get()=video&&size>0&&serverFileId>0
+
+@Composable internal fun FileCard(file:TorrentFile,tv:Boolean,selected:Boolean,progress:Progress?=null,focus:Boolean=false,
+    multiSelect:Boolean=false,onClick:()->Unit) {
     val requester=remember {FocusRequester()}
     val location=remember {BringIntoViewRequester()}
     LaunchedEffect(focus) {if(focus){delay(100);requester.requestFocus()}}
-    LaunchedEffect(selected) {if(selected){delay(100);location.bringIntoView()}}
+    LaunchedEffect(selected,multiSelect) {if(selected&&!multiSelect){delay(100);location.bringIntoView()}}
     val number=remember(file.path){episodeNumber(file.path)}
-    val modifier=Modifier.fillMaxWidth().testTag("file-${file.serverFileId}").focusRequester(requester).bringIntoViewRequester(location).semantics {this.selected=selected;role=Role.RadioButton}
+    val modifier=Modifier.fillMaxWidth().testTag("file-${file.serverFileId}").focusRequester(requester)
+        .bringIntoViewRequester(location).semantics {
+            if(multiSelect) {
+                role=Role.Checkbox
+                toggleableState=ToggleableState(selected)
+                if(!file.canDownload) disabled()
+            } else {
+                this.selected=selected
+                role=Role.RadioButton
+            }
+        }
     NativeCard(tv,modifier,selected,onClick=onClick) {
         Row(Modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
             Surface(shape=MaterialTheme.shapes.small,color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.size(44.dp)) {
@@ -84,7 +98,10 @@ import kotlinx.coroutines.delay
                 }
                 if(progress!=null&&!progress.completed&&(progress.durationMs ?: 0)>0)LinearProgressIndicator(progress={(progress.positionMs.toFloat()/progress.durationMs!!.toFloat()).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth().clearAndSetSemantics{},gapSize=0.dp,drawStopIndicator={})
             }
-            if(selected)Icon(Icons.Outlined.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
+            if(multiSelect&&file.canDownload) Icon(
+                if(selected)Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,null,
+                tint=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            else if(selected)Icon(Icons.Outlined.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
         }
     }
 }

@@ -182,7 +182,10 @@ fun managedClient(c:Config,secrets:SecretStore,caOverride:String?=null):OkHttpCl
  }.build()
 }
 
-private val managedImagePath = Regex("/api/v1/metadata/images/(?:w92|w154|w185|w342|w500|w780|w1280|original)/[A-Za-z0-9_-]{1,128}\\.(?:jpg|png|webp)$")
+internal const val MANAGED_IMAGE_PREFIX = "/api/v1/metadata/images/"
+private val managedImagePath = Regex("${MANAGED_IMAGE_PREFIX}(?:w92|w154|w185|w342|w500|w780|w1280|original)/[A-Za-z0-9_-]{1,128}\\.(?:jpg|png|webp)$")
+internal fun managedArtworkPath(url:HttpUrl):String? =
+    if(url.isHttps&&url.encodedQuery==null)managedImagePath.find(url.encodedPath)?.value else null
 
 fun managedImageClient(config: Config, secrets: SecretStore): OkHttpClient {
     val base = endpoint(config.managedUrl)
@@ -191,8 +194,8 @@ fun managedImageClient(config: Config, secrets: SecretStore): OkHttpClient {
     builder.interceptors().add(0, Interceptor { chain ->
         val request = chain.request()
         val url = request.url
-        val path = if (request.method == "GET" && url.isHttps && url.origin() != base.origin() && url.encodedQuery == null) {
-            managedImagePath.find(url.encodedPath)?.value
+        val path = if (request.method == "GET" && url.origin() != base.origin()) {
+            managedArtworkPath(url)
         } else null
         if (path == null) chain.proceed(request)
         else chain.proceed(request.newBuilder().url(base.child(path)).removeHeader("Authorization").build())
@@ -254,6 +257,14 @@ class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=nu
  }
  suspend fun authorized(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null):JSONObject =
   withAuthorization {token->request(path,method,body,revision,headers=mapOf("Authorization" to "Bearer $token"))}
+
+ internal suspend fun poster(path:String):ByteArray {
+  val image=MANAGED_IMAGE_PREFIX+path
+  require(managedImagePath.matches(image))
+  return withAuthorization {token->
+   client.bytes(Request.Builder().url(base.child(image)).header("Authorization","Bearer $token").build(),2L*1024*1024)
+  }
+ }
 
  internal fun searchAdminSocket(service:String,id:String?,listener:WebSocketListener):WebSocket {
   require(service in setOf("jacred","prowlarr"))

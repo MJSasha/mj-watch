@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -20,14 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -192,7 +191,7 @@ private fun episodeStill(path: String, config: Config): String? {
                 episodes == null -> item("loading") { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = inset).semantics { contentDescription = "Загрузка серий" }) }
                 groups.isEmpty() -> item("empty") { Text("Серии этого сезона пока не добавлены.", Modifier.padding(horizontal = inset)) }
                 else -> itemsIndexed(groups, key = { _,row -> "season-$season-row-${row.first().number}" }) { index,group ->
-                    Row(Modifier.width(contentWidth).padding(horizontal = inset).padding(top = if (index == 0) 12.dp else 0.dp).height(IntrinsicSize.Min),
+                    Row(Modifier.width(contentWidth).padding(horizontal = inset).padding(top = if (index == 0) 12.dp else 0.dp),
                         horizontalArrangement = Arrangement.spacedBy(gap)) {
                         group.forEach { episode ->
                             val position = positions[EpisodeNumber(season, episode.number)]
@@ -269,57 +268,51 @@ private fun episodeStill(path: String, config: Config): String? {
     val measurer = rememberTextMeasurer()
     val captionWidth = with(LocalDensity.current) { (tileWidth - 24.dp).roundToPx() }
     val visibleCaption = if (continuing && measurer.measure(fullCaption.orEmpty(), captionStyle, softWrap = false).size.width > captionWidth) caption else fullCaption
+    val artworkRatio = 1.25f / LocalDensity.current.fontScale.coerceAtLeast(1f)
     var focused by remember { mutableStateOf(false) }
-    val dark = colors.background.luminance() < .5f
-    val panel = when {
-        tv && focused -> colors.primaryContainer
-        dark -> Color(0xFF1F2732)
-        else -> colors.surface
-    }
-    Box(modifier.fillMaxHeight()) {
-        NativeCard(tv, Modifier.fillMaxSize().onFocusChanged { focused = it.hasFocus }.testTag("episode-$number")
-            .semantics { if (continuing) stateDescription = "Продолжить просмотр" }, onLongClick = onMenu, onClick = onPlay) {
-            Column(Modifier.fillMaxSize().background(panel)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1.35f).background(colors.surfaceContainerHigh).testTag("episode-banner-$number")) {
+    NativeCard(tv, modifier.fillMaxWidth().onFocusChanged { focused = it.hasFocus }.testTag("episode-$number")
+        .semantics { if (continuing) stateDescription = "Продолжить просмотр" }, outlined = !tv,
+        onLongClick = onMenu, onClick = onPlay) {
+        val frame = if (tv) Modifier.padding(TvPosterClearance).tvPosterFocus(focused) else Modifier
+        Box(frame) {
+            CinematicArtworkTile(episode.name, visibleCaption.orEmpty(), "episode-banner-$number", artworkRatio,
+                action = {
+                    val watched = position?.completed == true
+                    val badgeInk = if (watched) Color(0xFFC7FF68) else Color.White
+                    Row(Modifier.align(Alignment.TopStart).padding(10.dp)
+                        .background(if (watched) Color(0xFF30450F) else Color(0xCC161B24), CircleShape)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .clearAndSetSemantics { contentDescription = "Серия $number" },
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(number.toString().padStart(2, '0'), color = badgeInk, fontSize = 14.sp,
+                            lineHeight = 18.sp, fontWeight = FontWeight.Bold)
+                        if (watched) Icon(Icons.Outlined.Check, null, Modifier.size(13.dp), tint = badgeInk)
+                    }
+                    if (!tv) IconButton(onClick = onMenu,
+                        modifier = Modifier.align(Alignment.TopEnd).testTag("episode-menu-$number")) {
+                        Icon(Icons.Outlined.MoreVert, "Действия серии $number",
+                            Modifier.background(Color(0xCC161B24), CircleShape).padding(4.dp), tint = Color.White)
+                    }
+                },
+                progress = if (continuing && total > 0) {{
+                    LinearProgressIndicator(
+                        progress = { (elapsed.toFloat() / total).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        trackColor = Color.White.copy(alpha = .24f), gapSize = 0.dp, drawStopIndicator = {},
+                    )
+                }} else null,
+            ) { artwork ->
+                Box(artwork.background(colors.surfaceContainerHigh)) {
                     val image = episode.image ?: item.backdrop ?: item.poster
-                    if (demo && image == null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.demo_orbit), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-                    else {
+                    if (demo && image == null) {
+                        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.demo_orbit),
+                            null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                    } else {
                         Icon(Icons.Outlined.Movie, null, Modifier.align(Alignment.Center).size(28.dp), tint = colors.onSurfaceVariant)
                         if (image != null) AsyncImage(model = image, imageLoader = LocalImages.current, contentDescription = null,
                             modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                     }
-                    val watched = position?.completed == true
-                    val badgeInk = if (watched) Color(0xFFC7FF68) else Color.White
-                    Row(Modifier.align(Alignment.TopStart).padding(10.dp)
-                        .background(if (watched) Color(0xFF30450F) else Color(0xBE10171C), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 7.dp, vertical = 4.dp)
-                        .clearAndSetSemantics { contentDescription = "Серия $number" },
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(number.toString().padStart(2, '0'), color = badgeInk, fontSize = 16.sp,
-                            lineHeight = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.sp)
-                        if (watched) Icon(Icons.Outlined.Check, null, Modifier.size(13.dp), tint = badgeInk)
-                    }
                 }
-                Column(Modifier.fillMaxWidth().weight(1f).padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 15.dp)) {
-                    Text(episode.name, style = MaterialTheme.typography.bodyLarge, fontSize = 16.sp,
-                        lineHeight = 23.sp, letterSpacing = 0.sp, color = if (dark) Color(0xFFF0F2EB) else colors.onSurface,
-                        fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (visibleCaption != null) Text(visibleCaption, Modifier.padding(top = if (continuing) 11.5.dp else 8.5.dp), style = captionStyle,
-                        color = if (dark) Color(0xFFB3BDC8) else colors.onSurfaceVariant)
-                    if (continuing && total > 0) {
-                        Spacer(Modifier.weight(1f))
-                        Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(RoundedCornerShape(50))
-                            .background(if (dark) Color(0xFF3C4551) else colors.surfaceContainerHighest)) {
-                            Box(Modifier.fillMaxHeight().fillMaxWidth((elapsed.toFloat() / total).coerceIn(0f, 1f))
-                                .background(if (dark) Color(0xFFC7FF68) else colors.primary))
-                        }
-                    }
-                }
-            }
-        }
-        if (!tv) IconButton(onClick = onMenu, modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 3.dp).size(48.dp).testTag("episode-menu-$number")) {
-            Box(Modifier.size(40.dp).background(Color(0xBD10171C), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.MoreVert, "Действия серии $number", tint = Color.White, modifier = Modifier.size(24.dp))
             }
         }
     }

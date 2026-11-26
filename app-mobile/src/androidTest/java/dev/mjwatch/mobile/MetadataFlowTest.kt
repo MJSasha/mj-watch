@@ -87,8 +87,21 @@ class MetadataFlowTest {
     val height=artwork.bottom-artwork.top
     Assert.assertEquals(2f/3f,(artwork.right-artwork.left).value/height.value,0.02f)
     Assert.assertTrue("Title should sit over the lower part of the poster",title.top>artwork.top+height/2&&title.bottom<artwork.bottom)
+    val configuration=compose.activity.resources.configuration
+    val hasBottomNavigation=configuration.screenWidthDp<600 && configuration.screenHeightDp>=480
+    val navigation=compose.onNodeWithTag("bottom-navigation")
+    val withinNavigation=hasAnyAncestor(hasTestTag("bottom-navigation"))
+    val before=if(hasBottomNavigation) {
+        compose.onNode(withinNavigation and hasContentDescription("Поиск") and hasClickAction()).assertIsSelected()
+        navigation.getUnclippedBoundsInRoot()
+    } else null
     compose.onNode(resultTitle and hasClickAction()).performClick()
     compose.waitUntil(5000) {model.state.value.page=="detail"&&model.state.value.selectedMetadata?.id==item.id}
+    if(before!=null) {
+        Assert.assertEquals(before,navigation.getUnclippedBoundsInRoot())
+        compose.onNode(withinNavigation and hasContentDescription("Поиск") and hasClickAction()).assertIsSelected()
+        compose.onNode(withinNavigation and hasText("Поиск"),useUnmergedTree=true).assertDoesNotExist()
+    }
  }
  @Test fun dismissingSourcesKeepsTheSameDetailScreenAndTab() {
     lateinit var model: WatchModel
@@ -150,6 +163,10 @@ class MetadataFlowTest {
     val badge = compose.onNodeWithContentDescription("Серия 1", useUnmergedTree = true).getUnclippedBoundsInRoot()
     Assert.assertTrue(badge.left > banner.left && badge.top > banner.top)
     Assert.assertTrue(badge.right < (banner.left + banner.right) / 2)
+    val title = compose.onNode(hasText("Серия 1") and hasAnyAncestor(hasTestTag("episode-1")),
+        useUnmergedTree = true).getUnclippedBoundsInRoot()
+    Assert.assertTrue("The episode title overlays the lower half of the artwork",
+        title.top > (banner.top + banner.bottom) / 2 && title.bottom < banner.bottom)
     val first = compose.onNodeWithTag("episode-1").getUnclippedBoundsInRoot()
     val second = compose.onNodeWithTag("episode-2").getUnclippedBoundsInRoot()
     Assert.assertEquals(first.top.value, second.top.value, 1f)
