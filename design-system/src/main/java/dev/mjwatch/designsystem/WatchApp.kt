@@ -321,7 +321,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             .then(if(gradient==null) Modifier else Modifier.background(gradient,shape)),
         colors=ButtonDefaults.buttonColors(
             containerColor=when {gradient!=null -> Color.Transparent; secondary -> colors.surface; else -> colors.primary},
-            contentColor=when {gradient!=null -> Color.White; secondary -> colors.onSurface; else -> colors.onPrimary},
+            contentColor=when {gradient!=null -> Color(0xFF082323); secondary -> colors.onSurface; else -> colors.onPrimary},
         ),
         contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp),
     ) {content()}
@@ -508,7 +508,7 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                                         Modifier.fillMaxWidth().padding(top=6.dp).onSizeChanged {actionHeight=it.height}
                                             .testTag("hero-open"),
                                         icon=Icons.Outlined.PlayArrow,pill=true,
-                                        gradient=Brush.horizontalGradient(listOf(Color(0xFF006E48),Color(0xFF006D7B))),
+                                        gradient=Brush.horizontalGradient(listOf(Color(0xFF3BDA71),Color(0xFF00CED3))),
                                     ) {
                                         if(hero!=null) model.metadata(hero,"hero:${hero.id}")
                                         else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")
