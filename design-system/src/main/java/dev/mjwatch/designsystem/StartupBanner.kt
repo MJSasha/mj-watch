@@ -60,15 +60,13 @@ fun Activity.startupWindowReady(): State<Boolean> {
             assembled=true
         }
     }
-    LaunchedEffect(waiting,windowReady) {
-        if(!waiting && animate && windowReady) {
-            // The ready screen is already in the tree. Reveal it on the next frame.
+    LaunchedEffect(waiting,assembled,windowReady) {
+        if(!waiting && assembled && animate && windowReady) {
+            // Keep the background opaque until the shapes have settled.
             withFrameNanos {}
-            backdrop.animateTo(0f,tween(150))
+            markOpacity.animateTo(0f,tween(90))
+            backdrop.animateTo(0f,tween(120))
         }
-    }
-    LaunchedEffect(waiting,assembled) {
-        if(!waiting && assembled && animate) markOpacity.animateTo(0f,tween(90))
     }
     if(!waiting && (!animate || revealFinished)) return
 
@@ -122,7 +120,7 @@ fun Activity.startupWindowReady(): State<Boolean> {
         })
         Image(painterResource(R.drawable.startup_brand),null,mark.graphicsLayer {
             val progress=assembly.value
-            alpha=backdrop.value
+            alpha=markOpacity.value
             translationY=markFrame.toPx()*.17f*(progress/.42f).coerceAtMost(1f)
         })
     }
