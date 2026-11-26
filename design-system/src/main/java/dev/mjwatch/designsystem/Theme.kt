@@ -60,4 +60,7 @@ private val WatchTypography=Typography(
         else listOf(Color(0xFF00805E),Color(0xFF00788A)))
 }
 
-@Composable fun WatchTheme(theme:String,content:@Composable ()->Unit) { MaterialTheme(colorScheme=if(theme=="dark" || theme=="system"&&isSystemInDarkTheme()) Dark else Light,typography=WatchTypography,shapes=WatchShapes,content=content) }
+@Composable internal fun isWatchDark(theme: String): Boolean =
+    theme == "dark" || theme == "system" && isSystemInDarkTheme()
+
+@Composable fun WatchTheme(theme:String,content:@Composable ()->Unit) { MaterialTheme(colorScheme=if(isWatchDark(theme)) Dark else Light,typography=WatchTypography,shapes=WatchShapes,content=content) }

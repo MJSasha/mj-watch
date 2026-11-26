@@ -17,7 +17,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
-import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -88,6 +87,21 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val state by model.state.collectAsStateWithLifecycle()
     val online = tv || rememberNetworkAvailable()
     val onlineState = rememberSaveableStateHolder()
+    var darkStartupBackdrop by remember(animateStartup) { mutableStateOf(animateStartup) }
+    val window = androidx.activity.compose.LocalActivity.current?.window
+    val darkTheme = isWatchDark(state.config.theme)
+    val lightBars = !state.initializing && !darkStartupBackdrop && !darkTheme
+    SideEffect {
+        window?.let {
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                isAppearanceLightStatusBars = lightBars
+                isAppearanceLightNavigationBars = lightBars
+            }
+            if (online && !state.initializing && android.os.Build.VERSION.SDK_INT >= 29) {
+                it.isNavigationBarContrastEnforced = false
+            }
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         if (state.initializing) BackHandler {}
         else Box(Modifier.fillMaxSize().testTag("app-content")) {
@@ -95,7 +109,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             else OfflineHome(state.config)
         }
         if(state.initializing || animateStartup) {
-            StartupBanner(waiting=state.initializing,animateMark=animateStartup,windowReady=startupWindowReady)
+            StartupBanner(state.initializing, animateStartup, startupWindowReady) {
+                darkStartupBackdrop = it
+            }
         }
     }
 }
@@ -143,7 +159,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(exitRequested) ExitAppDialog(tv,onDismiss={exitRequested=false},onExit={
             model.cancel();model.updates.cancel();PlaybackActivity.stopActivePlayback();activity?.finishAndRemoveTask()
         })
-        SideEffect {activity?.let {a->WindowCompat.getInsetsController(a.window,a.window.decorView).apply {isAppearanceLightStatusBars=colors.background.luminance()>.5;isAppearanceLightNavigationBars=colors.background.luminance()>.5};if(android.os.Build.VERSION.SDK_INT>=29) a.window.isNavigationBarContrastEnforced=false}}
         androidx.tv.material3.MaterialTheme(colorScheme=androidx.tv.material3.darkColorScheme(primary=colors.primary,onPrimary=colors.onPrimary,surface=colors.surface,onSurface=colors.onSurface,surfaceVariant=colors.surfaceVariant,onSurfaceVariant=colors.onSurfaceVariant)) {
             val width=LocalConfiguration.current.screenWidthDp
             val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0

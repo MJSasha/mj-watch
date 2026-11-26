@@ -6,11 +6,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import dev.mjwatch.designsystem.WatchApp
 import dev.mjwatch.designsystem.WatchModel
-import dev.mjwatch.designsystem.startupWindowReady
+import dev.mjwatch.designsystem.coldStartupWindow
 class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
-        val startupWindow=if(savedInstanceState==null) startupWindowReady() else null
+        val startupWindow=coldStartupWindow(restored = savedInstanceState != null)
         enableEdgeToEdge()
         val model=ViewModelProvider(this)[WatchModel::class.java]
         if(savedInstanceState==null) handleInvitation(intent,model)

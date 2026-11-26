@@ -23,7 +23,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -35,7 +34,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import dev.mjwatch.core.*
 import dev.mjwatch.playback.PlaybackActivity
@@ -335,15 +333,6 @@ internal fun rememberNetworkAvailable(): Boolean {
 internal fun OfflineHome(config: Config) {
     WatchTheme(config.theme) {
         val colors = MaterialTheme.colorScheme
-        val window = androidx.activity.compose.LocalActivity.current?.window
-        SideEffect {
-            window?.let {
-                WindowCompat.getInsetsController(it, it.decorView).apply {
-                    isAppearanceLightStatusBars = colors.background.luminance() > .5f
-                    isAppearanceLightNavigationBars = isAppearanceLightStatusBars
-                }
-            }
-        }
         Surface(color = colors.background, modifier = Modifier.fillMaxSize().testTag("offline-home")) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
