@@ -21,8 +21,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 
-@Composable fun StartupBanner() {
-    var showPlayMark by remember { mutableStateOf(false) }
+@Composable fun StartupBanner(animateMark:Boolean=true) {
+    var showPlayMark by remember { mutableStateOf(!animateMark) }
     LaunchedEffect(Unit) { showPlayMark = true }
     val progress by animateFloatAsState(if(showPlayMark) 1f else 0f, tween(320), label="startup mark")
     BoxWithConstraints(
@@ -49,20 +49,20 @@ import androidx.compose.ui.unit.dp
         Image(play, null, Modifier.graphicsLayer {
             alpha = .32f * 4f * progress * (1f - progress)
             translationX = -markFrame.toPx() * .14f * (1f - progress)
-            translationY = -markFrame.toPx() * .30f * (1f - progress)
-            scaleX = .9f
+            translationY = -markFrame.toPx() * (.14f + .22f * (1f - progress))
+            scaleX = .8f
             scaleY = scaleX
         }.then(playFrame))
         Image(play, null, Modifier.graphicsLayer {
             alpha = progress
-            translationY = -markFrame.toPx() * .30f * (1f - progress)
-            scaleX = .82f + .18f * progress
+            translationY = -markFrame.toPx() * (.14f + .22f * (1f - progress))
+            scaleX = .76f + .12f * progress
             scaleY = scaleX
         }.then(playFrame))
         Image(
             painterResource(R.drawable.startup_brand), null,
             Modifier.size(markFrame).graphicsLayer {
-                translationY = markFrame.toPx() * .32f * (progress / .42f).coerceAtMost(1f)
+                translationY = markFrame.toPx() * .17f * (progress / .42f).coerceAtMost(1f)
             },
         )
     }

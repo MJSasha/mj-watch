@@ -89,7 +89,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val onlineState = rememberSaveableStateHolder()
     if (state.initializing) {
         BackHandler {}
-        StartupBanner()
+        StartupBanner(animateMark=Build.VERSION.SDK_INT<31)
     } else {
         Box(Modifier.fillMaxSize().testTag("app-content")) {
             if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }

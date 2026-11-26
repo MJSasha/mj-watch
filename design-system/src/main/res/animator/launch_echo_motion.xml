@@ -1,0 +1,6 @@
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:ordering="together">
+    <objectAnimator android:propertyName="translateY" android:valueFrom="-38.88" android:valueTo="-15.12"
+            android:valueType="floatType" android:duration="320"/>
+    <objectAnimator android:propertyName="translateX" android:valueFrom="-15.12" android:valueTo="0"
+            android:valueType="floatType" android:duration="320"/>
+</set>

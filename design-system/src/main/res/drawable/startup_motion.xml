@@ -1,0 +1,12 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/startup_brand">
+    <target android:name="brand_group" android:animation="@animator/launch_brand_motion"/>
+    <target android:name="play_group" android:animation="@animator/launch_play_motion"/>
+    <target android:name="echo_group" android:animation="@animator/launch_echo_motion"/>
+    <target android:name="play1" android:animation="@animator/launch_play_fade"/>
+    <target android:name="play2" android:animation="@animator/launch_play_fade"/>
+    <target android:name="play3" android:animation="@animator/launch_play_fade"/>
+    <target android:name="echo1" android:animation="@animator/launch_echo_fade"/>
+    <target android:name="echo2" android:animation="@animator/launch_echo_fade"/>
+    <target android:name="echo3" android:animation="@animator/launch_echo_fade"/>
+</animated-vector>
