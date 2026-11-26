@@ -470,11 +470,12 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                             val background=MaterialTheme.colorScheme.background
                             var captionHeight by remember {mutableIntStateOf(0)}
                             var actionHeight by remember {mutableIntStateOf(0)}
+                            val blurHeight=actionHeight+with(LocalDensity.current) {24.dp.roundToPx()}
                             Box(
                                 Modifier.fillMaxWidth().heightIn(min=if(compact) 226.dp else 296.dp)
                                     .clip(RoundedCornerShape(topStart=20.dp,topEnd=20.dp)),
                             ) {
-                                Artwork(hero,s.config,Modifier.matchParentSize().blurPosterCaption(captionHeight),
+                                Artwork(hero,s.config,Modifier.matchParentSize().blurPosterCaption(blurHeight),
                                     backdrop=true,demo=hero==null&&s.config.demo)
                                 Box(Modifier.matchParentSize().drawWithCache {
                                     val shadeEnd=(size.height-captionHeight+20.dp.toPx()).coerceIn(1f,size.height)
