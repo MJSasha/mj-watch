@@ -34,6 +34,29 @@ class ManagedServerTest {
  }}
  @get:Rule(order=1)val compose=createAndroidComposeRule<MainActivity>()
  private fun screenshot(name:String){compose.waitForIdle();val i=InstrumentationRegistry.getInstrumentation();val dir=File(i.targetContext.getExternalFilesDir(null),"managed-proof").apply{mkdirs()};Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))}
+ @Test fun releasePaginationKeepsTheVisibleRowAndPreloadsBeforeTheEnd() {
+  Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("pagingFixture")=="true")
+  val model=compose.runOnIdle {ViewModelProvider(compose.activity)[WatchModel::class.java]}
+  compose.waitUntil(10000) {model.state.value.configured}
+  compose.runOnIdle {
+   model.metadata(Metadata("tmdb:movie:1002","Paging fixture",null,null),cache=false)
+   model.findReleases()
+  }
+  compose.waitUntil(10000) {model.state.value.results.size==20 && !model.state.value.busy}
+  val first=hasText("Paging fixture 01 1080p",substring=true) and hasClickAction()
+  compose.waitUntil(5000) {compose.onAllNodes(first).fetchSemanticsNodes().isNotEmpty()}
+  compose.onNode(first).assertIsDisplayed()
+  val anchor=hasText("Paging fixture 16 1080p",substring=true) and hasClickAction()
+  compose.onNodeWithTag("release-list").performScrollToNode(anchor)
+  val before=compose.onNode(anchor).getUnclippedBoundsInRoot()
+  compose.waitUntil(10000) {model.state.value.results.size==40 && !model.state.value.loadingMore}
+  compose.onNode(anchor).assertIsDisplayed()
+  Assert.assertEquals(before,compose.onNode(anchor).getUnclippedBoundsInRoot())
+  val nearEnd=hasText("Paging fixture 36 1080p",substring=true) and hasClickAction()
+  compose.onNodeWithTag("release-list").performScrollToNode(nearEnd)
+  compose.waitUntil(10000) {model.state.value.results.size==43 && model.state.value.nextReleaseCursor==null}
+  compose.onNode(nearEnd).assertIsDisplayed()
+ }
  @Test fun managedFirstFrameRangeProgressAndExistingSettings(){
   lateinit var model:WatchModel;compose.runOnIdle{model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
   compose.waitUntil(15000){model.managed.state.value.me?.optString("role")=="admin"}

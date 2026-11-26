@@ -390,7 +390,7 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
         finally { loadingNext=false }
     }
     val cursor=result?.nextCursor
-    val candidates=result?.let {(it.releases+listOfNotNull(release)).distinctBy {row->row.hash ?: row.id}}
+    val candidates=result?.releases?.ifEmpty {listOfNotNull(release)}
         ?: if(m==null) listOfNotNull(release) else null
     val retrySearch = {
         result=null

@@ -26,7 +26,7 @@ import (
 type fixtureTransport struct{ host string }
 
 func (t fixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.URL.Host == "127.0.0.1:19117" {
+	if r.URL.Host == "127.0.0.1:19117" || r.URL.Host == "127.0.0.1:19696" {
 		r = r.Clone(r.Context())
 		r.URL.Host, r.Host = t.host, t.host
 	}
@@ -68,6 +68,11 @@ func main() {
 	if err := os.WriteFile(filepath.Join(dir, "jacred-access.json"), []byte(`{"apiKey":"fixture"}`), 0600); err != nil {
 		log.Fatal(err)
 	}
+	if os.Getenv("MJWATCH_FIXTURE_PROWLARR") == "1" {
+		if err := os.WriteFile(filepath.Join(dir, "search-provider.json"), []byte(`{"provider":"prowlarr","apiKey":"fixture"}`), 0600); err != nil {
+			log.Fatal(err)
+		}
+	}
 	torr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/echo":
@@ -82,6 +87,15 @@ func main() {
 		case "/api/v2.0/indexers/all/results":
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"Results":[{"Title":"Managed fixture 720p","Tracker":"fixture","MagnetUri":"magnet:?xt=urn:btih:0123456789012345678901234567890123456789","Seeders":1}]}`)
+		case "/api/v1/search":
+			rows := make([]map[string]any, 0, 43)
+			for i := 1; i <= 43; i++ {
+				rows = append(rows, map[string]any{
+					"title": fmt.Sprintf("Paging fixture %02d 1080p", i), "indexer": "fixture",
+					"protocol": "torrent", "seeders": 44 - i, "magnetUrl": fmt.Sprintf("magnet:?xt=urn:btih:%040x", i),
+				})
+			}
+			json.NewEncoder(w).Encode(rows)
 		case "/stream":
 			http.ServeFile(w, r, video)
 		default:
