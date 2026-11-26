@@ -82,7 +82,9 @@ private data class Destination(val id:String,val title:String,val icon:ImageVect
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
-@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null,animateStartup:Boolean=false) {
+@Composable fun WatchApp(
+    model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null,animateStartup:Boolean=false,startupWindowReady:Boolean=true,
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val online = tv || rememberNetworkAvailable()
     val onlineState = rememberSaveableStateHolder()
@@ -93,7 +95,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             else OfflineHome(state.config)
         }
         if(state.initializing || animateStartup) {
-            StartupBanner(waiting=state.initializing,animateMark=animateStartup)
+            StartupBanner(waiting=state.initializing,animateMark=animateStartup,windowReady=startupWindowReady)
         }
     }
 }
@@ -476,13 +478,13 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                                 Box(Modifier.matchParentSize().drawWithCache {
                                     val shadeEnd=(size.height-captionHeight+20.dp.toPx()).coerceIn(1f,size.height)
                                     val shade=Brush.verticalGradient(
-                                        colors=listOf(Color.Transparent,Color(0xE610141E)),
+                                        colors=listOf(Color.Transparent,Color(0xCC10141E)),
                                         startY=(shadeEnd-60.dp.toPx()).coerceAtLeast(0f),endY=shadeEnd,
                                     )
                                     val fade=Brush.verticalGradient(
                                         0f to Color.Transparent,.46f to background.copy(alpha=.30f),1f to background,
-                                        startY=(size.height-actionHeight-22.dp.toPx()).coerceIn(0f,size.height-1f),
-                                        endY=size.height,
+                                        startY=(size.height-actionHeight-45.dp.toPx()).coerceAtLeast(0f),
+                                        endY=(size.height-10.dp.toPx()).coerceAtLeast(1f),
                                     )
                                     onDrawBehind {drawRect(shade);drawRect(fade)}
                                 })

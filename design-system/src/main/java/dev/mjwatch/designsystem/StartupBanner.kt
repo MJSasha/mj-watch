@@ -1,6 +1,9 @@
 package dev.mjwatch.designsystem
 
 import android.animation.ValueAnimator
+import android.app.Activity
+import android.os.Build
+import android.view.ViewTreeObserver
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -20,23 +23,45 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 
-@Composable fun StartupBanner(waiting:Boolean=true,animateMark:Boolean=true) {
+fun Activity.startupWindowReady(): State<Boolean> {
+    val ready=mutableStateOf(Build.VERSION.SDK_INT<31)
+    if(Build.VERSION.SDK_INT>=31) {
+        val decor=window.decorView
+        lateinit var focusListener:ViewTreeObserver.OnWindowFocusChangeListener
+        fun reveal() {
+            ready.value=true
+            val observer=decor.viewTreeObserver
+            if(observer.isAlive) observer.removeOnWindowFocusChangeListener(focusListener)
+        }
+        focusListener=ViewTreeObserver.OnWindowFocusChangeListener {focused ->
+            if(focused) decor.postOnAnimation {if(!ready.value) reveal()}
+        }
+        decor.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+        splashScreen.setOnExitAnimationListener {cover ->
+            cover.remove()
+            reveal()
+        }
+    }
+    return ready
+}
+
+@Composable fun StartupBanner(waiting:Boolean=true,animateMark:Boolean=true,windowReady:Boolean=true) {
     val animate=remember(animateMark) {animateMark && ValueAnimator.areAnimatorsEnabled()}
     val assembly=remember(animate) {Animatable(if(animate) 0f else 1f)}
     val backdrop=remember {Animatable(1f)}
     val markOpacity=remember {Animatable(1f)}
     val revealFinished by remember {derivedStateOf {backdrop.value==0f && markOpacity.value==0f}}
     var assembled by remember(animate) {mutableStateOf(!animate)}
-    LaunchedEffect(animate) {
-        if(animate) {
+    LaunchedEffect(animate,windowReady) {
+        if(animate && windowReady) {
             // Draw the matching system and Compose lockups before the shapes begin to move.
             withFrameNanos {}
             assembly.animateTo(1f,tween(360))
             assembled=true
         }
     }
-    LaunchedEffect(waiting) {
-        if(!waiting && animate) {
+    LaunchedEffect(waiting,windowReady) {
+        if(!waiting && animate && windowReady) {
             // The ready screen is already in the tree. Reveal it on the next frame.
             withFrameNanos {}
             backdrop.animateTo(0f,tween(150))
