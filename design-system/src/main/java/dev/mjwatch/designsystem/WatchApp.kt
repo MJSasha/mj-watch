@@ -198,7 +198,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             .padding(horizontal=8.dp).clip(RoundedCornerShape(22.dp))) {
                             NavigationBar(
                                 modifier=Modifier.fillMaxWidth().height(52.dp).testTag("bottom-navigation"),
-                                containerColor=colors.surface,
+                                containerColor=floatingNavigationColor(),
                                 tonalElevation=0.dp,
                                 windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
                             ) {
