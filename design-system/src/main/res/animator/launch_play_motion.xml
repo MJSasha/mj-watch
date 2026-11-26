@@ -1,8 +1,8 @@
 <set xmlns:android="http://schemas.android.com/apk/res/android" android:ordering="together">
     <objectAnimator android:propertyName="translateY" android:valueFrom="-38.88" android:valueTo="-15.12"
-            android:valueType="floatType" android:duration="320"/>
+            android:valueType="floatType" android:startOffset="150" android:duration="320"/>
     <objectAnimator android:propertyName="scaleX" android:valueFrom="0.76" android:valueTo="0.88"
-            android:valueType="floatType" android:duration="320"/>
+            android:valueType="floatType" android:startOffset="150" android:duration="320"/>
     <objectAnimator android:propertyName="scaleY" android:valueFrom="0.76" android:valueTo="0.88"
-            android:valueType="floatType" android:duration="320"/>
+            android:valueType="floatType" android:startOffset="150" android:duration="320"/>
 </set>

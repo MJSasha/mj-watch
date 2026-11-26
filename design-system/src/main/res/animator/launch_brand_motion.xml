@@ -1,3 +1,3 @@
 <objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
     android:propertyName="translateY" android:valueFrom="0" android:valueTo="18.36"
-        android:valueType="floatType" android:duration="140"/>
+        android:valueType="floatType" android:startOffset="150" android:duration="140"/>
