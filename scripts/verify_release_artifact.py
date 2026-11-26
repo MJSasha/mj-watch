@@ -11,6 +11,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'server' / 'packaging'))
+from update_supply import MAX_DOWNLOAD_SIZE, MAX_UNPACKED_SIZE
+
 
 def require(condition, message):
     if not condition:
@@ -23,6 +26,7 @@ def digest(path):
 
 
 def verify_supply(out, supply, channel):
+    require((out / supply).stat().st_size <= MAX_DOWNLOAD_SIZE, 'Server ZIP exceeds the HTTPS download limit')
     with ZipFile(out / supply) as archive, TemporaryDirectory() as tmp:
         names = ('manifest.json', 'manifest.sig', 'release-public.pem')
         for name in names:
@@ -34,6 +38,8 @@ def verify_supply(out, supply, channel):
                 'Wrong server supply channel or version')
         entries = {entry['path']: (entry['size'], entry['sha256']) for entry in manifest['files']}
         require(len(entries) == len(manifest['files']), 'Duplicate server manifest entry')
+        require(sum(size for size, _ in entries.values()) <= MAX_UNPACKED_SIZE,
+                'Server payload exceeds the HTTPS unpack limit')
         for name in names:
             data = archive.read(name)
             entries[name] = (len(data), hashlib.sha256(data).hexdigest())

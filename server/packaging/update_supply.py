@@ -8,7 +8,8 @@ import time
 import urllib.request
 import zipfile
 
-MAX_SUPPLY = 128 << 20
+MAX_DOWNLOAD_SIZE = 128 << 20
+MAX_UNPACKED_SIZE = 256 << 20
 GITHUB = 'https://github.com/MJSasha/mj-watch/releases/latest/download/'
 PUBLIC_KEY = '/etc/mjwatch/release-public.pem'
 
@@ -17,7 +18,7 @@ def stage_latest(directory, version):
     path = directory / 'supply.zip'
     if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
         raise RuntimeError('incompatible_release')
-    limit = MAX_SUPPLY
+    limit = MAX_DOWNLOAD_SIZE
     deadline = time.monotonic() + 180
     try:
         with urllib.request.urlopen(GITHUB + f'mjwatch-{version}-supply.zip', timeout=15) as source, path.open('wb') as target:
@@ -53,8 +54,10 @@ def unpack(path, directory, version, public_key):
                 raise RuntimeError('supply_integrity')
             info = archive.getinfo(name)
             size += info.file_size
-            if info.file_size != entry['size'] or size > MAX_SUPPLY:
+            if info.file_size != entry['size']:
                 raise RuntimeError('supply_integrity')
+            if size > MAX_UNPACKED_SIZE:
+                raise RuntimeError('supply_limit')
             output = directory / name
             output.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
