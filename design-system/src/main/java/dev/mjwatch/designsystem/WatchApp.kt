@@ -178,7 +178,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         enter=fadeIn(tween(180))+expandVertically(tween(240)),
                         exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
                     ) {
-                        Column(Modifier.fillMaxWidth().windowInsetsPadding(bottomInset)
+                        val floatingInset=bottomInset.union(WindowInsets(bottom=8.dp))
+                        Column(Modifier.fillMaxWidth().windowInsetsPadding(floatingInset)
                             .padding(horizontal=8.dp).clip(RoundedCornerShape(22.dp))) {
                             NavigationBar(
                                 modifier=Modifier.fillMaxWidth().height(52.dp).testTag("bottom-navigation"),

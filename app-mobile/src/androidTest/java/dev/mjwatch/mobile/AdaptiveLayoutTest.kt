@@ -2,6 +2,9 @@ package dev.mjwatch.mobile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -29,6 +32,34 @@ class AdaptiveLayoutTest {
   Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
  }
  @After fun restoreRotation(){device.setOrientationNatural();device.unfreezeRotation()}
+ @Test fun floatingNavigationUsesTheLargerOfSystemInsetAndEightDp() {
+  Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
+  val navigation=ui.onNodeWithTag("bottom-navigation").assertIsDisplayed()
+  val window=ui.activity.window
+  val type=WindowInsetsCompat.Type.navigationBars()
+  val controller=WindowCompat.getInsetsController(window,window.decorView)
+  fun bottomInset()=ui.runOnIdle {
+   (ViewCompat.getRootWindowInsets(window.decorView)?.getInsets(type)?.bottom ?: 0)/density
+  }
+  fun assertGap() {
+   val expected=maxOf(8f,bottomInset())
+   val available=ui.onRoot().getUnclippedBoundsInRoot().bottom
+   val bar=navigation.getUnclippedBoundsInRoot().bottom
+   Assert.assertEquals("System inset or eight dp, whichever is larger",expected,(available-bar).value,1f)
+  }
+  assertGap()
+  try {
+   ui.runOnIdle {controller.hide(type)}
+   ui.waitUntil(5000) {bottomInset()==0f}
+   assertGap()
+   capture("navigation-zero-inset")
+  } finally {
+   ui.runOnIdle { controller.show(type) }
+  }
+  device.setOrientationLeft()
+  ui.waitUntil(5000) {ui.activity.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE}
+  if(ui.onAllNodesWithTag("bottom-navigation").fetchSemanticsNodes().isNotEmpty()) assertGap()
+ }
  @Test fun boundedActionsFormsAndReleaseBackSurviveRotation() {
   lateinit var model:WatchModel
   ui.runOnIdle{model=ViewModelProvider(ui.activity)[WatchModel::class.java]}
