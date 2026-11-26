@@ -63,7 +63,10 @@ class AppLifecycleUiTest {
         compose.mainClock.advanceTimeBy(240)
         compose.onNodeWithTag("startup-banner").assertIsDisplayed()
         compose.onNodeWithTag("app-content").assertExists()
-        compose.mainClock.advanceTimeBy(420)
+        repeat(16) {
+            compose.mainClock.advanceTimeBy(32)
+            compose.waitForIdle()
+        }
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
         compose.mainClock.autoAdvance=true
     }
