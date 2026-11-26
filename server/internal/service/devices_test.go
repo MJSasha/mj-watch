@@ -67,6 +67,50 @@ func TestDeviceDeletionAndInstallationDeduplication(t *testing.T) {
 	}
 }
 
+func TestDeviceAppVersionVisibleToAdminAndPreservedForLegacyProfile(t *testing.T) {
+	s, owner := fixture(t)
+	status, me := call(t, s, owner, "GET", "me", nil)
+	if status != 200 || me["deviceAppVersion"] != true {
+		t.Fatalf("missing version reporting capability: %d %v", status, me)
+	}
+	_, invite := call(t, s, owner, "POST", "admin/users", map[string]string{"name": "viewer"})
+	_, login := call(t, s, "", "POST", "auth/accept-invite", map[string]string{
+		"invite": invite["invite"].(string), "password": "correct-horse-battery", "device": "Phone",
+	})
+	viewer := login["accessToken"].(string)
+	_, me = call(t, s, viewer, "GET", "me", nil)
+	path := "admin/users/" + me["userId"].(string) + "/devices"
+	device := func(token, path string) map[string]any {
+		t.Helper()
+		code, response := call(t, s, token, "GET", path, nil)
+		if code != 200 {
+			t.Fatalf("list devices: %d %v", code, response)
+		}
+		return response["devices"].([]any)[0].(map[string]any)
+	}
+	if got := device(owner, path); got["appVersionCode"] != nil {
+		t.Fatal("unexpected version for legacy device", got)
+	}
+	for _, profile := range []map[string]any{
+		{"type": "phone", "appVersionName": "0.12.43", "appVersionCode": 1264},
+		{"type": "phone", "appVersionName": "0.12.44", "appVersionCode": 1265},
+		{"type": "phone"},
+	} {
+		if code, response := call(t, s, viewer, "PUT", "devices/self/profile", profile); code != 200 {
+			t.Fatalf("update profile: %d %v", code, response)
+		}
+	}
+	if got := device(owner, path); got["appVersionName"] != "0.12.44" || got["appVersionCode"] != float64(1265) {
+		t.Fatal("expected last reported version", got)
+	}
+	if code, _ := call(t, s, viewer, "GET", path, nil); code != 403 {
+		t.Fatal("admin device listing accessible to viewer", code)
+	}
+	if got := device(viewer, "devices"); got["appVersionCode"] != nil {
+		t.Fatal("version exposed outside admin listing", got)
+	}
+}
+
 func TestConcurrentDeviceRefreshIsAtomic(t *testing.T) {
 	s, _ := fixture(t)
 	tokens := []string{}

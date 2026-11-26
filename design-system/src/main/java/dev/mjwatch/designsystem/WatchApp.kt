@@ -158,7 +158,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         val updateState by model.updates.state.collectAsStateWithLifecycle()
         var updateDialogDismissed by rememberSaveable {mutableStateOf(false)}
         LaunchedEffect(updateState.downloading) {if(updateState.downloading)updateDialogDismissed=false}
-        if(updateState.downloading||updateState.ready!=null&&!updateDialogDismissed) UpdateDownloadDialog(
+        if(updateState.downloading||updateState.promptInstall&&updateState.ready!=null&&!updateDialogDismissed) UpdateDownloadDialog(
             updateState,tv,onCancel={model.updates.cancel()},onDismiss={updateDialogDismissed=true},
             installButton={modifier->UpdateInstallAction(model.updates,tv,modifier)}
         )

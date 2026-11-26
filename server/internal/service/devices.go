@@ -36,6 +36,8 @@ func (s *Server) deviceProfile(w http.ResponseWriter, r *http.Request, i identit
 	var v struct {
 		Type         string `json:"type"`
 		Installation string `json:"installationId"`
+		VersionName  string `json:"appVersionName"`
+		VersionCode  int64  `json:"appVersionCode"`
 	}
 	if !decodeLimit(w, r, &v, 1024) {
 		return
@@ -46,6 +48,11 @@ func (s *Server) deviceProfile(w http.ResponseWriter, r *http.Request, i identit
 	}
 	if v.Installation != "" && (len(v.Installation) < 16 || len(v.Installation) > 128 || strings.ContainsFunc(v.Installation, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' })) {
 		fail(w, 400, "installation_id")
+		return
+	}
+	reportedVersion := v.VersionName != "" || v.VersionCode != 0
+	if reportedVersion && (v.VersionCode < 1 || strings.TrimSpace(v.VersionName) == "" || len(v.VersionName) > 256 || strings.ContainsFunc(v.VersionName, unicode.IsControl)) {
+		fail(w, 400, "device_app_version")
 		return
 	}
 	tx, err := s.DB.Begin()
@@ -66,6 +73,11 @@ func (s *Server) deviceProfile(w http.ResponseWriter, r *http.Request, i identit
 		}
 	}
 	_, err = tx.Exec("INSERT INTO device_profiles(device_id,type) VALUES(?,?) ON CONFLICT(device_id) DO UPDATE SET type=excluded.type", i.Device, v.Type)
+	if err == nil && reportedVersion {
+		_, err = tx.Exec(`INSERT INTO device_app_versions(device_id,name,code) VALUES(?,?,?)
+			ON CONFLICT(device_id) DO UPDATE SET name=excluded.name,code=excluded.code
+			WHERE name<>excluded.name OR code<>excluded.code`, i.Device, v.VersionName, v.VersionCode)
+	}
 	if err != nil {
 		fail(w, 503, "database_unavailable")
 		return

@@ -7,6 +7,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
@@ -110,47 +112,120 @@ fun verifyUpdatePackage(context:Context,file:File,update:AppUpdate) {
     val certs=signatures(installed)
     require(certs.isNotEmpty()&&certs==signatures(candidate)) {"Подпись APK отличается от установленного приложения"}
 }
-data class UpdateState(val automatic:Boolean=true,val checking:Boolean=false,val available:AppUpdate?=null,val downloading:Boolean=false,val downloaded:Long=0,val ready:File?=null,val message:String="")
+internal const val UPDATE_PREFS = "updates"
+internal val updateWork = Mutex()
+
+@Suppress("DEPRECATION")
+internal fun android.content.pm.PackageInfo.appVersionCode(): Long =
+    if(Build.VERSION.SDK_INT >= 28) longVersionCode else versionCode.toLong()
+
+internal fun updateFile(context: Context, update: AppUpdate): File =
+    File(context.cacheDir, "updates/update-${update.versionCode}-${update.sha256}.apk")
+
+internal fun cachedUpdateFile(context: Context, update: AppUpdate): File? =
+    updateFile(context, update).takeIf { it.isFile && it.length() == update.size }
+
+// Call with updateWork held. Only publish a file after checksum and APK signature verification.
+internal suspend fun downloadUpdate(
+    context: Context, source: GitHubUpdates, update: AppUpdate, progress: (Long) -> Unit = {}
+): File = withContext(Dispatchers.IO) {
+    val apk = updateFile(context, update)
+    val directory = requireNotNull(apk.parentFile)
+    directory.mkdirs()
+    val part = File.createTempFile("download-", ".part", directory)
+    try {
+        source.download(update, part, progress)
+        verifyUpdatePackage(context, part, update)
+        ensureActive()
+        check(part.renameTo(apk)) { "Не удалось сохранить APK" }
+        directory.listFiles { file -> file != apk && file.name.startsWith("update") && file.extension == "apk" }
+            ?.forEach { it.delete() }
+        apk
+    } finally {
+        part.delete()
+    }
+}
+
+data class UpdateState(val automatic:Boolean=true,val checking:Boolean=false,val available:AppUpdate?=null,val downloading:Boolean=false,val downloaded:Long=0,val ready:File?=null,val message:String="",val promptInstall:Boolean=false)
 class UpdateManager(private val context:Context,private val scope:CoroutineScope) {
-    private val prefs=context.getSharedPreferences("updates",Context.MODE_PRIVATE)
+    private val prefs=context.getSharedPreferences(UPDATE_PREFS,Context.MODE_PRIVATE)
     private val source=GitHubUpdates()
     private var job:Job?=null
     private val mutable=MutableStateFlow(UpdateState(automatic=prefs.getBoolean("automatic",true)))
     val state=mutable.asStateFlow()
     @Suppress("DEPRECATION") val installed=context.packageManager.getPackageInfo(context.packageName,0)
-    @Suppress("DEPRECATION") val versionCode=if(Build.VERSION.SDK_INT>=28) installed.longVersionCode else installed.versionCode.toLong()
+    val versionCode=installed.appVersionCode()
     val versionName=installed.versionName ?: versionCode.toString()
     init {
-        runCatching {prefs.getString("manifest",null)?.let {raw->val release=JSONObject(raw).getString("releaseUrl");parseUpdate(raw,context.packageName,release.substringAfterLast('/'))}}.getOrNull()?.takeIf {it.versionCode>versionCode}?.let {cached->mutable.update {it.copy(available=cached)}}
+        refreshCached()
     }
-    fun automatic(enabled:Boolean) {prefs.edit().putBoolean("automatic",enabled).apply();mutable.update {it.copy(automatic=enabled)}}
+    private fun readCachedUpdate(): AppUpdate? = runCatching {
+        prefs.getString("manifest", null)?.let { raw ->
+            val tag = JSONObject(raw).getString("releaseUrl").substringAfterLast('/')
+            parseUpdate(raw, context.packageName, tag).takeIf { it.versionCode > versionCode }
+        }
+    }.getOrNull()
+
+    fun refreshCached() {
+        if(state.value.downloading || state.value.checking) return
+        val update = readCachedUpdate()
+        val file = update?.let { cachedUpdateFile(context, it) }
+        mutable.update {
+            val sameFile = file != null && it.ready == file
+            it.copy(available=update, ready=file, promptInstall=sameFile && it.promptInstall,
+                message=if(it.available == update && it.ready == file) it.message else "")
+        }
+    }
+    fun automatic(enabled:Boolean) {
+        prefs.edit().putBoolean("automatic",enabled).apply()
+        mutable.update {it.copy(automatic=enabled)}
+        BackgroundUpdateJob.schedule(context, enabled)
+    }
+    fun onResume() {
+        refreshCached()
+        BackgroundUpdateJob.schedule(context, state.value.automatic)
+        check(automatic=true)
+    }
     fun check(automatic:Boolean=false) {
         if(state.value.checking||state.value.downloading) return
-        if(automatic&&(!state.value.automatic||System.currentTimeMillis()-prefs.getLong("lastAttempt",0)<900_000)) return
+        if(automatic&&(!state.value.automatic||updateWork.isLocked||System.currentTimeMillis()-prefs.getLong("lastAttempt",0)<900_000)) return
         prefs.edit().putLong("lastAttempt",System.currentTimeMillis()).apply()
         mutable.update {it.copy(checking=true,message="")}
         job=scope.launch {try {
-            val found=source.latest(context.packageName)?.takeIf {it.versionCode>versionCode}
-            prefs.edit().putString("manifest",found?.manifest).apply()
-            mutable.update {it.copy(checking=false,available=found,ready=if(it.available==found) it.ready else null,message=if(found==null) "Обновлений нет" else "Проверка завершена")}
+            updateWork.withLock {
+                val found=source.latest(context.packageName)?.takeIf {it.versionCode>versionCode}
+                prefs.edit().putString("manifest",found?.manifest).apply()
+                val file = found?.let { cachedUpdateFile(context, it) }
+                mutable.update {it.copy(checking=false,available=found,ready=file,
+                    promptInstall=file != null && file == it.ready && it.promptInstall,
+                    message=if(found==null) "Обновлений нет" else "Проверка завершена")}
+            }
         } catch(_:TimeoutCancellationException) {mutable.update {it.copy(checking=false,message="Проверка обновления заняла слишком много времени. Проверьте интернет и повторите")}}
         catch(e:CancellationException) {mutable.update {it.copy(checking=false)};throw e}
         catch(e:Exception) {mutable.update {it.copy(checking=false,message=if(e is HttpFailure) "Не удалось проверить обновление: HTTP ${e.status}. Откройте GitHub Releases или повторите позже" else "Не удалось проверить обновление. Проверьте интернет или откройте GitHub Releases")}}}
     }
     fun cancel() {job?.cancel();mutable.update {it.copy(message="Загрузка отменена")}}
     fun download() {
-        val update=state.value.available ?: return
+        val requested=state.value.available ?: return
         if(state.value.downloading||state.value.checking) return
-        mutable.update {it.copy(downloading=true,downloaded=0,ready=null,message="")}
+        mutable.update {it.copy(downloading=true,downloaded=0,ready=null,promptInstall=false,message="")}
         job=scope.launch {
-            val directory=File(context.cacheDir,"updates").apply {mkdirs()};val part=File.createTempFile("download-",".part",directory);val apk=File(directory,"update.apk")
             try {
-                source.download(update,part) {bytes->mutable.update {it.copy(downloaded=bytes)}}
-                withContext(Dispatchers.IO) {verifyUpdatePackage(context,part,update);check(part.renameTo(apk)) {"Не удалось сохранить APK"}}
-                mutable.update {it.copy(downloading=false,ready=apk,message="APK проверен. Подтвердите установку в Android")}
+                val (update, apk) = updateWork.withLock {
+                    val newer = readCachedUpdate()?.takeIf { it.versionCode > requested.versionCode }
+                    val update = newer ?: requested
+                    mutable.update {it.copy(available=update)}
+                    val file = newer?.let { cachedUpdateFile(context, it) }
+                        ?: downloadUpdate(context, source, update) {bytes->mutable.update {it.copy(downloaded=bytes)}}
+                    prefs.edit().putString("manifest",update.manifest).apply()
+                    update to file
+                }
+                mutable.update {it.copy(downloading=false,available=update,ready=apk,promptInstall=true,message="APK проверен. Подтвердите установку в Android")}
+            } catch(e:TimeoutCancellationException) {
+                mutable.update {it.copy(message="Загрузка заняла слишком много времени. Повторите позже")}
             } catch(e:CancellationException) {throw e}
             catch(e:Exception) {mutable.update {it.copy(downloading=false,message=if(e is IllegalArgumentException||e is IllegalStateException) e.message?.take(150) ?: "APK не прошёл проверку" else "Загрузка не удалась. Повторите позже")}}
-            finally {withContext(NonCancellable+Dispatchers.IO) {part.delete()};mutable.update {it.copy(downloading=false)}}
+            finally {mutable.update {it.copy(downloading=false)}}
         }
     }
     fun readyFile():File? {

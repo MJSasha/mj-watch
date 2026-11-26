@@ -5,7 +5,7 @@ import org.json.JSONObject
 data class ManagedUser(val id:String,val name:String,val role:String,val blocked:Boolean) {
     val roleLabel get()=if(role=="admin")"Администратор" else "Пользователь"
 }
-data class ManagedDevice(val id:String,val name:String,val lastSeen:Long,val revoked:Boolean,val type:String="unknown",val remoteVideo:Boolean=false,val available:Boolean=false) {
+data class ManagedDevice(val id:String,val name:String,val lastSeen:Long,val revoked:Boolean,val type:String="unknown",val remoteVideo:Boolean=false,val available:Boolean=false,val appVersionName:String="",val appVersionCode:Long=0) {
     val typeLabel get()=when(type){"tv"->"Телевизор";"tablet"->"Планшет";"phone"->"Телефон";else->"Устройство"}
     val shortId get()=id.take(6)
 }
@@ -16,7 +16,12 @@ fun managedUsers(json:JSONObject):List<ManagedUser> {
 }
 fun managedDevices(json:JSONObject):List<ManagedDevice> {
     val rows=json.getJSONArray("devices")
-    return (0 until rows.length()).map {rows.getJSONObject(it).let {v->ManagedDevice(v.getString("id"),v.getString("name"),v.optLong("lastSeen"),v.optBoolean("revoked"),v.optString("type","unknown"),v.optBoolean("remoteVideo"),v.optBoolean("available"))}}
+    return (0 until rows.length()).map { index ->
+        val v = rows.getJSONObject(index)
+        ManagedDevice(v.getString("id"), v.getString("name"), v.optLong("lastSeen"),
+            v.optBoolean("revoked"), v.optString("type", "unknown"), v.optBoolean("remoteVideo"),
+            v.optBoolean("available"), v.optString("appVersionName"), v.optLong("appVersionCode"))
+    }
 }
 fun isLastAdmin(user:ManagedUser,users:List<ManagedUser>)=user.role=="admin"&&!user.blocked&&users.count {it.role=="admin"&&!it.blocked}<=1
 fun validManagedUserName(name:String)=name.trim().isNotEmpty()&&name.trim().toByteArray(Charsets.UTF_8).size<=100

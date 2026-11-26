@@ -147,7 +147,7 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i id
 			} else if parts[3] == "invite" && r.Method == "POST" {
 				s.invite(w, uid)
 			} else if parts[3] == "devices" && r.Method == "GET" {
-				s.devices(w, uid)
+				s.devices(w, uid, true)
 			} else if parts[3] == "devices" && r.Method == "DELETE" {
 				if _, err := s.DB.Exec("UPDATE devices SET revoked=1 WHERE user_id=?", uid); err != nil {
 					fail(w, 503, "database_unavailable")

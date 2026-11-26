@@ -15,7 +15,7 @@ import android.net.NetworkCapabilities
 enum class ServerMoveStatus { CHECKING, RETRY, CONNECTED }
 
 data class ManagedState(val statusCheckedAt:Long=0,val scope:String="",val busy:Boolean=false,val message:String="",val syncMessage:String="",val me:JSONObject?=null,val data:JSONObject?=null,val pairing:JSONObject?=null,val pairingSetup:ManagedTvSetup?=null,val pending:List<OutboxEntry> = emptyList(),val syncedAt:Long=0,val moveStatus:ServerMoveStatus?=null)
-class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val config:()->Config) {
+class ManagedController(private val context:android.content.Context,private val scope:CoroutineScope,private val settings:Settings,private val secrets:SecretStore,private val db:WatchDatabase,private val updates:UpdateManager,private val config:()->Config) {
  private val mutable=MutableStateFlow(ManagedState());val state=mutable.asStateFlow()
  val users=UsersController(scope,secrets,config)
  val qr=TvQrController(scope,secrets,config,this)
@@ -118,7 +118,17 @@ class ManagedController(private val context:android.content.Context,private val 
   try {
    val api=api(c)
    val me=api.authorized("me")
-   runCatching {api.authorized("devices/self/profile","PUT",JSONObject().apply {if(me.optBoolean("deviceInstallationIdentity"))put("installationId",installationId())}.put("type",if(context.packageName.endsWith(".tv"))"tv" else if(context.resources.configuration.smallestScreenWidthDp>=600)"tablet" else "phone"))}
+   val type = when {
+    context.packageName.endsWith(".tv") -> "tv"
+    context.resources.configuration.smallestScreenWidthDp >= 600 -> "tablet"
+    else -> "phone"
+   }
+   val profile = JSONObject().put("type", type)
+   if(me.optBoolean("deviceInstallationIdentity")) profile.put("installationId", installationId())
+   if(type != "tv" && me.optBoolean("deviceAppVersion")) {
+    profile.put("appVersionName", updates.versionName).put("appVersionCode", updates.versionCode)
+   }
+   runCatching {api.authorized("devices/self/profile", "PUT", profile)}
    SyncEngine(api,db.syncDao()).sync(me)
    if(settings.config.first().let {it.scope!=c.scope||it.managedUrl!=c.managedUrl})return@withLock false
    restorePreferences(c)

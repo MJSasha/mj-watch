@@ -1,8 +1,12 @@
 package dev.mjwatch.designsystem
 
+import android.app.NotificationManager
+import android.os.Build
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.mjwatch.core.UpdateManager
+import dev.mjwatch.core.BackgroundUpdateJob
 import dev.mjwatch.playback.PlaybackActivity
 import kotlinx.coroutines.*
 
@@ -46,8 +51,13 @@ import kotlinx.coroutines.*
         }}
         if(!compact) {
             SettingsCard("Проверка обновлений",Icons.Outlined.Update,tv) {
-            SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},modifier=Modifier.focusRequester(entryFocus),description="При открытии приложения")
-            SettingsHint("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.")
+            SettingsToggle("Автопроверка",state.automatic,{manager.automatic(it)},modifier=Modifier.focusRequester(entryFocus),
+                description=if(tv) "При открытии приложения" else "Проверка и фоновая загрузка")
+            if(tv) SettingsHint("Проверяем GitHub не чаще раза в 15 минут. Загрузка начинается по нажатию, установку подтверждает Android.")
+            else {
+                SettingsHint("APK загружается в фоне через безлимитную сеть. Когда он готов, MJ Watch присылает уведомление. Установку подтверждает Android.")
+                if(state.automatic) UpdateNotificationPermission()
+            }
             UpdateButton(if(state.checking) "Проверка…" else "Проверить сейчас",!state.checking&&!state.downloading,loading=state.checking) {manager.check()}
             }
             SettingsGroup(tv) {SettingsActionRow(Icons.Outlined.OpenInNew,"GitHub Releases","Все версии и APK",tv) {try {context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/MJSasha/mj-watch/releases")))} catch(_:Exception) {error="На устройстве нет браузера"}}}
@@ -91,12 +101,41 @@ import kotlinx.coroutines.*
     }
 }
 
+@Composable private fun UpdateNotificationPermission() {
+    val context = LocalContext.current
+    val owner = LocalLifecycleOwner.current
+    val manager = context.getSystemService(NotificationManager::class.java)
+    fun enabled() = manager.areNotificationsEnabled() &&
+        manager.getNotificationChannel(BackgroundUpdateJob.CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
+    var allowed by remember { mutableStateOf(enabled()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = enabled() }
+    DisposableEffect(owner, manager) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) allowed = enabled() }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    if (!allowed) Action("Разрешить уведомления", false, Modifier.fillMaxWidth(), secondary=true) {
+        val prefs = context.getSharedPreferences("update-notifications", 0)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            !prefs.getBoolean("requested", false)) {
+            prefs.edit().putBoolean("requested", true).apply()
+            launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            val channel = manager.getNotificationChannel(BackgroundUpdateJob.CHANNEL)
+            val settings = if (channel?.importance == NotificationManager.IMPORTANCE_NONE) {
+                Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_CHANNEL_ID, channel.id)
+            } else Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            context.startActivity(settings.putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }
+    }
+}
+
 @Composable internal fun AutomaticUpdates(manager:UpdateManager) {
     val owner=LocalLifecycleOwner.current
     DisposableEffect(owner,manager) {
-        val observer=LifecycleEventObserver {_,event->if(event==Lifecycle.Event.ON_RESUME) manager.check(automatic=true)}
+        val observer=LifecycleEventObserver {_,event->if(event==Lifecycle.Event.ON_RESUME) manager.onResume()}
         owner.lifecycle.addObserver(observer)
-        manager.check(automatic=true)
         onDispose {owner.lifecycle.removeObserver(observer)}
     }
 }

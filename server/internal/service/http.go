@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.24"
+var Version = "0.1.25"
 
 type Server struct {
 	maxStreams         int
@@ -227,7 +227,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "me" && r.Method == "GET":
 		var name string
 		s.DB.QueryRow("SELECT name FROM users WHERE id=?", i.User).Scan(&name)
-		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "deviceInstallationIdentity": true})
+		respond(w, 200, map[string]any{"userId": i.User, "name": name, "role": i.Role, "deviceId": i.Device, "serverId": value(s.DB, "server_id"), "serverEpoch": value(s.DB, "server_epoch"), "historyEpoch": i.Epoch, "apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "deviceInstallationIdentity": true, "deviceAppVersion": true})
 	case (path == "capabilities" || path == "config") && r.Method == "GET":
 		respond(w, 200, map[string]any{"apiVersion": 1, "serverVersion": Version, "schemaVersion": 1, "minClientApiVersion": 1, "tmdb": s.publicTMDB(), "sync": true})
 	case path == "auth/logout" && r.Method == "POST":
@@ -243,7 +243,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "remote/"):
 		s.remote(w, r, path, i)
 	case path == "devices" && r.Method == "GET":
-		s.devices(w, i.User)
+		s.devices(w, i.User, false)
 	case strings.HasPrefix(path, "devices/") && r.Method == "DELETE":
 		result, err := s.DB.Exec("DELETE FROM devices WHERE id=? AND user_id=?", strings.TrimPrefix(path, "devices/"), i.User)
 		if err != nil {
@@ -439,8 +439,13 @@ func (s *Server) auth(w http.ResponseWriter, r *http.Request, path string) bool 
 	}
 	return false
 }
-func (s *Server) devices(w http.ResponseWriter, uid string) {
-	rows, e := s.DB.Query("SELECT d.id,d.name,d.last_seen,d.revoked,COALESCE(p.type,'unknown'),COALESCE(r.heartbeat,0),COALESCE(r.instance,'') FROM devices d LEFT JOIN device_profiles p ON p.device_id=d.id LEFT JOIN remote_receivers r ON r.device_id=d.id WHERE d.user_id=? ORDER BY d.last_seen DESC", uid)
+func (s *Server) devices(w http.ResponseWriter, uid string, includeVersion bool) {
+	rows, e := s.DB.Query(`SELECT d.id,d.name,d.last_seen,d.revoked,COALESCE(p.type,'unknown'),
+		COALESCE(r.heartbeat,0),COALESCE(r.instance,''),COALESCE(v.name,''),COALESCE(v.code,0)
+		FROM devices d LEFT JOIN device_profiles p ON p.device_id=d.id
+		LEFT JOIN remote_receivers r ON r.device_id=d.id
+		LEFT JOIN device_app_versions v ON v.device_id=d.id
+		WHERE d.user_id=? ORDER BY d.last_seen DESC`, uid)
 	if e != nil {
 		fail(w, 503, "database_unavailable")
 		return
@@ -448,13 +453,18 @@ func (s *Server) devices(w http.ResponseWriter, uid string) {
 	defer rows.Close()
 	out := []any{}
 	for rows.Next() {
-		var id, name, kind, instance string
-		var seen, revoked, heartbeat int64
-		if rows.Scan(&id, &name, &seen, &revoked, &kind, &heartbeat, &instance) != nil {
+		var id, name, kind, instance, versionName string
+		var seen, revoked, heartbeat, versionCode int64
+		if rows.Scan(&id, &name, &seen, &revoked, &kind, &heartbeat, &instance, &versionName, &versionCode) != nil {
 			fail(w, 503, "database_unavailable")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "name": name, "lastSeen": seen, "revoked": revoked != 0, "type": kind, "remoteVideo": kind == "tv" && instance != "", "available": revoked == 0 && heartbeat > time.Now().Unix()-8})
+		device := map[string]any{"id": id, "name": name, "lastSeen": seen, "revoked": revoked != 0, "type": kind, "remoteVideo": kind == "tv" && instance != "", "available": revoked == 0 && heartbeat > time.Now().Unix()-8}
+		if includeVersion && versionCode > 0 {
+			device["appVersionName"] = versionName
+			device["appVersionCode"] = versionCode
+		}
+		out = append(out, device)
 	}
 	respond(w, 200, map[string]any{"devices": out})
 }

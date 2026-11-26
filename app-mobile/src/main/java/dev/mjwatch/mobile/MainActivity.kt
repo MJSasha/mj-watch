@@ -14,6 +14,7 @@ import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import dev.mjwatch.core.OfflineDownloads
+import dev.mjwatch.core.BackgroundUpdateJob
 import kotlinx.coroutines.flow.first
 import dev.mjwatch.designsystem.WatchApp
 import dev.mjwatch.designsystem.WatchModel
@@ -53,6 +54,13 @@ class MainActivity:ComponentActivity() {
 
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
     private fun handleInvitation(value:android.content.Intent,model:WatchModel){
+        if (value.action == BackgroundUpdateJob.OPEN_UPDATES) {
+            lifecycleScope.launch {
+                model.state.first { !it.initializing }
+                model.updates.refreshCached()
+                model.page("settings-updates")
+            }
+        }
         if (value.action == OfflineDownloads.OPEN_DOWNLOADS) {
             lifecycleScope.launch {
                 model.state.first { !it.initializing }

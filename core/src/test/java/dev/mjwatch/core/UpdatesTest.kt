@@ -9,6 +9,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
 import java.security.MessageDigest
@@ -38,6 +39,22 @@ class UpdatesTest {
             file.writeText("bad");assertTrue(runCatching {verifyUpdateBytes(file,update)}.isFailure)
             file.writeText("a");assertTrue(runCatching {verifyUpdateBytes(file,update)}.isFailure)
         } finally {file.delete()}
+    }
+    @Test fun cachedApkMatchesOnlyItsReleaseAndSize() {
+        val context = RuntimeEnvironment.getApplication()
+        val update = parseUpdate(manifest(), "dev.mjwatch.mobile", "test-42")
+        val file = updateFile(context, update)
+        file.parentFile!!.mkdirs()
+        try {
+            file.writeText("a")
+            assertNull(cachedUpdateFile(context, update))
+            file.writeText("apk")
+            assertEquals(file, cachedUpdateFile(context, update))
+            assertNull(cachedUpdateFile(context, update.copy(versionCode = update.versionCode + 1)))
+            assertNull(cachedUpdateFile(context, update.copy(sha256 = "0".repeat(64))))
+        } finally {
+            file.delete()
+        }
     }
     private fun client(handler:(Request)->Response):OkHttpClient=OkHttpClient.Builder().addInterceptor {handler(it.request())}.build()
     private fun response(request:Request,body:String,code:Int=200,location:String?=null)=Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(code).message("fixture").body(body.toResponseBody("application/json".toMediaType())).apply {location?.let {header("Location",it)}}.build()

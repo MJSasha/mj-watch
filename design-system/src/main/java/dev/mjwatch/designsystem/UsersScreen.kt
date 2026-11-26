@@ -130,6 +130,12 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                     if(devices?.isEmpty()==true)SettingsCard("Устройств пока нет",Icons.Outlined.Devices,tv){Text("Устройства появятся после первого входа.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                     devices?.forEach {device->SettingsCard(device.name,if(device.type=="tv")Icons.Outlined.Tv else Icons.Outlined.Devices,tv){
                         Text(device.typeLabel,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(device.type != "tv") {
+                            val version = if(device.appVersionCode > 0 && device.appVersionName.isNotBlank())
+                                "MJ Watch ${device.appVersionName} · сборка ${device.appVersionCode}"
+                            else "Версия MJ Watch неизвестна"
+                            Text(version, style=MaterialTheme.typography.bodySmall)
+                        }
                         Text(if(device.revoked)"Доступ отозван" else "Последняя активность: ${activityTime(device.lastSeen)}",style=MaterialTheme.typography.bodySmall)
                         DangerAction("Удалить устройство ${device.name}",tv,enabled=!current.busy,displayText="Удалить устройство",icon=Icons.Outlined.DeleteOutline){confirm("Удалить ${device.name}?","Устройство исчезнет из списка, доступ будет отозван. Пользователю ${user.name} потребуется снова войти.","Удалить устройство"){controller.revokeDevices(user.id,device.id)}}
                     }}

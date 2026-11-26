@@ -31,6 +31,10 @@ class ManagedUsersTest {
         assertTrue(users.single().blocked)
         val devices=managedDevices(JSONObject("""{"devices":[{"id":"d","name":"Телефон","lastSeen":42,"revoked":true}]}"""))
         assertEquals("d",devices.single().id);assertEquals(42L,devices.single().lastSeen);assertTrue(devices.single().revoked)
+        assertEquals(0L, devices.single().appVersionCode)
+        val reported = managedDevices(JSONObject("""{"devices":[{"id":"d","name":"Телефон","appVersionName":"0.12.44","appVersionCode":1265}]}""")).single()
+        assertEquals("0.12.44", reported.appVersionName)
+        assertEquals(1265L, reported.appVersionCode)
     }
  @org.junit.Test fun unicodeDeviceAliasesAndBackwardCompatibleTypes() {
   org.junit.Assert.assertTrue(validDeviceName("  Гостиная 😀  "))

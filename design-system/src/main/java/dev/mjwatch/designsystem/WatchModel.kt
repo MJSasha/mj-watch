@@ -68,7 +68,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     val progress:StateFlow<List<Progress>> =scopedLibrary.map {it.positions}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     private val mutable=MutableStateFlow(WatchState())
     val state=mutable.asStateFlow()
-    val managed=ManagedController(app,viewModelScope,settings,secrets,db,{state.value.config})
+    val managed=ManagedController(app,viewModelScope,settings,secrets,db,updates){state.value.config}
     val invitation=InvitationController(app,viewModelScope,secrets,managed,{state.value.config})
     fun openRemoteContent(releaseId:String,title:String,metadataId:String) {
         viewModelScope.launch {state.first {!it.initializing}
