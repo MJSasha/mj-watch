@@ -41,16 +41,19 @@ class AdaptiveLayoutTest {
   fun bottomInset()=ui.runOnIdle {
    (ViewCompat.getRootWindowInsets(window.decorView)?.getInsets(type)?.bottom ?: 0)/density
   }
-  fun assertGap() {
-   val expected=maxOf(8f,bottomInset())
+  fun navigationGap():Float {
    val available=ui.onRoot().getUnclippedBoundsInRoot().bottom
    val bar=navigation.getUnclippedBoundsInRoot().bottom
-   Assert.assertEquals("System inset or eight dp, whichever is larger",expected,(available-bar).value,1f)
+   return (available-bar).value
+  }
+  fun assertGap() {
+   val expected=maxOf(8f,bottomInset())
+   Assert.assertEquals("System inset or eight dp, whichever is larger",expected,navigationGap(),1f)
   }
   assertGap()
   try {
    ui.runOnIdle {controller.hide(type)}
-   ui.waitUntil(5000) {bottomInset()==0f}
+   ui.waitUntil(5000) {bottomInset()==0f && kotlin.math.abs(navigationGap()-8f)<=1f}
    assertGap()
    capture("navigation-zero-inset")
   } finally {
