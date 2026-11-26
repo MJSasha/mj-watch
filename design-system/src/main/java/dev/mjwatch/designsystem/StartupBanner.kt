@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.colorResource
@@ -62,9 +63,7 @@ fun Activity.coldStartupWindow(restored: Boolean): State<Boolean>? {
 
 private const val EntranceMillis = 700
 private const val RevealMillis = 400
-private const val BackdropFadeStartMillis = 165f
-private const val MarkGoneMillis = 215f
-private const val LightBarsMillis = 310f
+private const val LightBarsProgress = .77f
 private val OrbitEmerald = Color(0xFF3BDA71)
 private val OrbitCyan = Color(0xFF00CED3)
 
@@ -79,7 +78,7 @@ fun StartupBanner(
     val entrance = remember(animate) { Animatable(if (animate) 0f else EntranceMillis.toFloat()) }
     val reveal = remember { Animatable(0f) }
     val assembled by remember(entrance) { derivedStateOf { entrance.value >= EntranceMillis } }
-    val finished by remember { derivedStateOf { reveal.value >= RevealMillis } }
+    val finished by remember { derivedStateOf { reveal.value >= 1f } }
 
     LaunchedEffect(animate, windowReady) {
         if (animate && windowReady) {
@@ -91,10 +90,10 @@ fun StartupBanner(
     LaunchedEffect(waiting, assembled, windowReady) {
         if (!waiting && assembled && animate && windowReady) {
             withFrameNanos {}
-            reveal.animateTo(RevealMillis.toFloat(), tween(RevealMillis, easing = LinearEasing))
+            reveal.animateTo(1f, tween(RevealMillis, easing = FastOutSlowInEasing))
         }
     }
-    val darkBackdrop by remember { derivedStateOf { reveal.value < LightBarsMillis } }
+    val darkBackdrop by remember { derivedStateOf { reveal.value < LightBarsProgress } }
     SideEffect { onDarkBackdropChanged(animate && darkBackdrop) }
     if (!waiting && (!animate || finished)) return
 
@@ -102,9 +101,7 @@ fun StartupBanner(
     BoxWithConstraints(
         Modifier.fillMaxSize().testTag("startup-banner")
             .drawBehind {
-                // Start below readable contrast so the mark can go dark without an empty frame.
-                val clear = reveal.value.smoothPhase(BackdropFadeStartMillis, RevealMillis.toFloat())
-                drawRect(graphite, alpha = 1f - clear)
+                drawRect(graphite, alpha = reveal.value.backdropOpacity())
             }
             .clearAndSetSemantics {
                 if (waiting) {
@@ -115,37 +112,43 @@ fun StartupBanner(
         contentAlignment = Alignment.Center,
     ) {
         val mark = Modifier.size(minOf(288.dp, maxWidth, maxHeight))
-        if (animate) StartupOrbit(mark, entrance.asState(), reveal.asState())
-
+        if (animate) {
+            StartupOrbit(mark, entrance.asState(), reveal.asState())
+            StartupLightPass(reveal.asState())
+        }
         Box(mark.graphicsLayer {
-            val zoom = 1f + .08f * reveal.value.smoothPhase(0f, 210f)
-            alpha = 1f - reveal.value.smoothPhase(95f, MarkGoneMillis)
+            val zoom = 1f + .08f * reveal.value.smoothPhase(0f, .28f)
+            alpha = reveal.value.identityOpacity()
             transformOrigin = TransformOrigin(.5f, .365f)
             scaleX = zoom
             scaleY = zoom
         }) {
-            Image(painterResource(R.drawable.startup_rear), null,
-                Modifier.fillMaxSize().playPlane(entrance.asState(), fromRight = true))
-            Image(painterResource(R.drawable.startup_front), null,
-                Modifier.fillMaxSize().playPlane(entrance.asState(), fromRight = false))
+            val plane = Modifier.fillMaxSize()
+            val nativePlane = plane.graphicsLayer { alpha = 1f - entrance.value.smoothPhase(0f, 150f) }
+            val rear = painterResource(R.drawable.startup_rear)
+            val front = painterResource(R.drawable.startup_front)
+            Image(rear, null, nativePlane)
+            Image(front, null, nativePlane)
+            Image(rear, null, plane.playPlane(entrance.asState(), fromRight = true))
+            Image(front, null, plane.playPlane(entrance.asState(), fromRight = false))
         }
         Image(painterResource(R.drawable.startup_brand), null, mark.graphicsLayer {
-            alpha = 1f - reveal.value.smoothPhase(95f, MarkGoneMillis)
+            alpha = reveal.value.identityOpacity()
         })
     }
 }
 
 private fun Modifier.playPlane(entrance: State<Float>, fromRight: Boolean) = graphicsLayer {
     val time = entrance.value
-    val converge = time.smoothPhase(180f, 540f)
-    val settle = time.smoothPhase(540f, 700f)
-    val direction = if (fromRight) 1f else -1f
-
-    alpha = time.smoothPhase(180f, 345f)
-    translationX = direction * size.width * .20f * (1f - converge)
-    translationY = size.height * (-.153f - direction * .12f * (1f - converge) - .014f * (converge - settle))
-    rotationZ = direction * (12f * (1f - converge) - 2.5f * (converge - settle))
-    scaleX = .68f + .15f * converge - .03f * settle
+    val converge = if (fromRight) time.smoothPhase(206f, 540f) else time.smoothPhase(180f, 508f)
+    val separation = 1f - converge
+    val bounce = time.smoothPhase(410f, 540f) * (1f - time.smoothPhase(540f, EntranceMillis.toFloat()))
+    alpha = (1.35f * converge).coerceAtMost(1f)
+    translationX = size.width * (if (fromRight) .103f else -.112f) * separation
+    translationY = size.height * (if (fromRight) -.041f else .043f) * separation
+    rotationZ = (if (fromRight) 15f else -13f) * separation
+    transformOrigin = TransformOrigin(.5f, .365f)
+    scaleX = 1f + .04f * bounce
     scaleY = scaleX
 }
 
@@ -153,63 +156,79 @@ private fun Modifier.playPlane(entrance: State<Float>, fromRight: Boolean) = gra
 private fun StartupOrbit(modifier: Modifier, entrance: State<Float>, reveal: State<Float>) {
     Canvas(modifier) {
         val time = entrance.value
-        val exit = reveal.value
         val lens = center - Offset(0f, size.height * .135f)
-        val radius = size.minDimension * .27f
         val arrive = time.smoothPhase(0f, 180f)
-        val converge = time.smoothPhase(180f, 540f)
-        val settle = time.smoothPhase(540f, 700f)
-        val trace = arrive * (1f - settle)
-        val glow = arrive * (.14f - .08f * settle) * (1f - exit.smoothPhase(140f, MarkGoneMillis))
-        if (glow > 0f) {
-            val halo = radius * 1.6f
-            drawCircle(
-                Brush.radialGradient(listOf(OrbitEmerald.copy(alpha = glow), Color.Transparent), lens, halo),
-                halo, lens,
-            )
-        }
-        if (trace > 0f) {
-            val drift = radius * (.55f * (1f - arrive) + .08f * (1f - converge))
-            val trailRadius = radius * (1.32f - .32f * converge)
-            drawLightArc(lens - Offset(drift, drift * .5f), trailRadius,
-                185f + 97f * converge, 30f + 73f * arrive, OrbitEmerald, trace, 1.35.dp.toPx())
-            drawLightArc(lens + Offset(drift, drift * .5f), trailRadius * 1.09f,
-                7f + 97f * converge, 23f + 75f * arrive, OrbitCyan, trace * .9f, 1.15.dp.toPx())
+        val rotation = time.smoothPhase(80f, 540f)
+        val settled = time.smoothPhase(540f, EntranceMillis.toFloat())
+        val opacity = reveal.value.backdropOpacity()
+        val radius = size.minDimension * (.327f - .057f * rotation)
+        val glow = (.07f + .15f * arrive - .045f * settled) * arrive * opacity
+        val halo = radius * 1.78f
+        drawCircle(
+            Brush.radialGradient(listOf(OrbitEmerald.copy(alpha = glow), Color.Transparent), lens, halo),
+            halo, lens,
+        )
 
-            val sparkle = arrive * (1f - time.smoothPhase(285f, 540f))
-            repeat(8) { index ->
-                val angle = (index * 43f + 16f + converge * 47f) * PI / 180
-                val distance = radius * (1.48f - .72f * converge + (index % 3) * .16f)
-                val position = lens + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
-                val color = if (index % 2 == 0) OrbitEmerald else OrbitCyan
-                drawCircle(color, (if (index % 3 == 0) 1.6.dp else .9.dp).toPx(), position,
-                    alpha = sparkle * (.44f + (index % 3) * .17f))
-            }
-        }
-        val sweep = exit.smoothPhase(0f, 75f) * (1f - exit.smoothPhase(90f, MarkGoneMillis))
-        if (sweep > 0f) {
-            val travel = exit.smoothPhase(0f, MarkGoneMillis)
-            drawLightArc(lens, radius * 1.09f, 177f + 179f * travel, 54f,
-                OrbitCyan, .8f * sweep, 1.7.dp.toPx())
-            val glint = lens + Offset(radius * (2f * travel - 1f), radius * (.4f - .65f * travel))
-            val lightRadius = radius * .94f
-            drawCircle(
-                Brush.radialGradient(listOf(OrbitCyan.copy(alpha = .23f * sweep), Color.Transparent), glint, lightRadius),
-                lightRadius, glint,
-            )
+        val trace = arrive * (1f - .51f * settled) * opacity
+        val drift = Offset(size.width * .163f, size.height * .097f) * (1f - rotation)
+        drawLightArc(lens - drift, radius, 158f + 117f * rotation, OrbitEmerald, trace)
+        drawLightArc(lens + drift, radius * .94f, -45f + 123f * rotation, OrbitCyan, trace * .9f)
+
+        repeat(9) { index ->
+            val age = time - index % 3 * 24f
+            val fragment = age.smoothPhase(20f, 160f) * (1f - age.smoothPhase(325f, 540f))
+            val angle = (29f + index * 40f + 54f * rotation) * PI / 180
+            val distance = radius * (1.47f + .13f * (index % 3) - .86f * rotation)
+            val position = lens + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
+            val color = if (index % 2 == 0) OrbitEmerald else OrbitCyan
+            val dot = (if (index % 3 == 0) 1.8.dp else 1.dp).toPx()
+            drawCircle(color, dot * 2.1f, position, alpha = fragment * .22f)
+            drawCircle(color, dot, position, alpha = fragment * .85f)
         }
     }
 }
 
-private fun DrawScope.drawLightArc(
-    lens: Offset, radius: Float, start: Float, sweep: Float, color: Color, opacity: Float, width: Float,
-) {
-    val mid = (start + sweep * .5f) * PI / 180
-    val axis = Offset(cos(mid).toFloat(), sin(mid).toFloat()) * radius
-    val brush = Brush.linearGradient(listOf(Color.Transparent, color.copy(alpha = opacity)), lens, lens + axis)
-    drawArc(brush, start, sweep, useCenter = false, lens - Offset(radius, radius), Size(radius * 2, radius * 2),
-        style = Stroke(width, cap = StrokeCap.Round))
+private fun DrawScope.drawLightArc(lens: Offset, radius: Float, rotation: Float, color: Color, opacity: Float) {
+    if (opacity <= 0f) return
+    val transparent = color.copy(alpha = 0f)
+    val brush = Brush.sweepGradient(0f to transparent, .17f to color,
+        .34f to transparent, 1f to transparent, center = lens)
+    val topLeft = lens - Offset(radius, radius)
+    val bounds = Size(radius * 2, radius * 2)
+    rotate(rotation, lens) {
+        drawArc(brush, 0f, 124f, false, topLeft, bounds, alpha = opacity * .15f,
+            style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
+        drawArc(brush, 0f, 124f, false, topLeft, bounds, alpha = opacity * .90f,
+            style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+    }
 }
 
-private fun Float.smoothPhase(start: Float, end: Float): Float =
-    FastOutSlowInEasing.transform(((this - start) / (end - start)).coerceIn(0f, 1f))
+@Composable
+private fun StartupLightPass(reveal: State<Float>) {
+    Canvas(Modifier.fillMaxSize()) {
+        val progress = reveal.value
+        val sweep = progress.smoothPhase(0f, .78f)
+        if (sweep > 0f && sweep < 1f) {
+            val x = size.width * (sweep * 1.45f - .23f)
+            val spread = size.width * .24f
+            val gradient = Brush.horizontalGradient(
+                0f to Color.Transparent, .38f to OrbitEmerald.copy(alpha = .09f),
+                .56f to OrbitCyan.copy(alpha = .23f), 1f to Color.Transparent,
+                startX = x - spread, endX = x + spread,
+            )
+            rotate(-23f, Offset(x, center.y)) {
+                drawRect(gradient, Offset(x - spread, -size.height), Size(spread * 2, size.height * 3),
+                    alpha = sin(PI * sweep).toFloat() * progress.backdropOpacity())
+            }
+        }
+    }
+}
+
+// The backdrop starts clearing at low contrast just before the identity disappears at .35.
+private fun Float.backdropOpacity() = ((1f - this) / .68f).coerceAtMost(1f)
+private fun Float.identityOpacity() = 1f - smoothPhase(.035f, .35f)
+
+private fun Float.smoothPhase(start: Float, end: Float): Float {
+    val t = ((this - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
