@@ -1,4 +1,4 @@
-"""Restore the helper omitted by the 0.1.13 updater when installing 0.1.14."""
+"""Restore a search helper omitted by an older server updater."""
 import hashlib
 import json
 import os
@@ -21,7 +21,9 @@ def installed_file(path, limit):
         return data
 
 
-def restore(current, releases, staged, supplied):
+def restore(current, releases, staged, supplied, helper='jacred.py'):
+    if helper not in ('jacred.py', 'prowlarr.py'):
+        return 'invalid_installation'
     release = current.resolve(strict=True)
     if release.parent != releases.resolve(strict=True) or not (release / '.mjwatch-owned').is_file():
         return 'invalid_installation'
@@ -33,7 +35,7 @@ def restore(current, releases, staged, supplied):
     manifest = json.loads(installed_file(release / 'manifest.json', 128 * 1024))
     if manifest.get('version') != release.name:
         return 'invalid_installation'
-    entry = next((item for item in manifest['files'] if item.get('path') == 'jacred.py'), None)
+    entry = next((item for item in manifest['files'] if item.get('path') == helper), None)
     if entry is None:
         return 'update_required'
 
@@ -54,7 +56,7 @@ def restore(current, releases, staged, supplied):
                 os.fchmod(file.fileno(), 0o700)
                 file.write(data)
                 file.flush()
-                os.replace(temporary, release / 'jacred.py')
+                os.replace(temporary, release / helper)
             finally:
                 temporary.unlink(missing_ok=True)
         return 'ready' if current.resolve() == release else 'release_changed'
@@ -65,7 +67,9 @@ if __name__ == '__main__':
     if os.geteuid() != 0:
         raise SystemExit(1)
     try:
+        helper = sys.argv[1] if len(sys.argv) > 1 else 'jacred.py'
         print(restore(Path('/opt/mjwatch/current'), Path('/opt/mjwatch/releases'),
-                      Path('/var/lib/mjwatch-install/upload/jacred.py'), sys.stdin.buffer.read(MAX_HELPER + 1)))
+                      Path('/var/lib/mjwatch-install/upload') / helper,
+                      sys.stdin.buffer.read(MAX_HELPER + 1), helper))
     except (OSError, ValueError, KeyError, TypeError):
         print('invalid_installation')

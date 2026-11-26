@@ -158,32 +158,34 @@ class JacredTest(unittest.TestCase):
 
     def test_repair_requires_the_installed_manifest_hash(self):
         helper = b'#!/usr/bin/env python3\n'
-        entry = dict(path='jacred.py', size=len(helper), sha256=hashlib.sha256(helper).hexdigest())
-        with tempfile.TemporaryDirectory() as folder:
-            root = pathlib.Path(folder)
-            releases = root / 'releases'
-            release = releases / '0.1.14'
-            release.mkdir(parents=True)
-            (release / '.mjwatch-owned').touch()
-            manifest = release / 'manifest.json'
-            current = root / 'current'
-            current.symlink_to(release)
-            staged = root / 'upload.py'
-            manifest.write_text(json.dumps(dict(version=release.name, files=[])))
-            self.assertEqual('update_required', restore(current, releases, staged, helper))
-            manifest.write_text(json.dumps(dict(version=release.name, files=[entry])))
-            self.assertEqual('helper_unavailable', restore(current, releases, staged, b'altered'))
-            self.assertFalse((current / 'jacred.py').exists())
+        for name, version in (('jacred.py', '0.1.14'), ('prowlarr.py', '0.1.21')):
+            with self.subTest(name=name):
+                entry = dict(path=name, size=len(helper), sha256=hashlib.sha256(helper).hexdigest())
+                with tempfile.TemporaryDirectory() as folder:
+                    root = pathlib.Path(folder)
+                    releases = root / 'releases'
+                    release = releases / version
+                    release.mkdir(parents=True)
+                    (release / '.mjwatch-owned').touch()
+                    manifest = release / 'manifest.json'
+                    current = root / 'current'
+                    current.symlink_to(release)
+                    staged = root / 'upload.py'
+                    manifest.write_text(json.dumps(dict(version=release.name, files=[])))
+                    self.assertEqual('update_required', restore(current, releases, staged, helper, name))
+                    manifest.write_text(json.dumps(dict(version=release.name, files=[entry])))
+                    self.assertEqual('helper_unavailable', restore(current, releases, staged, b'altered', name))
+                    self.assertFalse((current / name).exists())
 
-            self.assertEqual('ready', restore(current, releases, staged, helper))
-            restored = release / 'jacred.py'
-            self.assertEqual(helper, restored.read_bytes())
-            self.assertEqual(0o700, restored.stat().st_mode & 0o777)
-            restored.unlink()
+                    self.assertEqual('ready', restore(current, releases, staged, helper, name))
+                    restored = release / name
+                    self.assertEqual(helper, restored.read_bytes())
+                    self.assertEqual(0o700, restored.stat().st_mode & 0o777)
+                    restored.unlink()
 
-            staged.write_bytes(helper)
-            self.assertEqual('ready', restore(current, releases, staged, b''))
-            self.assertEqual(helper, restored.read_bytes())
+                    staged.write_bytes(helper)
+                    self.assertEqual('ready', restore(current, releases, staged, b'', name))
+                    self.assertEqual(helper, restored.read_bytes())
 
 
 if __name__ == '__main__':

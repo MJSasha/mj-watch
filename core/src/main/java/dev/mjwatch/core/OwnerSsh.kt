@@ -44,24 +44,29 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  suspend fun identity(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl identity"))}
  suspend fun cancel(target:SshTarget)=session(target){exec(it,"touch /var/lib/mjwatch-install/cancel")}
  suspend fun read(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl torrserver settings read"))}
- private fun jacredStatus(session:Session):JSONObject {
-  val path="/opt/mjwatch/current/jacred.py"
-  if(exec(session,"if [ -x $path ]; then echo ready; else echo missing; fi").trim()!="ready") {
-   val script=context.assets.open("jacred-repair.py").bufferedReader().use {it.readText()}
-   val helper=try {
-    ServerBundles(context).bundled().open("jacred.py").bufferedReader().use {it.readText()}
-   }catch(_:java.io.FileNotFoundException){""}
-   val quotedScript="'"+script.replace("'","'\\''")+"'"
-   when(exec(session,"/usr/bin/python3 -c $quotedScript",helper).trim()) {
-    "ready" -> Unit
-    "update_required" -> error("Установите сервер MJWatch версии 0.1.14 или новее в разделе «Обслуживание → Обновление сервера».")
-    "helper_unavailable" -> error("В поставке для установленной версии не найден проверенный файл JacRed. Проверьте серверную поставку в разделе «Обслуживание».")
-    "release_changed" -> error("Версия сервера изменилась во время проверки. Загрузите состояние JacRed ещё раз.")
-    else -> error("Не удалось проверить установленную поставку MJWatch. Загрузите состояние JacRed ещё раз.")
-   }
+ private fun searchHelper(session:Session,name:String):String {
+  val (service,minimumVersion)=when(name) {
+   "jacred.py" -> "JacRed" to "0.1.14"
+   "prowlarr.py" -> "Prowlarr" to "0.1.21"
+   else -> error("Неизвестный компонент поиска")
   }
-  return JSONObject(exec(session,"/usr/bin/python3 $path status"))
+  val path="/opt/mjwatch/current/$name"
+  if(exec(session,"if [ -x $path ]; then echo ready; else echo missing; fi").trim()=="ready")return path
+  val script=context.assets.open("jacred-repair.py").bufferedReader().use {it.readText()}
+  val helper=try {
+   ServerBundles(context).bundled().open(name).bufferedReader().use {it.readText()}
+  }catch(_:java.io.FileNotFoundException){""}
+  val quotedScript="'"+script.replace("'","'\\''")+"'"
+  when(exec(session,"/usr/bin/python3 -c $quotedScript $name",helper).trim()) {
+   "ready" -> return path
+   "update_required" -> error("Для $service нужен сервер MJWatch $minimumVersion или новее. Откройте «Мой сервер → Обслуживание → Обновить сервер».")
+   "helper_unavailable" -> error("В поставке для установленной версии не найден проверенный файл $service. Проверьте серверную поставку в разделе «Обслуживание».")
+   "release_changed" -> error("Версия сервера изменилась во время проверки. Загрузите состояние $service ещё раз.")
+   else -> error("Не удалось проверить установленную поставку MJWatch. Загрузите состояние $service ещё раз.")
+  }
  }
+ private fun jacredStatus(session:Session):JSONObject =
+  JSONObject(exec(session,"/usr/bin/python3 ${searchHelper(session,"jacred.py")} status"))
  suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)
  suspend fun browseJacred(target: SshTarget, serverId: String, onReady: (SearchAdminAddress) -> Unit) =
   session(target) { connection ->
@@ -98,10 +103,8 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   }
  private fun prowlarrCommand(connection:Session,action:String):JSONObject {
   require(action in setOf("status","install","prowlarr","jacred"))
-  val helper="/opt/mjwatch/current/prowlarr.py"
-  val output=exec(connection,"if [ -x $helper ]; then /usr/bin/python3 -B $helper $action; fi")
-  check(output.isNotBlank()) {"Обновите сервер MJWatch, чтобы установить Prowlarr."}
-  val result=JSONObject(output)
+  val helper=searchHelper(connection,"prowlarr.py")
+  val result=JSONObject(exec(connection,"/usr/bin/python3 -B $helper $action"))
   when(result.optString("error")) {
    "indexer_required" -> error("Добавьте и включите торрент-трекер с поддержкой поиска в Prowlarr.")
    "jacred_unavailable" -> error("Запустите JacRed перед переключением поиска.")
