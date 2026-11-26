@@ -140,7 +140,7 @@ def main():
   unit('mjwatch-torrserver.service','mjwatch-torr',f"/opt/mjwatch/current/torrserver --ip 127.0.0.1 --port {plan['torrPort']} --path /var/lib/torrserver-mjwatch --httpauth",'/var/lib/torrserver-mjwatch')
   unit('mjwatch.service','mjwatch','/opt/mjwatch/current/mjwatch serve /etc/mjwatch/config.json','/var/lib/mjwatch /var/backups/mjwatch')
   for helper in ['maintenance.py','renew.py']:shutil.copyfile(UPLOAD/helper,release/helper);(release/helper).chmod(0o700)
-  for helper in ('jacred.py','prowlarr.py'):
+  for helper in ('jacred.py','prowlarr.py','management.py','update_supply.py'):
    if any(entry['path']==helper for entry in manifest['files']):
     shutil.copyfile(UPLOAD/helper,release/helper);(release/helper).chmod(0o700)
   shutil.copyfile(UPLOAD/'operation.py','/opt/mjwatch/operation.py');pathlib.Path('/opt/mjwatch/operation.py').chmod(0o700)
@@ -150,6 +150,7 @@ def main():
   pathlib.Path('/etc/systemd/system/mjwatch-renew.service').write_text('[Unit]\nDescription=Renew MJWatch leaf certificate\n[Service]\nType=oneshot\nExecStart=/usr/bin/python3 /opt/mjwatch/current/renew.py\nUMask=0077\n')
   pathlib.Path('/etc/systemd/system/mjwatch-renew.timer').write_text('[Unit]\nDescription=Renew MJWatch TLS certificate\n[Timer]\nOnCalendar=daily\nPersistent=true\n[Install]\nWantedBy=timers.target\n')
   for name in ['mjwatch-renew.service','mjwatch-renew.timer']:pathlib.Path('/etc/systemd/system',name).chmod(0o644)
+  if (release/'management.py').is_file():run('/usr/bin/python3','-B',str(release/'management.py'),'install')
   run('systemctl','daemon-reload');run('systemctl','enable','--now','mjwatch-renew.timer');run('systemctl','enable','--now','mjwatch-torrserver.service')
   # Initial safe defaults are applied only once; retries preserve user settings.
   if not (ROOT/'torr-initialized').exists():

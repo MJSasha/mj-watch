@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -51,7 +50,7 @@ private enum class JacredSection(val title: String) {
  LaunchedEffect(page,mobileQr) {screenScroll.scrollTo(0)}
  var dirty by remember(page) {mutableStateOf(false)}
  var leave by remember {mutableStateOf(false)}
- var searchAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<Pair<SshTarget,Boolean>?>(null)}
+ var searchAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<Boolean?>(null)}
  val adminTarget=searchAdmin?.takeIf {managed.me?.optString("role")=="admin"}
  val back:()->Unit={if(adminTarget!=null)searchAdmin=null else if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
  DisposableEffect(page,dirty,adminTarget!=null){registerBack(back);onDispose{registerBack(null)}}
@@ -65,6 +64,9 @@ private enum class JacredSection(val title: String) {
  }}
  val content:@Composable ()->Unit={Column(Modifier.fillMaxSize().verticalScroll(screenScroll).imePadding().padding(vertical=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
   if(managed.busy&&page!="server-overview"&&page!="server-jacred"&&page!="server-resources") LinearProgressIndicator(Modifier.fillMaxWidth())
+  if(page in setOf("server-torr","server-maintenance","server-update","server-migration")&&managed.me?.optString("role")!="admin") {
+   SettingsHint(if(managed.me==null)"Проверяем права доступа к серверу." else "Управление доступно администратору сервера.")
+  } else
   when(page) {
    "connection-choice"->{
     Text("Как подключиться",fontSize=28.sp,fontWeight=FontWeight.Bold)
@@ -226,7 +228,7 @@ private enum class JacredSection(val title: String) {
      Text("Аккаунты, история и вход на устройствах сохранятся.",style=MaterialTheme.typography.bodyMedium)
      Action("Подготовить перенос",tv,Modifier.fillMaxWidth(),secondary=true){model.page("server-migration")}
     }
-    SettingsDisclosure("Другие операции","Перезапуск, очистка кэша, пароль и восстановление",Icons.Outlined.Build,tv){key(s.config.managedUrl){SshPanel(s,model,tv,false)}}
+    SettingsDisclosure("Другие операции","Перезапуск, очистка кэша, пароль и восстановление",Icons.Outlined.Build,tv){HostPanel(s,model,tv,HostPanelKind.Maintenance)}
    }
    "server-update"->key(s.config.managedUrl){ServerUpdateScreen(s,model,tv)}
    "server-migration"->ServerMigrationScreen(s.config.managedUrl,managed,controller,tv)
@@ -248,7 +250,7 @@ private enum class JacredSection(val title: String) {
       }
      }
      if(prowlarr) key(s.config.managedUrl,"prowlarr") {
-      SshPanel(s,model,tv,false,prowlarr=true,onSearchAdmin={searchAdmin=it to true})
+      HostPanel(s,model,tv,HostPanelKind.Prowlarr,onSearchAdmin={searchAdmin=true})
      } else {
      var section by rememberSaveable(s.config.scope,s.config.managedUrl){mutableStateOf(JacredSection.Overview)}
      LaunchedEffect(section) {screenScroll.scrollTo(0)}
@@ -268,7 +270,7 @@ private enum class JacredSection(val title: String) {
      var requestedCatalogRefresh by remember(s.config.scope,s.config.managedUrl) {mutableIntStateOf(0)}
      when(section) {
       JacredSection.Settings -> key(s.config.managedUrl) {
-       SshPanel(s,model,tv,false,jacred=true,onDirty={dirty=it},onSearchAdmin={searchAdmin=it to false})
+       HostPanel(s,model,tv,HostPanelKind.Jacred,onDirty={dirty=it},onSearchAdmin={searchAdmin=false})
       }
       JacredSection.Jobs -> key(s.config.scope,s.config.managedUrl) {
        if(installed&&diagnostics!=null) {
@@ -345,12 +347,12 @@ private enum class JacredSection(val title: String) {
      }
     } else if(managed.me!=null) SettingsHint("Настройки поиска доступны администратору сервера.")
    }
-   "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);SshPanel(s,model,tv,true)}
+   "server-install"->{Text("Установка сервера",fontSize=28.sp,fontWeight=FontWeight.Bold);InstallSshPanel(s,model,tv)}
    "server-torr"->{
     var limitsDirty by remember{mutableStateOf(false)};var torrDirty by remember{mutableStateOf(false)};var limitsRevision by remember{mutableIntStateOf(0)}
     Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold)
     PlaybackLimitsPanel(s,model,tv,onDirty={limitsDirty=it;dirty=it||torrDirty},onSaved={limitsRevision++})
-    key(s.config.managedUrl){SshPanel(s,model,tv,false,settings=true,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})}
+    key(s.config.managedUrl){HostPanel(s,model,tv,HostPanelKind.TorrServer,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})}
    }
   }
   if(page!="managed-login"&&managed.message.isNotBlank()&&!(page=="server-torr"&&managed.message=="Синхронизировано")) Text(managed.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
@@ -360,23 +362,16 @@ private enum class JacredSection(val title: String) {
  BoxWithConstraints(if(adminTarget==null) Modifier.fillMaxSize() else Modifier.fillMaxSize().alpha(0f).clearAndSetSemantics { hideFromAccessibility() }) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","Поиск раздач" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second !in setOf("server-jacred","server-resources")||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
+    listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","Поиск раздач" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second=="server-overview"||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
    }
    Box(Modifier.weight(1f)){BoundedPane(!tv){content()}}
   }else BoundedPane(!tv){content()}
  }
  if(adminTarget!=null) {
-  val context=LocalContext.current
-  val ssh=remember(context,model.secrets){OwnerSsh(context,model.secrets)}
-  val (target,prowlarr)=adminTarget
-  SearchAdminScreen(tv,if(prowlarr)"Prowlarr" else "JacRed",onClose={keyboard?.hide();searchAdmin=null}) { opened ->
-   val config=s.config
-   val me=withContext(Dispatchers.IO){ManagedApi(config,model.secrets).authorized("me")}
-   check(me.optString("role")=="admin"&&me.optString("serverId")==config.serverId) {
-    "Веб-админка доступна владельцу сервера."
-   }
-   if(prowlarr) ssh.browseProwlarr(target,config.serverId,opened)
-   else ssh.browseJacred(target,config.serverId,opened)
+  val config=s.config
+  val admin=remember(config,model.secrets){ManagedSearchAdmin(ManagedApi(config,model.secrets))}
+  SearchAdminScreen(tv,if(adminTarget)"Prowlarr" else "JacRed",onClose={keyboard?.hide();searchAdmin=null}) { opened ->
+   admin.open(adminTarget,opened)
   }
  }
  }
@@ -408,44 +403,41 @@ private enum class JacredSection(val title: String) {
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 
-@Composable private fun SshPanel(s:WatchState,model:WatchModel,tv:Boolean,install:Boolean,settings:Boolean=false,limitsRevision:Int=0,jacred:Boolean=false,prowlarr:Boolean=false,onDirty:(Boolean)->Unit={},onSearchAdmin:(SshTarget)->Unit={}) {
- val searchService=jacred||prowlarr
+@Composable private fun InstallSshPanel(s:WatchState,model:WatchModel,tv:Boolean) {
+ val context=LocalContext.current
  val keyboard=LocalSoftwareKeyboardController.current
- val focus=LocalFocusManager.current
- val context=LocalContext.current;val scope=rememberCoroutineScope();val ssh=remember{OwnerSsh(context,model.secrets)}
- val pendingKey=remember{"install.pending:${s.config.scope.ifBlank{"direct"}}"}
- var connectionOpen by rememberSaveable{mutableStateOf(false)}
- var refreshedLimits by remember{mutableIntStateOf(limitsRevision)}
- val saved=remember(s.config.scope){runCatching {JSONObject(model.secrets.get("ssh:${s.config.scope}"))}.getOrNull()}
- var host by rememberSaveable{mutableStateOf(saved?.optString("host") ?: if(settings||searchService)runCatching{endpoint(s.config.managedUrl).host}.getOrDefault("") else "")};var port by rememberSaveable{mutableStateOf(saved?.optInt("port",22)?.toString() ?: "22")};var password by remember{mutableStateOf("")};var save by remember{mutableStateOf(true)};var advanced by remember{mutableStateOf(false)}
+ val scope=rememberCoroutineScope()
+ val ssh=remember(context,model.secrets){OwnerSsh(context,model.secrets)}
+ val pendingKey="install.pending:${s.config.scope.ifBlank{"direct"}}"
+ var host by rememberSaveable{mutableStateOf("")}
+ var port by rememberSaveable{mutableStateOf("22")}
+ var password by remember{mutableStateOf("")}
+ var save by remember{mutableStateOf(true)}
+ var advanced by remember{mutableStateOf(false)}
  var ready by remember{mutableStateOf(false)}
- var jacredDirty by remember{mutableStateOf(false)}
- var installationJson by rememberSaveable {mutableStateOf<String?>(null)}
+ var busy by remember{mutableStateOf(false)}
+ var message by remember{mutableStateOf("")}
+ var trust by remember{mutableStateOf<HostKeyRequired?>(null)}
+ var verifiedFingerprint by remember{mutableStateOf("")}
+ var installationJson by rememberSaveable{mutableStateOf<String?>(null)}
  val progress=installationJson?.let {InstallationProgress.from(JSONObject(it))}
  fun showProgress(value:InstallationProgress){installationJson=JSONObject().put("stage",value.stage).put("state",value.state).put("code",value.code).put("updated",value.updated).toString()}
- var activeCount by remember{mutableStateOf<Int?>(null)};var restoreWarning by remember{mutableStateOf(false)}
- var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var trust by remember{mutableStateOf<HostKeyRequired?>(null)};var verifiedFingerprint by remember{mutableStateOf("")};var data by remember{mutableStateOf<JSONObject?>(null)};var draft by remember{mutableStateOf<JSONObject?>(null)};var confirmation by remember{mutableStateOf<(() -> Unit)?>(null)}
  fun target()=SshTarget(host.trim(),port.toIntOrNull() ?: 0,"root",password)
- fun perform(block:suspend (SshTarget)->Unit){if(busy)return;keyboard?.hide();busy=true;message="Проверяем SSH…";scope.launch {try{withContext(Dispatchers.IO){if(!install){require(ManagedApi(s.config,model.secrets).authorized("me").getString("role")=="admin");require(ssh.identity(target()).getString("serverId")==s.config.serverId){"SSH относится к другому серверу"}};block(target())}}catch(e:CancellationException){throw e}catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}catch(e:Exception){message=when {install->installationError(e);jacred&&e is MaintenanceFailure->jacredError(e.code);else->safeError(e)};if(install&&installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(state=if(e is IllegalArgumentException)"failed" else "unreachable",code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))}finally{busy=false}}}
- suspend fun refreshTorr(target:SshTarget){
-  val fresh=ssh.read(target)
-  val previous=data
-  val current=draft
-  val updated=if(previous!=null&&current!=null)refreshTorrSettingsDraft(previous,current,fresh)
-   else JSONObject(fresh.getJSONObject("settings").toString())
-  val changed=torrSettingsChanges(fresh,updated).length()>0
-  data=fresh;draft=updated;onDirty(changed)
-  message=if(changed)"Данные сервера обновлены. Проверьте несохранённые изменения." else "Данные сервера обновлены"
- }
- LaunchedEffect(limitsRevision,busy){
-  if(settings&&data!=null&&!busy&&refreshedLimits!=limitsRevision){
-   refreshedLimits=limitsRevision
-   data=data?.let{JSONObject(it.toString()).also{copy->copy.remove("resources");copy.remove("storage")}}
-   perform{target->refreshTorr(target)}
+ fun perform(block:suspend (SshTarget)->Unit){
+  if(busy)return
+  keyboard?.hide();busy=true;message="Проверяем SSH…"
+  scope.launch {
+   try{block(target())}
+   catch(e:CancellationException){throw e}
+   catch(e:HostKeyRequired){trust=e;message=e.message.orEmpty()}
+   catch(e:Exception){
+    message=installationError(e)
+    if(installationJson!=null)showProgress(InstallationProgress.from(JSONObject(installationJson!!)).copy(
+     state=if(e is IllegalArgumentException)"failed" else "unreachable",
+     code=if(e is IllegalArgumentException)"client_validation" else "connection_error"))
+   }finally{busy=false}
   }
  }
- fun askConfirmation(action:()->Unit){if(busy)return;busy=true;scope.launch{try{activeCount=if(install)null else withContext(Dispatchers.IO){ManagedApi(s.config,model.secrets).authorized("admin/status").getInt("activeStreams")};confirmation=action}catch(e:Exception){message=safeError(e)}finally{busy=false}}}
- fun operation(action:String,target:String=""):String {val key="maintenance:${s.config.scope}:$action:$target";return model.secrets.get(key).ifBlank{UUID.randomUUID().toString().also{model.secrets.put(key,it)}}}
  suspend fun finishInstallation(target:SshTarget){
   var result:InstallationProgress
   do {
@@ -455,7 +447,7 @@ private enum class JacredSection(val title: String) {
   }while(result.state=="running")
   if(result.state!="installed")return
   showProgress(result.copy(stage="verifying",state="running"));message="Проверяем HTTPS, базу данных и TorrServer…"
-  connectInstalled(target,ssh,model,save){message=it}
+  connectInstalled(target,ssh,model){message=it}
   model.secrets.put(pendingKey,"");ready=true;password=""
  }
  fun checkInstallation(){showProgress((progress ?: InstallationProgress()).copy(state="running",code=""));perform{target->finishInstallation(target)}}
@@ -467,151 +459,52 @@ private enum class JacredSection(val title: String) {
    message="Серверная задача запущена. Ожидаем первый ответ…";delay(3000);finishInstallation(target)
   }
  }
- val unlock=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){if(it.resultCode==Activity.RESULT_OK){password=if(install)runCatching{JSONObject(model.secrets.get(pendingKey)).getString("password")}.getOrDefault("") else model.secrets.get("sshPassword:${s.config.scope}");message="SSH-доступ разблокирован на этой странице"}}
- if(install&&ready){InstallationReady(tv,onOpen={model.page("home")},onTmdb={model.page("server-tmdb")},onUsers={model.page("server-users")});return}
- if(install&&progress!=null)InstallationScreen(progress,busy,message,tv,onRetry={checkInstallation()},onRestart={startInstallation()},onCancel={scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Ожидаем подтверждение сервера."}catch(e:CancellationException){throw e}catch(e:Exception){message=installationError(e)}}},onEdit={installationJson=null})
- if(!install||progress==null){
- if(install){Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold);Text("Остальное MJWatch сделает сам")}
- if(install&&model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){val pending=JSONObject(model.secrets.get(pendingKey));host=pending.getString("host");port=pending.getInt("port").toString();val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ");if(intent!=null)unlock.launch(intent)else message="Введите SSH-пароль для продолжения"}
- if(settings||searchService)SettingsGroup(tv){SettingsActionRow(Icons.Outlined.Lock,"Доступ администратора",if(data!=null)"Подключено · ${host.trim()}" else "Подключение по SSH",tv){connectionOpen=!connectionOpen}}
- if((!settings&&!searchService)||connectionOpen){
- ServerField(host,{host=it},"IP или домен сервера");if(!settings)ServerField("root",{},"Пользователь SSH");ServerSecret(password,{password=it},"Пароль SSH")
- if(!install&&saved!=null) Action("Разблокировать сохранённый SSH-доступ",tv,secondary=true){val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager;val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте SSH-доступ владельца");if(intent!=null)unlock.launch(intent)else message="Настройте блокировку устройства или введите SSH-пароль"}
- TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")};if(advanced)ServerField(port,{port=it},"SSH-порт")
- if(!searchService)ServerToggle("Сохранить SSH-доступ на устройстве",save){save=it}
+ val unlock=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){
+  if(it.resultCode==Activity.RESULT_OK){
+   password=runCatching{JSONObject(model.secrets.get(pendingKey)).getString("password")}.getOrDefault("")
+   message="SSH-доступ разблокирован на этой странице"
+  }
  }
- if(busy&&!searchService)LinearProgressIndicator(Modifier.fillMaxWidth())
- if(install){
-  if(busy)Action("Остановить на безопасной границе",tv,secondary=true){scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Проверяем фактическую стадию."}catch(e:Exception){message=safeError(e)}}}
-  if(advanced)Action("Восстановить запуск по SSH",tv,secondary=true,enabled=!busy){askConfirmation{perform{target->ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("recovery")).put("confirmed",true));connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
+ if(ready){InstallationReady(tv,onOpen={model.page("home")},onTmdb={model.page("server-tmdb")},onUsers={model.page("server-users")});return}
+ if(progress!=null)InstallationScreen(progress,busy,message,tv,onRetry={checkInstallation()},onRestart={startInstallation()},
+  onCancel={scope.launch{try{ssh.cancel(target());message="Остановка запрошена. Ожидаем подтверждение сервера."}catch(e:CancellationException){throw e}catch(e:Exception){message=installationError(e)}}},
+  onEdit={installationJson=null})
+ else {
+  Text("Дайте SSH-доступ",fontSize=26.sp,fontWeight=FontWeight.Bold)
+  Text("SSH нужен для установки MJWatch.")
+  if(model.secrets.get(pendingKey).isNotBlank())Action("Продолжить последнюю установку",tv,secondary=true,enabled=!busy){
+   val pending=JSONObject(model.secrets.get(pendingKey))
+   host=pending.getString("host");port=pending.getInt("port").toString()
+   val manager=context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+   val intent=manager.createConfirmDeviceCredentialIntent("MJWatch","Разблокируйте сохранённый SSH-доступ")
+   if(intent!=null)unlock.launch(intent) else message="Введите SSH-пароль для продолжения"
+  }
+  ServerField(host,{host=it},"IP или домен сервера")
+  ServerField("root",{},"Пользователь SSH")
+  ServerSecret(password,{password=it},"Пароль SSH")
+  TextButton(modifier=Modifier.tvFocusRing(tv),onClick={advanced=!advanced}){Text("Дополнительно · SSH-порт $port")}
+  if(advanced)ServerField(port,{port=it},"SSH-порт")
+  ServerToggle("Сохранить SSH-доступ до завершения установки",save){save=it}
   Action("Установить автоматически",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){startInstallation()}
-  Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy){showProgress(InstallationProgress());checkInstallation()}
-
- }else if(prowlarr){
-  val hasSsh=host.isNotBlank()&&password.isNotBlank()
-  val snapshot=data
-  val operation=snapshot?.optJSONObject("operation")
-  val installing=operation?.optString("state")=="running"
-  val installed=snapshot?.optBoolean("installed")==true
-  val running=snapshot?.optBoolean("ready")==true
-  val configured=snapshot?.optBoolean("configured")==true
-  val selected=snapshot?.optString("provider")=="prowlarr"
-  fun refresh()=perform{target->data=ssh.readProwlarr(target);connectionOpen=false;message=""}
-  SettingsCard("Prowlarr",Icons.Outlined.Search,tv) {
-   SettingsHint("Prowlarr ищет раздачи в подключённых торрент-трекерах.")
-   if(snapshot!=null) {
-    Text(if(selected)"Внутренний поиск через Prowlarr" else "Внутренний поиск через JacRed")
-    Text(when {
-     installing -> "Идёт установка Prowlarr…"
-     configured -> "Торрент-трекеры настроены"
-     running -> "Добавьте торрент-трекер в веб-админке"
-     installed -> "Prowlarr установлен. Служба не отвечает."
-     else -> "Prowlarr ещё не установлен"
-    })
-    if(operation?.optString("state")=="failed") SettingsHint(prowlarrInstallError(operation.optString("code")))
-   }
-   if(!connectionOpen&&snapshot==null) Action("Подключить SSH",tv,enabled=!busy){connectionOpen=true}
-   else Action("Обновить состояние",tv,secondary=true,enabled=!busy&&hasSsh,loading=busy){refresh()}
-   if(snapshot!=null&&!running&&!installing) {
-    Action(if(installed)"Запустить Prowlarr" else "Установить Prowlarr",tv,enabled=!busy&&hasSsh) {
-     perform{target->message="Устанавливаем и проверяем Prowlarr…";data=ssh.installProwlarr(target);message=""}
-    }
-   }
-   if(running) {
-    SettingsHint("При первом входе создайте логин и пароль Prowlarr, затем добавьте трекер в Indexers и обновите состояние.")
-    Action("Открыть админку Prowlarr",tv,secondary=true,enabled=!busy&&hasSsh) {
-     focus.clearFocus(force=true)
-     keyboard?.hide()
-     onSearchAdmin(target())
-    }
-   }
-   if(selected||configured) {
-    Action(if(selected)"Переключить поиск на JacRed" else "Использовать Prowlarr для поиска",tv,enabled=!busy&&hasSsh) {
-     perform{target->data=ssh.selectSearchProvider(target,!selected);message=""}
-    }
-   }
+  Action("Проверить состояние и подключиться",tv,secondary=true,enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){
+   showProgress(InstallationProgress());checkInstallation()
   }
-
- }else if(jacred){
-  fun refresh()=perform{target->data=ssh.readJacred(target);connectionOpen=false;message=""}
-  val snapshot=data
-  if(connectionOpen) Action("Загрузить состояние JacRed",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank(),loading=busy){refresh()}
-  if(snapshot==null&&!connectionOpen) SettingsCard("Установка и настройки",Icons.Outlined.Build,tv){
-   SettingsHint("Подключите доступ администратора для установки и настройки JacRed.")
-   Action("Подключить SSH",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
-  }
-  if(snapshot!=null) JacredEditor(snapshot,tv,busy,{jacredDirty=it;onDirty(it)},onRefresh={refresh()}) { next ->
-   perform{target->
-    data=ssh.applyJacred(target,next){stage->message=jacredStage(stage)}
-    jacredDirty=false
-    onDirty(false)
-    message="JacRed запущен. Можно проверить поиск в настройках источника."
-    model.managed.load(JACRED_OVERVIEW)
-   }
-  }
-  if(snapshot?.optBoolean("running")==true) SettingsCard("Веб-админка JacRed",Icons.Outlined.AdminPanelSettings,tv) {
-   Action("Открыть админку",tv,Modifier.fillMaxWidth(),secondary=true,
-    enabled=!busy&&!jacredDirty&&host.isNotBlank()&&password.isNotBlank()) {
-    focus.clearFocus(force=true)
-    keyboard?.hide()
-    onSearchAdmin(target())
-   }
-  }
- }else if(settings){
-  if(model.secrets.get("torrApply:${host.trim()}:${port.toIntOrNull() ?: 0}").isNotBlank())Action("Проверить результат применения",tv,secondary=true,enabled=!busy){perform{target->val pending=JSONObject(model.secrets.get("torrApply:${target.host}:${target.port}"));ssh.apply(target,pending);val current=ssh.read(target);data=current;draft=JSONObject(current.getJSONObject("settings").toString());onDirty(false);message="Результат подтверждён. Данные сервера обновлены."}}
-  if(data==null||connectionOpen){
-   if(connectionOpen)Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&host.isNotBlank()&&password.isNotBlank()){
-    perform{target->refreshTorr(target);connectionOpen=false}
-   }else SettingsCard("Кэш и сеть",Icons.Outlined.Memory,tv){
-    Text("Подключите доступ администратора, чтобы загрузить настройки и рекомендации вашего сервера.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    Action("Загрузить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy){connectionOpen=true}
-   }
-  }
-  data?.let{snapshot->
-   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(snapshot.optString("version"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);TextButton(onClick={perform{target->refreshTorr(target)}},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Обновить состояние")}}
-   draft?.let{current->
-    TorrServerEditor(snapshot,current,tv,onChange={next->draft=next;onDirty(torrSettingsChanges(snapshot,next).length()>0)},onDefaults={askConfirmation{perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",JSONObject()).put("defaults",true).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Заводские настройки применены"}}})
-    val changed=torrSettingsChanges(snapshot,current).length()>0
-    Action("Сохранить настройки",tv,Modifier.fillMaxWidth(),enabled=!busy&&snapshot.optBoolean("editable")&&changed&&torrSettingsValid(snapshot,current),icon=Icons.Outlined.Check){askConfirmation{perform{target->val result=ssh.apply(target,JSONObject().put("operationId",UUID.randomUUID().toString()).put("revision",snapshot.getString("revision")).put("changes",torrSettingsChanges(snapshot,current)).put("confirmed",true));data=result;draft=JSONObject(result.getJSONObject("settings").toString());onDirty(false);message="Настройки сохранены и проверены"}}}
-    if(changed)TextButton(onClick={draft=JSONObject(snapshot.getJSONObject("settings").toString());onDirty(false)},enabled=!busy,modifier=Modifier.tvFocusRing(tv)){Text("Отменить изменения")}
-   }
-  }
-
- }else{
-  var archive by remember{mutableStateOf("")};var passphrase by remember{mutableStateOf("")};var ownerPassword by remember{mutableStateOf("")}
-  SettingsCard("Сервисы",Icons.Outlined.Build,tv){
-  Action("Перезапустить сервисы по SSH",tv,enabled=!busy){askConfirmation {perform{target->val result=ssh.maintenance(target,JSONObject().put("action","restart").put("operationId",operation("restart")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:restart:","");message=if(result.optBoolean("verified")) "Перезапуск и проверка подтверждены" else "Требуется проверка"}}}
-  Action("Очистить кэш TorrServer",tv,secondary=true,enabled=!busy){askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","clear-cache").put("operationId",operation("clear-cache")).put("confirmed",true));model.secrets.put("maintenance:${s.config.scope}:clear-cache:","");message="Кэш очищен, сервисы проверены"}}}
-  }
-  SettingsCard("Пароль владельца",Icons.Outlined.Lock,tv){
-  ServerSecret(ownerPassword,{ownerPassword=it},"Новый пароль владельца · от 10 символов")
-  Action("Установить пароль владельца по SSH",tv,secondary=true,enabled=ownerPassword.length>=10&&!busy){perform{target->ssh.ownerPassword(target,s.config.userId,ownerPassword);ownerPassword="";message="Пароль владельца установлен"}}
-  }
-  SettingsDisclosure("Восстановление из копии","Заменяет данные сервера содержимым архива",Icons.Outlined.Restore,tv){
-  SettingsHint("Потребуется парольная фраза архива. После восстановления устройствам понадобится повторный вход.")
-  ServerSecret(passphrase,{passphrase=it},"Парольная фраза восстанавливаемой копии")
-
-  ServerField(archive,{archive=it},"Имя архива на сервере, .mjwb")
-  Action("Восстановить по SSH",tv,secondary=true,enabled=!busy&&passphrase.length>=16&&archive.endsWith(".mjwb")){restoreWarning=true;askConfirmation {perform{target->ssh.maintenance(target,JSONObject().put("action","restore").put("operationId",operation("restore",archive)).put("confirmed",true).put("archive",archive).put("passphrase",passphrase));passphrase="";model.secrets.put("installOperation:${target.host}:${target.port}",UUID.randomUUID().toString());connectInstalled(target,ssh,model,save){message=it};model.secrets.put(pendingKey,"");ready=true;password=""}}}
-  }
+  if(message.isNotBlank())Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
  }
- }
- if(message.isNotBlank()&&(!install||progress==null))Text(message,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
  if(trust!=null)AlertDialog(onDismissRequest={trust=null},title={Text(if(trust!!.changed)"SSH host key изменился" else "Проверьте SSH host key")},text={Column{Text(trust!!.fingerprint);Text("Сверьте отпечаток с консолью провайдера. Изменение ключа может означать подмену сервера.");if(trust!!.changed)ServerField(verifiedFingerprint,{verifiedFingerprint=it},"Отпечаток из доверенной консоли")}},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),enabled=!trust!!.changed||verifiedFingerprint==trust!!.fingerprint,onClick={ssh.trust(target(),trust!!.fingerprint);trust=null;message="Доверие сохранено. Повторите операцию."}){Text("Доверять проверенному ключу")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={trust=null}){Text("Отмена")}})
- if(confirmation!=null)AlertDialog(onDismissRequest={confirmation=null},title={Text("Влияние на просмотр")},text={Text((if(restoreWarning) "Восстановление заменит данные состоянием из архива и отзовёт все сессии и приглашения. Устройствам потребуется повторный вход. " else "")+"Активных потоков по последней проверке: ${activeCount ?: "неизвестно"}. Операция может прервать видео. Продолжить?")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={val action=confirmation;confirmation=null;restoreWarning=false;action?.invoke()}){Text("Продолжить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirmation=null;restoreWarning=false}){Text("Отмена")}})
 }
-private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchModel,save:Boolean,message:(String)->Unit){
+
+private suspend fun connectInstalled(target:SshTarget,ssh:OwnerSsh,model:WatchModel,message:(String)->Unit){
  val key="installOperation:${target.host}:${target.port}";var operation=model.secrets.get(key);if(operation.isBlank()){operation=UUID.randomUUID().toString();model.secrets.put(key,operation)}
  val bootstrap=ssh.bootstrap(target,operation);val host=if(target.host.contains(':'))"[${target.host}]" else target.host;val url="https://$host${bootstrap.getString("listen")}";val c=model.state.value.config.copy(connectionMode="managed",managedUrl=url,serverId="",userId="",demo=false)
  model.secrets.put("ca:${endpoint(url).origin()}",bootstrap.getString("ca"));val api=ManagedApi(c,model.secrets);api.saveTokens(bootstrap);val me=api.authorized("me");check(me.getString("role")=="admin"){"Сервер не подтвердил права администратора"};val status=api.authorized("admin/status");check(status.getBoolean("databaseHealthy")&&status.getBoolean("torrserverHealthy")){"HTTPS доступен, но база данных или TorrServer не прошли проверку"};api.authorized("admin/probe","POST")
  model.managed.connected(c,api.sessionTokens())
- if(save){val id=me.getString("serverId")+":"+me.getString("userId");model.secrets.put("ssh:$id",JSONObject().put("host",target.host).put("port",target.port).toString());model.secrets.put("sshPassword:$id",target.password)}
  message("Сервер готов. Приложение уже подключено.")
 }
 
 private fun installationLabel(result:JSONObject):String {val stage=when(result.optString("stage")){"checking"->"Проверяем сервер";"installing_torrserver"->"Устанавливаем TorrServer";"installing_mjwatch"->"Устанавливаем MJWatch";"securing"->"Настраиваем защиту и автозапуск";"verifying","awaiting_app_verification"->"Проверяем и подключаем приложение";"failed"->"Установка прервана";else->"Проверяем состояние"};return stage+result.optString("code").takeIf{it.isNotBlank()}?.let{" · $it"}.orEmpty()}
 
-private fun prowlarrInstallError(code:String):String=when(code){
+internal fun prowlarrInstallError(code:String):String=when(code){
  "unsupported_architecture"->"Установка Prowlarr поддерживается на Linux x64 и arm64."
  "existing_service_conflict"->"На сервере уже есть служба или файлы Prowlarr с именем MJ Watch."
  "port_in_use"->"Порт 19696 на сервере уже занят."

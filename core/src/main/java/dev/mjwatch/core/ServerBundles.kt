@@ -13,6 +13,7 @@ import java.util.zip.ZipInputStream
 
 /** Release packages carry no credentials. The trust key always comes from the signed APK. */
 class ServerBundles(private val context:Context) {
+ fun bundledVersion():String = bundled().manifest().getString("version")
  private val installed=File(context.filesDir,"server-release")
  class Source(private val root:File?,private val context:Context) {
   fun open(path:String):InputStream {require(path.matches(Regex("[a-zA-Z0-9_./-]+"))&&!path.contains("..")&&!path.startsWith('/'));return root?.resolve(path)?.inputStream() ?: context.assets.open("server/$path")}

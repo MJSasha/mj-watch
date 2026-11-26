@@ -74,7 +74,7 @@ internal fun SearchAdminScreen(
     if (error.isBlank()) LaunchedEffect(Unit) {
         try {
             connect { address = it }
-            error = "SSH-сеанс завершён. Откройте админку заново."
+            error = "Сеанс админки завершён. Откройте её заново."
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -100,7 +100,7 @@ internal fun SearchAdminScreen(
                 Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             } else {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Открываем SSH-туннель…", Modifier.padding(16.dp))
+                Text("Подключаемся к админке…", Modifier.padding(16.dp))
             }
         }
     }
@@ -149,7 +149,7 @@ private fun SearchAdminWebView(address: SearchAdminAddress, service: String, mod
                     address.origin, "${address.cookie}=${address.token}; Path=/; HttpOnly; SameSite=Strict",
                 ) { stored ->
                     if (browser.tag == true) {
-                        if (stored) browser.loadUrl("${address.origin}/settings")
+                        if (stored) browser.loadUrl(if (service == "JacRed") "${address.origin}/settings" else address.origin)
                         else onError("Устройство не сохранило сеанс админки $service.")
                     }
                 }
@@ -157,10 +157,10 @@ private fun SearchAdminWebView(address: SearchAdminAddress, service: String, mod
         },
         onRelease = { browser ->
             browser.tag = false
-            val names = address.cookie?.let(::listOf) ?: cookies.getCookie(address.origin).orEmpty()
+            val names = address.cookie?.takeIf { service == "JacRed" }?.let(::listOf) ?: cookies.getCookie(address.origin).orEmpty()
                 .split(';').map { it.substringBefore('=').trim() }.filter { it.isNotEmpty() }
             names.forEach { cookies.setCookie(address.origin, "$it=; Path=/; Max-Age=0") }
-            if (address.cookie == null) android.webkit.WebStorage.getInstance().deleteOrigin(address.origin)
+            if (service == "Prowlarr") android.webkit.WebStorage.getInstance().deleteOrigin(address.origin)
             browser.stopLoading()
             browser.destroy()
         },

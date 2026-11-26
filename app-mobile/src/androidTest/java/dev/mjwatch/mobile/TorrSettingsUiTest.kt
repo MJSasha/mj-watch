@@ -35,7 +35,8 @@ class TorrSettingsUiTest {
  @get:Rule(order=1) val ui=createAndroidComposeRule<MainActivity>()
  @Test fun accessPageIsReadable() {
   ui.runOnIdle {ViewModelProvider(ui.activity)[WatchModel::class.java].page("server-torr")}
-  ui.onNodeWithText("Настройки TorrServer").assertExists()
+  ui.onNodeWithText("Проверяем права доступа к серверу.").assertExists()
+  ui.onNodeWithContentDescription("Пароль SSH").assertDoesNotExist()
   val i=InstrumentationRegistry.getInstrumentation()
   val dir=File(i.targetContext.getExternalFilesDir(null),"torr-settings").apply{mkdirs()}
   ui.waitForIdle()

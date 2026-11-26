@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.22"
+var Version = "0.1.23"
 
 type Server struct {
 	maxStreams         int
@@ -55,21 +55,24 @@ type Server struct {
 	uploadSlots        chan struct{}
 	dummyPassword      string
 
-	DB             *sql.DB
-	Config         Config
-	Client         *http.Client
-	mu             sync.Mutex
-	rates          map[string][]time.Time
-	active         map[string]int
-	streamRequests map[string]int
-	tmdbMu         sync.Mutex
-	tmdbAPIPause   time.Time
-	tmdbImagePause time.Time
-	remoteMu       sync.Mutex
-	cpu            resources.CPUSampler
-	jacredStatsMu  sync.Mutex
-	jacredRefresh  string
-	prowlarrPages  map[string]prowlarrSnapshot
+	DB                *sql.DB
+	Config            Config
+	Client            *http.Client
+	mu                sync.Mutex
+	rates             map[string][]time.Time
+	active            map[string]int
+	streamRequests    map[string]int
+	tmdbMu            sync.Mutex
+	tmdbAPIPause      time.Time
+	tmdbImagePause    time.Time
+	remoteMu          sync.Mutex
+	cpu               resources.CPUSampler
+	jacredStatsMu     sync.Mutex
+	jacredRefresh     string
+	prowlarrPages     map[string]prowlarrSnapshot
+	managementSocket  string
+	searchWebSessions map[string]searchWebSession
+	searchWebClients  map[string]int
 }
 
 func New(db *sql.DB, c Config) *Server {

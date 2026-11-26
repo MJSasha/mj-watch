@@ -1,6 +1,6 @@
 # MJWatch managed server v1
 
-Go + embedded SQLite WAL. Server version **0.1.20**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
+Go + embedded SQLite WAL. Server version **0.1.23**, HTTPS API **1**, schema **1**. Versions are independent of the Android APK. TorrServer is pinned to **MatriX.145.2**; artifacts and hashes are in `supply.lock.json`.
 
 ## Build and trust
 
@@ -9,7 +9,7 @@ Requires Go 1.26.1, Python 3.9+, OpenSSL, Android JDK 21/SDK 36. Download the tw
 ```sh
 export MJWATCH_SIGNING_KEY=/secure/path/release-private.pem
 export TORRSERVER_ARTIFACT_DIR=/path/to/verified/artifacts
-export MJWATCH_SERVER_VERSION=0.1.20
+export MJWATCH_SERVER_VERSION=0.1.23
 sh server/build.sh
 sh server/check.sh
 ./gradlew testDebugUnitTest lintDebug :app-mobile:assembleDebug :app-tv:assembleDebug
@@ -23,7 +23,7 @@ Choose connection → automatic installation. Enter host, root SSH password and 
 
 The app uploads verified files and starts a detached systemd job. Reopening the installation page can resume/query actual state. No terminal is required for the user. Installer creates separate service accounts, loopback-only authenticated TorrServer, a private CA, scoped firewall rules, owner bootstrap, certificate renewal timer and autostart. Existing services/accounts/path conflicts stop installation. Repeating the same version preserves users/data. A version change uses the signed update workflow. Jackett/JacRed and optional TMDB are configured separately.
 
-CA trust is delivered over pinned SSH and applies only to the managed origin. Hostname verification remains enabled. Root SSH secrets stay encrypted on the owner device; stored credentials require local credential unlock. Regular users never receive SSH, internal TorrServer credentials or the TMDB key.
+CA trust is delivered over pinned SSH and applies only to the managed origin. Hostname verification remains enabled. The installer can store encrypted SSH credentials on the device until setup completes. Regular users can use playback and account features through HTTPS.
 
 ## Invite a user
 
@@ -35,12 +35,22 @@ CA trust is explicitly confirmed and stored only for the imported origin. Import
 
 ## Operations and updates
 
-* TorrServer settings/read/apply/defaults: root SSH fixed `mjwatchctl` commands. JSON inputs, revision checks, resource/path validation, preserved unknown fields, durable receipts and reread verification. Detached unique systemd jobs survive SSH disconnects.
+* TorrServer settings, defaults and resource estimates use the HTTPS admin API. The local service reuses the validated `mjwatchctl` operations, with revision checks, resource and path validation, durable receipts and reread verification.
 * TMDB settings/key validation/rotation/deletion/cache: authenticated **HTTPS admin API**, never SSH. Both v3 keys and Read Access Tokens are accepted. Candidate validation precedes replacement. Credentials are AES-GCM encrypted under a separate server key; no readback. Metadata/images use fixed TMDB origins and bounded cache.
 * Users, invitations, devices and sync: HTTPS with server-enforced ACL. Last active owner cannot be deleted/blocked. Root SSH can bootstrap/recover the owner.
 * Backup: online SQLite Backup API; encrypted chunked AES-GCM with scrypt passphrase derivation and authenticated end marker. Download requires password reauthentication. Archives contain secrets: retain passphrases separately and store archives safely.
 * Restore: upload a `.mjwb` archive to the server backup directory through trusted administration, choose its name and passphrase in native maintenance. Staging/integrity/schema checks precede replacement. Sessions/invitations are revoked, epoch changes; clients log in and snapshot again. Original data is retained for failure recovery.
-* Update: import a signed `.zip` supply in native maintenance, enter SSH credentials and backup passphrase, confirm active streams. The app verifies signature/hash/API/schema; root verifies again with installed trust key, creates an encrypted backup, atomically changes the version symlink, checks HTTPS/SQLite/TorrServer. Failed health restores the previous binaries and verifies them. Schema 1 is supported; unknown future schemas are rejected. This is not a general rollback engine for arbitrary future database migrations.
+* Update: select the published version, enter the owner's password and a backup passphrase, and confirm the operation. The server fetches the GitHub release bundle and verifies its signature against the installed key. It then creates an encrypted backup, switches binaries atomically and checks HTTPS, SQLite and TorrServer. If checks fail, it restores the previous binaries and checks them again. Schema 1 is supported.
+
+The `admin` role is checked for every management request. Restart, cache clearing, restore and update require the owner's password again. MJWatch connects to the privileged helper through the locally permissioned `mjwatch-management.socket` Unix socket. JacRed and Prowlarr web sessions run over the existing HTTPS endpoint using authenticated WebSocket upgrades. The gateway must pass these upgrades through. Both provider listeners remain on loopback.
+
+To bring an existing pre-0.1.23 installation onto this workflow, run the one-time update on the Linux host after the signed version has been published:
+
+```sh
+sudo python3 -B server/packaging/enable_https_management.py 0.1.23
+```
+
+The command prompts for a backup passphrase, checks the signed package with the installed public key and enables the management socket while upgrading. On a split VPS/home installation, run it on the home host that runs MJWatch.
 
 Paths: `/etc/mjwatch` configuration/keys; `/var/lib/mjwatch` SQLite; `/var/lib/torrserver-mjwatch` TorrServer; `/var/backups/mjwatch` archives; `/var/lib/mjwatch-install` jobs/receipts; `/opt/mjwatch/releases/<version>` immutable version directories; `/opt/mjwatch/current` active symlink. Stable root operation transport is outside that symlink so polling survives a bad update.
 
@@ -54,19 +64,19 @@ Legacy CA / Python 3.13+ `health_failed`: see [one-time installed-updater repair
 
 ## Managed release search
 
-Open **My server → Release search** as the owner and choose **JacRed** or **Prowlarr**. Prowlarr requires MJWatch server 0.1.21 or later. Open its tab, connect over SSH and install Prowlarr. Then open the web admin, set up a login, and enable a torrent indexer that supports search. Refresh the status and select **Use Prowlarr for search** to switch managed clients to Prowlarr. Clients need an app version that supports Prowlarr. Switch back from the same tab while JacRed is running.
+Open **My server → Release search** as the owner and choose **JacRed** or **Prowlarr**. Install Prowlarr from its tab, open the web admin, set up a login and enable a torrent indexer that supports search. Refresh the status and select **Use Prowlarr for search** to switch managed clients to Prowlarr. Switch back from the same tab while JacRed is running.
 
-The installer verifies the upstream Prowlarr archive for Linux x64 or arm64 and runs a separate systemd service on loopback. The web admin opens over the owner’s SSH connection. Each service keeps its own settings.
+The installer verifies the upstream Prowlarr archive for Linux x64 or arm64 and runs a separate systemd service on loopback.
 
 ## Internal JacRed (0.1.14)
 
-Install or update the managed server from the app, then open **My server → Release search → JacRed** as the owner. The SSH workflow installs the pinned JacRed release for Linux AMD64 or ARM64, verifies its SHA-256, and starts a dedicated systemd service. JacRed listens on loopback. Signed-in clients search through the existing MJWatch HTTPS endpoint.
+Install or update the managed server, then open **My server → Release search → JacRed** as the owner. The installer checks the pinned release for Linux AMD64 or ARM64 and starts JacRed on loopback. Signed-in clients search through MJWatch HTTPS.
 
 Choose trackers and a collection interval, or enter an HTTPS synchronization server you can access. A new catalog fills as collection or synchronization runs. Managed clients use the source selected on the server. Direct TorrServer profiles use the external source configured on the device.
 
 In **My server → JacRed → Settings → Tracker proxy**, enter an existing HTTP or SOCKS5 proxy listening on `127.0.0.1` on the JacRed server and the exact tracker domains to route through it. Saving checks that the proxy port accepts TCP connections, applies the settings and restarts JacRed. Clear both fields to remove the route.
 
-Starting with server 0.1.15, **My server → JacRed** shows search health, catalog counts, per-tracker collection progress and the last 12 runs. An authenticated administrator can start a collection from that page. Installation and configuration continue to use owner SSH.
+Starting with server 0.1.15, **My server → JacRed** shows search health, catalog counts, per-tracker collection progress and the last 12 runs. An authenticated administrator can start a collection from that page.
 
 Server 0.1.16 can deliver catalog statistics independently of search health and collection progress. The stats panel retains its last values during refresh and offers a separate retry when statistics are unavailable.
 
@@ -74,7 +84,7 @@ Starting with server 0.1.18, **Refresh statistics** asks JacRed to recalculate t
 
 Starting with server 0.1.19, the administrator can read active JacRed jobs and start a supported tracker's release refresh in MJWatch. The job list shows live process progress. MJWatch keeps its scheduled collection history separately.
 
-Starting with server 0.1.17, the owner can load JacRed settings over SSH and open the embedded JacRed admin page. MJ Watch verifies the server identity and opens a temporary authenticated loopback tunnel. Closing the page or backgrounding the app closes the tunnel. Advanced settings saved in the editor survive later changes from MJ Watch. The listener, credentials and collection settings are managed by MJ Watch.
+The embedded JacRed admin page runs in a temporary loopback session transported over HTTPS. Closing the page or backgrounding the app closes the session. Advanced settings saved in the editor survive later changes from MJ Watch. The listener, credentials and collection settings are managed by MJ Watch.
 
 The JacRed catalog lives in `/var/lib/mjwatch-jacred/Data`. On a replacement host, install JacRed and configure its sources again. To preserve the existing catalog, stop the JacRed service while copying this directory, and set ownership to `mjwatch-jacred` on the destination. The built-in MJWatch account/history transfer does not include the JacRed catalog.
 
@@ -86,7 +96,7 @@ The automatic viewing profile is chosen at startup using effective RAM (includin
 
 Owners can read `GET /api/v1/admin/playback/settings` and replace both limits with `PATCH` plus the returned `revision` in `If-Match`. The body is `{"maxStreams":0,"maxStreamsPerUser":0}`: zero means automatic; manual values are 1–8. Automatic per-account capacity is min(2, effective server capacity). Manual per-account capacity cannot exceed the effective server limit. Settings persist in SQLite and apply immediately; lowering them only prevents new views until capacity is available. Capacity refusals retain HTTP 429 / `stream_limit` and include `X-MJWatch-Error` and `X-MJWatch-Limit-Scope` (account/server). These additions are available starting with 0.1.8.
 
-Owner → TorrServer groups cache, network and advanced settings. Key numeric inputs have tappable recommendations and adjacent maximum tiles; SSH access is collapsed until needed. Reading over SSH supplies RAM and disk estimates. `MemAvailable` includes neighbours' current consumption. The reserve is `max(128 MiB, 10% of effective RAM) + 96 MiB` for OS/neighbour growth and MJWatch peaks. The projected cache budget is at most half of effective RAM and the available memory after reserve, divided among existing torrents plus room for new viewers. Existing cache is not credited back. This is a conservative snapshot, not a guaranteed physical maximum. Unknown/insufficient memory produces no usable recommendation. Targets are at most 64 MiB on the smallest profile, 128 MiB otherwise. RAM-cache increases and disk-to-RAM switches are checked again before applying; reductions remain possible under pressure. Disk cache uses free space minus a 2 GiB reserve, divided by projected torrents and capped at 8 GiB per torrent; the recommendation is at most 256 MiB. Disk allocation increases and mode/path changes are checked again before applying. Reductions remain available under disk pressure. Protocol bounds for peers/rates are labelled separately from measured resource maxima. Existing settings are preserved until explicitly applied. New small installations start with 64 MiB cache, 30 peer connections and 25% preload.
+Owner → TorrServer groups cache, network and advanced settings. Key numeric inputs have tappable recommendations and adjacent maximum tiles. The HTTPS settings response includes RAM and disk estimates. `MemAvailable` includes neighbours' current consumption. The reserve is `max(128 MiB, 10% of effective RAM) + 96 MiB` for OS/neighbour growth and MJWatch peaks. The projected cache budget is at most half of effective RAM and the available memory after reserve, divided among existing torrents plus room for new viewers. Existing cache is not credited back. This is a conservative snapshot, not a guaranteed physical maximum. Unknown/insufficient memory produces no usable recommendation. Targets are at most 64 MiB on the smallest profile, 128 MiB otherwise. RAM-cache increases and disk-to-RAM switches are checked again before applying; reductions remain possible under pressure. Disk cache uses free space minus a 2 GiB reserve, divided by projected torrents and capped at 8 GiB per torrent; the recommendation is at most 256 MiB. Disk allocation increases and mode/path changes are checked again before applying. Reductions remain available under disk pressure. Protocol bounds for peers/rates are labelled separately from measured resource maxima. Existing settings are preserved until explicitly applied. New small installations start with 64 MiB cache, 30 peer connections and 25% preload.
 
 Phone/TV → video parameters → Buffer shows buffered seconds, recommended target and estimated device maximum. Auto targets up to 64 MiB (16 MiB on low-RAM devices). The maximum considers app heap, current heap headroom and available RAM, capped at 128 MiB (24 MiB on low-RAM devices), with a 4 MiB minimum target. Loading aims for up to 120 seconds but stops at the byte target; allocator/decoder overhead is additional. A selection applies on the next video launch and is clamped again to current headroom. Device buffer and server cache serve different network links.
 
@@ -126,6 +136,6 @@ An owner can move a managed installation and keep each device's account, passwor
    ```
 
    If installation already created the new host's initial owner account and device, add `--replace-bootstrap` to explicitly replace that bootstrap. Target validation rejects additional users, devices, watching history, configured application settings, backups and torrents. The destination's previous files are retained under `/var/lib/mjwatch-install/migration/original`. SSH credentials stay on the workstation. Transfer streams over the two SSH connections.
-4. During cutover current streams end, both source services stop, and the old HTTPS endpoint answers `503 migration_in_progress`. The script snapshots committed SQLite data, checks the received database, starts the destination and verifies its HTTPS identity, database and TorrServer health. Only then does the old endpoint announce the new origin and private CA with `409 server_moved`. Clients verify the new TLS hostname, CA, migration ID, server ID and epoch before reusing credentials. Existing token expiry and revocation dates still apply. Owner SSH management on the new host needs its own verified SSH access.
+4. During cutover current streams end, both source services stop, and the old HTTPS endpoint answers `503 migration_in_progress`. The script snapshots committed SQLite data, checks the received database, starts the destination and verifies its HTTPS identity, database and TorrServer health. Only then does the old endpoint announce the new origin and private CA with `409 server_moved`. Clients verify the new TLS hostname, CA, migration ID, server ID and epoch before reusing credentials. Existing token expiry and revocation dates still apply. The selected destination must have the HTTPS management socket enabled for administration from the app.
 
 Rerun the same command after a disconnect. Before destination installation begins, `python3 migrate.py mjwatch-old mjwatch-new --abort` cancels the reservation and reopens the original. Once installation starts, resume forward to protect writes on the destination. The old host remains a read-only HTTPS announcement service after completion. Its source data stays on disk. A returning device must still be able to reach each intermediate address if there have been multiple moves. Ordinary backup restore remains a separate recovery operation that revokes sessions.

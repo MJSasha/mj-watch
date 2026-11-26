@@ -5,10 +5,7 @@ import kotlinx.coroutines.runInterruptible
 import com.jcraft.jsch.*
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.security.KeyFactory
-import java.security.Signature
 import java.security.MessageDigest
-import java.security.spec.X509EncodedKeySpec
 import android.util.Base64
 
 class HostKeyRequired(val fingerprint:String,val changed:Boolean):java.io.IOException(if(changed) "SSH host key изменился. Сверьте отпечаток с консолью сервера." else "Подтвердите SSH host key после сверки с консолью провайдера.")
@@ -44,118 +41,6 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  suspend fun identity(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl identity"))}
  suspend fun cancel(target:SshTarget)=session(target){exec(it,"touch /var/lib/mjwatch-install/cancel")}
  suspend fun read(target:SshTarget)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl torrserver settings read"))}
- private fun searchHelper(session:Session,name:String):String {
-  val (service,minimumVersion)=when(name) {
-   "jacred.py" -> "JacRed" to "0.1.14"
-   "prowlarr.py" -> "Prowlarr" to "0.1.21"
-   else -> error("Неизвестный компонент поиска")
-  }
-  val path="/opt/mjwatch/current/$name"
-  if(exec(session,"if [ -x $path ]; then echo ready; else echo missing; fi").trim()=="ready")return path
-  val script=context.assets.open("jacred-repair.py").bufferedReader().use {it.readText()}
-  val helper=try {
-   ServerBundles(context).bundled().open(name).bufferedReader().use {it.readText()}
-  }catch(_:java.io.FileNotFoundException){""}
-  val quotedScript="'"+script.replace("'","'\\''")+"'"
-  when(exec(session,"/usr/bin/python3 -c $quotedScript $name",helper).trim()) {
-   "ready" -> return path
-   "update_required" -> error("Для $service нужен сервер MJWatch $minimumVersion или новее. Откройте «Мой сервер → Обслуживание → Обновить сервер».")
-   "helper_unavailable" -> error("В поставке для установленной версии не найден проверенный файл $service. Проверьте серверную поставку в разделе «Обслуживание».")
-   "release_changed" -> error("Версия сервера изменилась во время проверки. Загрузите состояние $service ещё раз.")
-   else -> error("Не удалось проверить установленную поставку MJWatch. Загрузите состояние $service ещё раз.")
-  }
- }
- private fun jacredStatus(session:Session):JSONObject =
-  JSONObject(exec(session,"/usr/bin/python3 ${searchHelper(session,"jacred.py")} status"))
- suspend fun readJacred(target:SshTarget)=session(target,::jacredStatus)
- suspend fun browseJacred(target: SshTarget, serverId: String, onReady: (SearchAdminAddress) -> Unit) =
-  session(target) { connection ->
-   check(serverId.isNotBlank() && JSONObject(exec(connection, "/usr/local/sbin/mjwatchctl identity"))
-    .getString("serverId") == serverId) { "SSH относится к другому серверу" }
-   connection.setServerAliveInterval(15_000)
-   connection.serverAliveCountMax = 2
-   val channel = connection.openChannel("exec") as ChannelExec
-   channel.setCommand("/usr/bin/python3 /opt/mjwatch/current/jacred.py admin-session")
-   val input = channel.outputStream
-   val output = channel.inputStream
-   try {
-    channel.connect(10_000)
-    val deadline = android.os.SystemClock.elapsedRealtime() + 15_000
-    while (output.available() == 0 && !channel.isClosed &&
-     android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
-    check(output.available() > 0) {
-     if (channel.exitStatus == 64) "Обновите сервер MJ Watch для доступа к админке JacRed."
-     else "Сервер не открыл админку JacRed. Проверьте состояние службы."
-    }
-    val ready = JSONObject(output.bufferedReader().readLine())
-    check(!ready.has("error")) { "Проверьте, что серверный JacRed установлен и запущен." }
-    val remotePort = ready.getInt("port")
-    val cookie = ready.getString("cookie")
-    val token = ready.getString("token")
-    check(remotePort in 1..65535 && cookie == "mjwatch_jacred_$remotePort" &&
-     token.matches(Regex("[A-Za-z0-9_-]{43}"))) { "Сервер вернул неверные параметры админки." }
-    val port = connection.setPortForwardingL("127.0.0.1", 0, "127.0.0.1", remotePort)
-    onReady(SearchAdminAddress(port, cookie, token))
-    while (connection.isConnected && channel.isConnected && !channel.isClosed) Thread.sleep(250)
-   } finally {
-    try { runCatching { input.close() } } finally { channel.disconnect() }
-   }
-  }
- private fun prowlarrCommand(connection:Session,action:String):JSONObject {
-  require(action in setOf("status","install","prowlarr","jacred"))
-  val helper=searchHelper(connection,"prowlarr.py")
-  val result=JSONObject(exec(connection,"/usr/bin/python3 -B $helper $action"))
-  when(result.optString("error")) {
-   "indexer_required" -> error("Добавьте и включите торрент-трекер с поддержкой поиска в Prowlarr.")
-   "jacred_unavailable" -> error("Запустите JacRed перед переключением поиска.")
-   "install_failed" -> error("Не удалось запустить установку Prowlarr.")
-  }
-  return result
- }
- suspend fun readProwlarr(target:SshTarget)=session(target){prowlarrCommand(it,"status")}
- suspend fun selectSearchProvider(target:SshTarget,prowlarr:Boolean)=
-  session(target){prowlarrCommand(it,if(prowlarr)"prowlarr" else "jacred")}
- suspend fun installProwlarr(target:SshTarget)=session(target){connection->
-  prowlarrCommand(connection,"install")
-  val deadline=android.os.SystemClock.elapsedRealtime()+490_000
-  var current:JSONObject
-  do {
-   Thread.sleep(1500)
-   current=prowlarrCommand(connection,"status")
-   check(android.os.SystemClock.elapsedRealtime()<deadline) {"Обновите состояние установки Prowlarr."}
-  } while(current.optJSONObject("operation")?.optString("state")=="running")
-  current
- }
- suspend fun browseProwlarr(target:SshTarget,serverId:String,onReady:(SearchAdminAddress)->Unit)=
-  session(target){connection->
-   check(serverId.isNotBlank()&&JSONObject(exec(connection,"/usr/local/sbin/mjwatchctl identity"))
-    .getString("serverId")==serverId) {"SSH относится к другому серверу"}
-   check(prowlarrCommand(connection,"status").optBoolean("ready")) {"Запустите Prowlarr на сервере."}
-   connection.setServerAliveInterval(15_000)
-   connection.serverAliveCountMax=2
-   val port=connection.setPortForwardingL("127.0.0.1",0,"127.0.0.1",19696)
-   onReady(SearchAdminAddress(port))
-   while(connection.isConnected) Thread.sleep(250)
-  }
- suspend fun applyJacred(target:SshTarget,settings:JSONObject,onStage:(String)->Unit)=session(target){connection->
-  val before=jacredStatus(connection).optJSONObject("operation")
-  check(before?.optString("state")!="running") {"JacRed уже настраивается. Обновите состояние после завершения."}
-  val started=JSONObject(exec(connection,"/usr/bin/python3 /opt/mjwatch/current/jacred.py start",settings.toString()))
-  check(started.optString("state")!="busy") {"JacRed уже настраивается. Обновите состояние после завершения."}
-  check(started.optString("state")!="failed") {"Проверьте настройки синхронизации, сбора и прокси."}
-  val deadline=android.os.SystemClock.elapsedRealtime()+310_000
-  var snapshot:JSONObject
-  do {
-   Thread.sleep(900)
-   snapshot=jacredStatus(connection)
-   val operation=snapshot.optJSONObject("operation")
-   onStage(operation?.optString("stage").orEmpty())
-   if(operation?.optString("state")=="failed") throw MaintenanceFailure(operation.optString("code"))
-   check(android.os.SystemClock.elapsedRealtime()<deadline) {"Установка продолжается. Обновите состояние JacRed."}
-  } while(operation?.optString("state")=="running")
-  check(snapshot.optBoolean("running")) {"JacRed не запущен. Проверьте состояние сервера."}
-  snapshot
- }
  suspend fun apply(target:SshTarget,body:JSONObject)=session(target){session->
   val id=body.getString("operationId");val key="torrApply:${target.host}:${target.port}";secrets.put(key,body.toString())
   fun result()=JSONObject(exec(session,"/usr/local/sbin/mjwatchctl torrserver operation",JSONObject().put("operationId",id).toString()))
@@ -172,7 +57,6 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
  }
  suspend fun status(target:SshTarget)=session(target){JSONObject(exec(it,"cat /var/lib/mjwatch-install/status.json"))}
  suspend fun bootstrap(target:SshTarget,operation:String)=session(target){JSONObject(exec(it,"/usr/local/sbin/mjwatchctl bootstrap",JSONObject().put("device",android.os.Build.MODEL).put("operationId",operation).toString()))}
- suspend fun maintenance(target:SshTarget,body:JSONObject)=session(target){maintenanceJob(it,body)}
  private fun maintenanceJob(session:Session,body:JSONObject):JSONObject {
   val id=body.getString("operationId")
   fun result()=JSONObject(exec(session,"/usr/local/sbin/mjwatchctl maintenance operation",JSONObject().put("operationId",id).toString()))
@@ -187,10 +71,6 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   val state=exec(session,"systemctl is-active --quiet mjwatch-install.service && echo running || echo stopped")
   if(state.trim()!="running"){exec(session,"rm -f /var/lib/mjwatch-install/cancel");upload(session,target);exec(session,"systemd-run --unit=mjwatch-install --collect /bin/sh /var/lib/mjwatch-install/upload/install.sh")}
  }
- suspend fun maintenanceStatus(target:SshTarget,operation:String)=session(target){session->
-  require(operation.matches(Regex("[A-Za-z0-9_-]{16,128}")))
-  JSONObject(exec(session,"/usr/local/sbin/mjwatchctl maintenance operation",JSONObject().put("operationId",operation).toString()))
- }
  suspend fun update(target:SshTarget,passphrase:String,operation:String,onProgress:(String)->Unit={})=session(target){session->
   onProgress("uploading");val manifest=upload(session,target);onProgress("applying")
   val result=maintenanceJob(session,JSONObject().put("action","update").put("operationId",operation).put("confirmed",true).put("passphrase",passphrase))
@@ -200,7 +80,6 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   }
   result
  }
- suspend fun ownerPassword(target:SshTarget,user:String,password:String)=session(target){exec(it,"/usr/local/sbin/mjwatchctl owner password",JSONObject().put("User",user).put("Password",password).toString())}
  private fun upload(session:Session,target:SshTarget):JSONObject {
   val bundles=ServerBundles(context);val source=bundles.active();val manifest=bundles.verify(source)
   val entries=manifest.getJSONArray("files")

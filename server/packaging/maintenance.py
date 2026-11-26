@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import fcntl, hashlib, json, os, pathlib, re, shutil, ssl, subprocess, sys, time
+import contextlib, fcntl, hashlib, json, os, pathlib, re, shutil, ssl, subprocess, sys, tempfile, time
 ROOT=pathlib.Path('/var/lib/mjwatch-install')
 CURRENT=''
 def run(*args,input=None):return subprocess.run(args,input=input,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout.strip()
@@ -41,7 +41,7 @@ def main():
  CURRENT=operation
  receipt=ROOT/(operation+'.maintenance.json')
  write_receipt(ROOT/'maintenance-status.json',dict(state='running',operationId=operation,action=request['action']))
- with (ROOT/'lock').open('w') as lock:
+ with (ROOT/'lock').open('w') as lock, contextlib.ExitStack() as cleanup:
   fcntl.flock(lock,fcntl.LOCK_EX)
   if receipt.exists():print(receipt.read_text());return
   config=json.loads(pathlib.Path('/etc/mjwatch/config.json').read_text());action=request['action'];current=pathlib.Path('/opt/mjwatch/current');previous=current.resolve()
@@ -82,7 +82,15 @@ def main():
     run('systemctl','start','mjwatch.service');raise RuntimeError('restore_failed_original_restored')
    finally:shutil.rmtree(destination)
   elif action=='update':
-   upload=ROOT/'upload';run('openssl','dgst','-sha256','-verify','/etc/mjwatch/release-public.pem','-signature',str(upload/'manifest.sig'),str(upload/'manifest.json'))
+   bootstrap=os.environ.get('MJWATCH_BOOTSTRAP_SUPPLY')
+   upload=pathlib.Path(bootstrap) if bootstrap else ROOT/'upload'
+   if bootstrap and (upload.parent!=ROOT or upload.is_symlink() or upload.stat().st_uid!=0 or upload.stat().st_mode&0o077):
+    raise RuntimeError('unsafe_supply_directory')
+   if request.get('httpsSupply') is True:
+    from update_supply import stage_latest
+    upload=pathlib.Path(cleanup.enter_context(tempfile.TemporaryDirectory(dir=ROOT)))
+    stage_latest(upload,request['version'])
+   run('openssl','dgst','-sha256','-verify','/etc/mjwatch/release-public.pem','-signature',str(upload/'manifest.sig'),str(upload/'manifest.json'))
    manifest=json.loads((upload/'manifest.json').read_text());version=manifest['version']
    if not re.fullmatch('[0-9]+\.[0-9]+\.[0-9]+',version) or manifest.get('schemaVersion')!=1:raise RuntimeError('incompatible_release')
    arch=json.loads((ROOT/'plan.json').read_text())['arch'];release=pathlib.Path('/opt/mjwatch/releases')/version
@@ -100,12 +108,14 @@ def main():
    release.mkdir(mode=0o755,exist_ok=False);release.chmod(0o755);(release/'.mjwatch-owned').touch(mode=0o600)
    for name,source in [('mjwatch',f'linux-{arch}/mjwatch'),('torrserver',f'linux-{arch}/TorrServer')]:shutil.copy2(upload/source,release/name);(release/name).chmod(0o755)
    for helper in ['maintenance.py','renew.py']:shutil.copy2(upload/helper,release/helper);(release/helper).chmod(0o700)
-   for helper in ('jacred.py','prowlarr.py'):
+   for helper in ('jacred.py','prowlarr.py','management.py','update_supply.py'):
     if any(entry['path']==helper for entry in manifest['files']):
      shutil.copy2(upload/helper,release/helper);(release/helper).chmod(0o700)
    shutil.copy2(upload/'manifest.json',release/'manifest.json');(release/'manifest.json').chmod(0o644)
    try:
-    run('systemctl','stop','mjwatch.service','mjwatch-torrserver.service');temp=current.with_suffix('.next');temp.symlink_to(release);os.replace(temp,current);run('systemctl','start','mjwatch-torrserver.service','mjwatch.service');healthy(config)
+    run('systemctl','stop','mjwatch.service','mjwatch-torrserver.service');temp=current.with_suffix('.next');temp.symlink_to(release);os.replace(temp,current)
+    if (release/'management.py').is_file():run('/usr/bin/python3','-B',str(release/'management.py'),'install')
+    run('systemctl','start','mjwatch-torrserver.service','mjwatch.service');healthy(config)
    except Exception:
     run('systemctl','stop','mjwatch.service','mjwatch-torrserver.service');temp=current.with_suffix('.rollback');temp.symlink_to(previous);os.replace(temp,current);run('systemctl','start','mjwatch-torrserver.service','mjwatch.service');healthy(config);raise RuntimeError('update_failed_binary_rollback_confirmed')
   else:raise RuntimeError('operation_not_allowed')

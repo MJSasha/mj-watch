@@ -255,6 +255,13 @@ class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=nu
  suspend fun authorized(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null):JSONObject =
   withAuthorization {token->request(path,method,body,revision,headers=mapOf("Authorization" to "Bearer $token"))}
 
+ internal fun searchAdminSocket(service:String,id:String?,listener:WebSocketListener):WebSocket {
+  require(service in setOf("jacred","prowlarr"))
+  val url=base.child("api/v1/admin/host/$service/websocket").newBuilder()
+   .apply {if(id!=null)addQueryParameter("id",id)}.build()
+  return client.newWebSocket(Request.Builder().url(url).header("Authorization","Bearer ${access()}").build(),listener)
+ }
+
  internal suspend fun prowlarrTorrent(token:String):ByteArray {
   require(token.length<=8192&&token.matches(Regex("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"))) {"Некорректная ссылка на раздачу"}
   val url=base.child("api/v1/search/prowlarr-download").newBuilder().addQueryParameter("token",token).build()

@@ -9,6 +9,16 @@ import (
 
 func (s *Server) admin(w http.ResponseWriter, r *http.Request, path string, i identity) {
 	switch {
+	case path == "admin/host/jacred/web":
+		s.jacredWebSession(w, r, i)
+	case path == "admin/host/jacred/websocket", path == "admin/host/prowlarr/websocket":
+		s.searchWebSocket(w, r, i, path == "admin/host/prowlarr/websocket")
+	case path == "admin/owner/password" && r.Method == http.MethodPost:
+		s.changeOwnerPassword(w, r, i)
+	case path == "admin/host/update/available" && r.Method == http.MethodGet:
+		s.latestServerSupply(w, r)
+	case strings.HasPrefix(path, "admin/host/"):
+		s.management(w, r, strings.TrimPrefix(path, "admin/host/"), i)
 	case path == "admin/resources" && r.Method == http.MethodGet:
 		s.hostResources(w)
 	case path == "admin/jacred" && r.Method == http.MethodGet:
