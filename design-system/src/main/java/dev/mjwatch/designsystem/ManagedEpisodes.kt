@@ -278,7 +278,7 @@ private fun episodeStill(path: String, config: Config): String? {
             CinematicArtworkTile(episode.name, visibleCaption.orEmpty(), "episode-banner-$number", artworkRatio,
                 action = {
                     val watched = position?.completed == true
-                    val badgeInk = if (watched) WatchMint else Color.White
+                    val badgeInk = if (watched) Color(0xFFC7FF68) else Color.White
                     Row(Modifier.align(Alignment.TopStart).padding(10.dp)
                         .background(if (watched) Color(0xFF30450F) else Color(0xCC161B24), CircleShape)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
