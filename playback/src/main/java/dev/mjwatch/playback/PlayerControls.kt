@@ -137,7 +137,7 @@ internal val PlayerMint=Color(0xFF31F5C8)
                                 thumb={},
                                 track={PlayerTimelineTrack(position,duration,segments,PlayerMint)},
                             )
-                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
                         FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {

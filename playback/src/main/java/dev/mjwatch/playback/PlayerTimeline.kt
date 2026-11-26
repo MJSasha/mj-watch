@@ -61,7 +61,7 @@ internal fun PlayerTimelineTrack(
 
         if (focused) {
             drawCircle(Color(0xFF101722), 7.5.dp.toPx(), thumb)
-            drawCircle(Color(0xFFF0F2EC), 7.5.dp.toPx(), thumb, style = Stroke(1.5.dp.toPx()))
+            drawCircle(Color(0xFFF4F4FA), 7.5.dp.toPx(), thumb, style = Stroke(1.5.dp.toPx()))
         }
         drawCircle(accent, (if (focused) 4.5.dp else 3.5.dp).toPx(), thumb)
     }

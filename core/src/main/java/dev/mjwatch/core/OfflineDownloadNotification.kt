@@ -62,7 +62,7 @@ internal class OfflineDownloadNotification(private val context: Context) {
         if (Build.VERSION.SDK_INT >= 36) {
             val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
                 Configuration.UI_MODE_NIGHT_YES
-            val accent = if (night) 0xffc4ff60.toInt() else 0xff739500.toInt()
+            val accent = if (night) 0xff31f5c8.toInt() else 0xff00674f.toInt()
             builder.setStyle(Notification.ProgressStyle()
                 .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100).setColor(accent)))
                 .setProgress(percent)
