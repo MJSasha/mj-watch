@@ -15,12 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.*
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
@@ -35,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material.icons.outlined.*
@@ -91,35 +87,15 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     val state by model.state.collectAsStateWithLifecycle()
     val online = tv || rememberNetworkAvailable()
     val onlineState = rememberSaveableStateHolder()
-    var startupShown by rememberSaveable {mutableStateOf(false)}
-    var revealing by remember {mutableStateOf(false)}
-    val entrance=remember {Animatable(0f)}
-    val reveal=remember {Animatable(0f)}
-    LaunchedEffect(Unit) {
-        if(!startupShown) {
-            entrance.animateTo(1f,tween(if(tv) 350 else 1100))
-            snapshotFlow {state.initializing}.first {!it}
-            revealing=true
-            withFrameNanos {}
-            reveal.animateTo(1f,tween(if(tv) 200 else 420,easing=FastOutSlowInEasing))
-            startupShown=true
-        }
-    }
-    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0C0E15)).onPreviewKeyEvent {!startupShown}) {
-        if(!state.initializing&&(startupShown||revealing)) Box(Modifier.fillMaxSize().testTag("app-content").graphicsLayer {
-            alpha=if(startupShown) 1f else reveal.value
-            scaleX=.97f+.03f*alpha;scaleY=scaleX
-        }) {
+    if (state.initializing) {
+        BackHandler {}
+        StartupBanner()
+    } else {
+        Box(Modifier.fillMaxSize().testTag("app-content")) {
             if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }
             else OfflineHome(state.config)
         }
-        if(!startupShown||state.initializing) WatchTheme(state.config.theme) {
-            StartupBanner(Modifier.pointerInput(Unit) {
-                awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}
-            },if(startupShown) 1f else entrance.value,if(startupShown) 0f else reveal.value)
-        }
     }
-    BackHandler(!startupShown) {}
 }
 
 @Composable private fun WatchAppContent(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?) {
@@ -192,30 +168,45 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
             val activeDestination=if(detailNav) state.originPage else page
             Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
-                if(!imeVisible) Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))) {
+                if(!imeVisible) Box {
+                    val bottomInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                    if(!showBottomBar) Spacer(Modifier.windowInsetsBottomHeight(bottomInset))
                     AnimatedVisibility(
                         visible=showBottomBar,
                         enter=fadeIn(tween(180))+expandVertically(tween(240)),
                         exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
                     ) {
-                        NavigationBar(
-                            modifier=Modifier.fillMaxWidth().height(56.dp).testTag("bottom-navigation"),
-                            containerColor=colors.surface,
-                            tonalElevation=0.dp,
-                            windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
-                        ) {
-                            destinations.forEach { destination ->
-                                NavigationBarItem(
-                                    selected=destination.id==activeDestination||destination.id=="library"&&activeDestination=="history",
-                                    enabled=showBottomBar,
-                                    onClick={model.page(destination.id)},
-                                    colors=NavigationBarItemDefaults.colors(
-                                        selectedIconColor=colors.primary,
-                                        unselectedIconColor=colors.onSurfaceVariant,
-                                        indicatorColor=colors.primaryContainer,
-                                    ),
-                                    icon={Icon(destination.icon,destination.title,Modifier.size(24.dp))},
-                                )
+                        Column(Modifier.fillMaxWidth().windowInsetsPadding(bottomInset)
+                            .padding(horizontal=8.dp).clip(RoundedCornerShape(22.dp))) {
+                            NavigationBar(
+                                modifier=Modifier.fillMaxWidth().height(52.dp).testTag("bottom-navigation"),
+                                containerColor=colors.surface,
+                                tonalElevation=0.dp,
+                                windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
+                            ) {
+                                val selectionBrush=watchSelectionGradient()
+                                destinations.forEach { destination ->
+                                    val selected=destination.id==activeDestination||destination.id=="library"&&activeDestination=="history"
+                                    NavigationBarItem(
+                                        selected=selected,
+                                        enabled=showBottomBar,
+                                        onClick={model.page(destination.id)},
+                                        colors=NavigationBarItemDefaults.colors(
+                                            selectedIconColor=colors.primary,
+                                            unselectedIconColor=colors.onSurfaceVariant,
+                                            indicatorColor=Color.Transparent,
+                                        ),
+                                        icon={
+                                            Box(
+                                                Modifier.size(60.dp,32.dp)
+                                                    .then(if(selected) Modifier.background(selectionBrush,CircleShape) else Modifier),
+                                                contentAlignment=Alignment.Center,
+                                            ) {
+                                                Icon(destination.icon,destination.title,Modifier.size(24.dp))
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -328,11 +319,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         Action(action,tv,if(tv) Modifier else Modifier.fillMaxWidth(),icon=Icons.Outlined.Search,onClick=onClick)
     }
 }
-@Composable private fun ReleaseCard(release:Release,tv:Boolean,focus:Boolean=false,selected:Boolean=false,onLongClick:(()->Unit)?=null,onClick:()->Unit) {
+@Composable private fun ReleaseCard(release:Release,tv:Boolean,focus:Boolean=false,selected:Boolean=false,onLongClick:(()->Unit)?=null,compact:Boolean=false,onClick:()->Unit) {
     val requester=remember {FocusRequester()}
     LaunchedEffect(focus) {if(tv&&focus) {delay(100);requester.requestFocus()}}
     NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester),selected,onLongClick,onClick) {
-        Column(Modifier.fillMaxWidth().padding(if(tv) 18.dp else 16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal=if(tv) 18.dp else 16.dp,vertical=if(compact) 8.dp else if(tv) 18.dp else 16.dp),
+            verticalArrangement=Arrangement.spacedBy(if(compact) 4.dp else 10.dp),
+        ) {
             Text(release.title,fontSize=if(tv) 17.sp else 16.sp,lineHeight=22.sp,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             val codec = Regex("(?i)(HEVC|H[ .]?265|x265|H[ .]?264|x264|AV1)").find(release.title)?.value
             val hdr = Regex("(?i)(HDR10\\+?|HDR|SDR)").find(release.title)?.value
@@ -450,22 +444,48 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
     val catalogue=s.catalog
     val hero=catalogue.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: catalogue.firstOrNull()
     val cinematic=hero!=null||s.config.demo
-    val inset=20.dp
+    val inset=16.dp
     WatchTheme(s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val columns=if(maxWidth>=680.dp) 2 else 1
         val catalogueCardWidth = ((maxWidth - inset - 28.dp) / 2).coerceIn(120.dp, 200.dp)
         Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(bottom=16.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
                     Column(Modifier.padding(horizontal=inset).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
-                        if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=if(LocalConfiguration.current.screenHeightDp<480) 240.dp else 374.dp).clip(RoundedCornerShape(24.dp))) {
-                            Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.matchParentSize())
-                            Column(Modifier.align(Alignment.BottomStart).widthIn(max=640.dp).padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",fontSize=11.sp,letterSpacing=1.5.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
-                                Text(hero?.title ?: "Тихая орбита",fontSize=35.sp,lineHeight=40.sp,fontWeight=FontWeight.Bold,color=androidx.compose.ui.graphics.Color.White)
-                                Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",fontSize=13.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
-                                Action(if(hero?.kind=="tv") "О сериале" else "О фильме",false,Modifier.fillMaxWidth().padding(top=10.dp).testTag("hero-open"),icon=Icons.Outlined.PlayArrow) {if(hero!=null) model.metadata(hero,"hero:${hero.id}") else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")}
+                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section,gradient=true) {model.catalogSection(section)}}}
+                        if (cinematic) {
+                            val compact = LocalConfiguration.current.screenHeightDp < 480
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .heightIn(min=if(compact) 200.dp else 250.dp)
+                                    .clip(MaterialTheme.shapes.large)
+                                    .border(1.dp,Color.White.copy(alpha=.08f),MaterialTheme.shapes.large)
+                                    .clickable(
+                                        role=Role.Button,
+                                        onClickLabel=if(hero?.kind=="tv") "О сериале" else "О фильме",
+                                    ) {
+                                        if(hero!=null) model.metadata(hero,"hero:${hero.id}")
+                                        else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")
+                                    }
+                                    .testTag("hero-open"),
+                            ) {
+                                Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo)
+                                ArtScrim(Modifier.matchParentSize())
+                                Column(
+                                    Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(16.dp),
+                                    verticalArrangement=Arrangement.spacedBy(3.dp),
+                                ) {
+                                    val metadataInk = Color(0xFFE5E8EE)
+                                    Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",
+                                        fontSize=11.sp,letterSpacing=1.sp,color=metadataInk)
+                                    Text(hero?.title ?: "Тихая орбита",
+                                        fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold,color=Color.White)
+                                    Row(verticalAlignment=Alignment.CenterVertically) {
+                                        Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",
+                                            fontSize=13.sp,color=metadataInk,modifier=Modifier.weight(1f))
+                                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight,null,tint=Color.White)
+                                    }
+                                }
                             }
                         }
                     }
@@ -505,7 +525,7 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
                 item {Box(Modifier.padding(horizontal=inset)) {SectionTitle("Тестовые раздачи")}}
                 items(DemoReleases.items.chunked(columns),key={it.first().id}) {row->
                     Row(Modifier.padding(horizontal=inset),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                        row.forEach {r->Box(Modifier.weight(1f)) {ReleaseCard(r,tv,s.focusKey==r.id) {model.open(r)}}}
+                        row.forEach {r->Box(Modifier.weight(1f)) {ReleaseCard(r,tv,s.focusKey==r.id,compact=true) {model.open(r)}}}
                         repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
                     }
                 }
@@ -1198,22 +1218,26 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         metadata?.let(::titleSubtitle) ?: e.source
     }
     val colors=MaterialTheme.colorScheme
-    val dark=colors.background.luminance()<.5f
-    val surface=if(dark) androidx.compose.ui.graphics.Color(0xFF1F2732) else colors.surface
-    val secondary=if(dark) androidx.compose.ui.graphics.Color(0xFFB3BDC8) else colors.onSurfaceVariant
-    val track=if(dark) androidx.compose.ui.graphics.Color(0xFF3C4551) else colors.outline.copy(alpha=.32f)
-    val artHeight=if(tv) tvUnit(176f) else 96.dp
+    val track=colors.outline.copy(alpha=.48f)
+    val artHeight=if(tv) tvUnit(176f) else 88.dp
     val demoArt=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null
     val playbackProgress:(@Composable ()->Unit)? = if(position!=null&&duration!=null) {{
         val fraction by animateFloatAsState(
             (position.toFloat() / duration).coerceIn(0f, 1f), tween(200), label = "history-progress"
         )
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier.padding(top=if(tv) tvUnit(5f) else 4.dp)
-                .fillMaxWidth().height(if(tv) tvUnit(5f) else 4.dp),
-            trackColor = track,gapSize = 0.dp, drawStopIndicator = {}
-        )
+        if (tv) {
+            LinearProgressIndicator(
+                progress={fraction},modifier=Modifier.padding(top=tvUnit(5f)).fillMaxWidth().height(tvUnit(5f)),
+                trackColor=track,gapSize=0.dp,drawStopIndicator={},
+            )
+        } else {
+            Box(
+                Modifier.progressSemantics(fraction).padding(top=4.dp).fillMaxWidth().height(4.dp)
+                    .clip(CircleShape).background(track),
+            ) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(watchProgressGradient(),CircleShape))
+            }
+        }
     }} else null
     var focused by remember {mutableStateOf(false)}
     val cardModifier=Modifier.fillMaxWidth().focusRequester(requester)
@@ -1230,20 +1254,25 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                         }
                     }} else null)
             }
-        } else Row(Modifier.fillMaxWidth().background(surface),
-            verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.size(width=artHeight*PosterAspectRatio,height=artHeight).testTag("library-poster-${e.id}")) {
+        } else Row(
+            Modifier.fillMaxWidth().background(colors.surface)
+                .padding(start=if(tv) 0.dp else 4.dp,top=if(tv) 0.dp else 4.dp,bottom=if(tv) 0.dp else 4.dp),
+            verticalAlignment=Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(width=artHeight*PosterAspectRatio,height=artHeight)
+                .then(if(tv) Modifier else Modifier.clip(MaterialTheme.shapes.small))
+                .testTag("library-poster-${e.id}")) {
                 Artwork(metadata,config,Modifier.matchParentSize(),backdrop=true,demo=demoArt,posterFirst=true)
             }
             Column(Modifier.weight(1f).padding(
                 start=if(tv) tvUnit(24f) else 12.dp,end=if(tv) tvUnit(24f) else 12.dp,
                 top=if(tv) tvUnit(20f) else 8.dp,bottom=if(tv) tvUnit(20f) else 8.dp
             ), verticalArrangement=Arrangement.spacedBy(if(tv) tvUnit(8f) else 4.dp)) {
-                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 18.sp,
-                    lineHeight=if(tv) tvUnit(32f).value.sp else 22.sp,color=colors.onSurface,
+                Text(e.title,fontWeight=FontWeight.Bold,fontSize=if(tv) tvUnit(25.6f).value.sp else 16.sp,
+                    lineHeight=if(tv) tvUnit(32f).value.sp else 20.sp,color=colors.onSurface,
                     maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 if(subtitle.isNotEmpty()) Text(subtitle,fontSize=if(tv) tvUnit(18f).value.sp else 14.sp,
-                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=secondary)
+                    lineHeight=if(tv) tvUnit(24f).value.sp else 18.sp,color=colors.onSurfaceVariant)
                 playbackProgress?.invoke()
             }
             if(showMenu&&!tv) IconButton(onClick={menu=true}) {Icon(Icons.Outlined.MoreVert,"Действия с «${e.title}»")}

@@ -30,32 +30,38 @@ class AppLifecycleUiTest {
     private fun capture(name:String) {
         val i=InstrumentationRegistry.getInstrumentation()
         val dir=File(i.targetContext.getExternalFilesDir(null),"issues-20-23").apply {mkdirs()}
-        if(name=="startup") File(dir,"$name.png").outputStream().use {output->
+        if(name.startsWith("startup")) File(dir,"$name.png").outputStream().use {output->
             Assert.assertTrue(compose.onNodeWithTag("startup-banner").captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG,100,output))
         } else {
             Thread.sleep(500);i.waitForIdleSync()
             Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))
         }
     }
-    @Test fun startupBannerPrecedesReadyHomeAndDoesNotReturnOnNavigation() {
+    @Test fun readyHomeSkipsStartupAnimationAndStartupDoesNotReturnOnNavigation() {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
         compose.waitUntil(10000) {!model.state.value.initializing}
         compose.mainClock.autoAdvance=false
         compose.runOnUiThread {compose.activity.setContent {WatchApp(model,false)}}
         compose.mainClock.advanceTimeByFrame()
-        compose.onNodeWithTag("startup-banner").assertIsDisplayed()
-        compose.mainClock.advanceTimeBy(750)
-        capture("startup")
-        compose.mainClock.advanceTimeBy(600)
-        compose.onNodeWithTag("startup-banner").assertIsDisplayed()
         compose.onNodeWithTag("app-content").assertExists()
-        capture("startup-reveal")
-        compose.mainClock.advanceTimeBy(450)
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
         compose.mainClock.autoAdvance=true
         compose.runOnIdle {model.page("settings");model.page("home")}
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
+    }
+
+    @Test fun startupArtworkCanFinishWhileContentIsLoading() {
+        compose.mainClock.autoAdvance=false
+        compose.runOnUiThread {compose.activity.setContent {StartupBanner()}}
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("startup-banner").assertIsDisplayed()
+        capture("startup-brand")
+        compose.mainClock.advanceTimeBy(112)
+        capture("startup-assembly")
+        compose.mainClock.advanceTimeBy(300)
+        capture("startup-final")
+        compose.mainClock.autoAdvance=true
     }
     @Test fun completedStartupDoesNotReplayAfterActivityRecreation() {
         compose.mainClock.advanceTimeBy(1800)

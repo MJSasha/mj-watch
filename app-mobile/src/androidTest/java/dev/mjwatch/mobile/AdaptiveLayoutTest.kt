@@ -36,9 +36,9 @@ class AdaptiveLayoutTest {
   val width=ui.activity.resources.configuration.screenWidthDp
   ui.onNodeWithTag("home-list").performScrollToNode(hasTestTag("hero-open"))
   val hero=ui.onNodeWithTag("hero-open").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-  Assert.assertTrue("CTA touch height",hero.height/density>=51)
-  if(width>=600) Assert.assertTrue("Tablet CTA bounded",hero.width/density<=321)
-  else Assert.assertEquals("Compact CTA fills hero",(width-80).toFloat(),hero.width/density,2f)
+  Assert.assertTrue("Hero touch height",hero.height/density>=190)
+  if(width<600) Assert.assertEquals("Hero spans the content width",(width-32).toFloat(),hero.width/density,2f)
+  ui.onNodeWithTag("hero-open").assertHasClickAction()
   capture("01-home")
   if(width>=800) {
    ui.onNodeWithTag("home-list").performScrollToNode(hasText(DemoReleases.items.last().title))

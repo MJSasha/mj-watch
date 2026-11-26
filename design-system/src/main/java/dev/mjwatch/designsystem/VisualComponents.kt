@@ -68,10 +68,27 @@ import kotlinx.coroutines.launch
     val color=when {warning->if(MaterialTheme.colorScheme.background.luminance()<.5) Color(0xFFF1C879) else Color(0xFF775500);accent->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.onSurfaceVariant}
     Text(text,color=color,fontSize=12.sp,lineHeight=16.sp,modifier=Modifier.background(if(accent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,RoundedCornerShape(8.dp)).padding(horizontal=8.dp,vertical=4.dp))
 }
-@Composable internal fun Pill(text:String,selected:Boolean,tv:Boolean=false,onClick:()->Unit) {
+@Composable internal fun Pill(text:String,selected:Boolean,tv:Boolean=false,gradient:Boolean=false,onClick:()->Unit) {
     val colors=MaterialTheme.colorScheme
     if(tv) androidx.tv.material3.Button(onClick=onClick,shape=androidx.tv.material3.ButtonDefaults.shape(shape=RoundedCornerShape(12.dp)),scale=androidx.tv.material3.ButtonDefaults.scale(focusedScale=1f,pressedScale=1f),colors=androidx.tv.material3.ButtonDefaults.colors(containerColor=if(selected) colors.primaryContainer else colors.surface,contentColor=if(selected) colors.onPrimaryContainer else colors.onSurfaceVariant,focusedContainerColor=if(selected) colors.primaryContainer else colors.surface,focusedContentColor=if(selected) colors.onPrimaryContainer else colors.onSurface),border=androidx.tv.material3.ButtonDefaults.border(focusedBorder=tvFocusBorder(12.dp)),modifier=Modifier.heightIn(min=48.dp).semantics {this.selected=selected}) {Text(text,fontSize=18.sp,lineHeight=24.sp,color=androidx.tv.material3.LocalContentColor.current)}
-    else FilterChip(selected=selected,onClick=onClick,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(true,RoundedCornerShape(12.dp)),label={Text(text,fontSize=14.sp,lineHeight=20.sp)},shape=RoundedCornerShape(12.dp),border=null,colors=FilterChipDefaults.filterChipColors(containerColor=colors.surface,labelColor=colors.onSurfaceVariant,selectedContainerColor=colors.primaryContainer,selectedLabelColor=colors.onPrimaryContainer))
+    else {
+        val shape = RoundedCornerShape(12.dp)
+        Box(contentAlignment=Alignment.Center) {
+            if(gradient) {
+                val chip = Modifier.matchParentSize().padding(vertical=7.dp)
+                Box(if(selected) chip.background(watchSelectionGradient(),shape) else chip.background(colors.surface,shape))
+            }
+            FilterChip(
+                selected=selected,onClick=onClick,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(true,shape),
+                label={Text(text,fontSize=14.sp,lineHeight=20.sp, fontWeight=if(gradient && selected) FontWeight.Bold else FontWeight.Normal)},
+                shape=shape,border=null,colors=FilterChipDefaults.filterChipColors(
+                    containerColor=if(gradient) Color.Transparent else colors.surface,labelColor=colors.onSurfaceVariant,
+                    selectedContainerColor=if(gradient) Color.Transparent else colors.primaryContainer,
+                    selectedLabelColor=colors.onPrimaryContainer,
+                ),
+            )
+        }
+    }
 }
 @Composable internal fun SettingsToggle(label:String,checked:Boolean,onCheckedChange:(Boolean)->Unit,modifier:Modifier=Modifier,description:String?=null,icon:ImageVector?=null) {
     Row(modifier.fillMaxWidth().heightIn(min=48.dp).tvFocusRing(true,MaterialTheme.shapes.small).toggleable(value=checked,role=Role.Switch,onValueChange=onCheckedChange).padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
