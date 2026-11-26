@@ -441,14 +441,14 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
     val catalogue=s.catalog
     val hero=catalogue.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: catalogue.firstOrNull()
     val cinematic=hero!=null||s.config.demo
-    val inset=16.dp
+    val inset=20.dp
     WatchTheme(s.config.theme) {CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val columns=if(maxWidth>=680.dp) 2 else 1
         val catalogueCardWidth = ((maxWidth - inset - 28.dp) / 2).coerceIn(120.dp, 200.dp)
         Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(bottom=16.dp)) {
+        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
-                    Column(Modifier.padding(horizontal=inset).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(horizontal=16.dp).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section,gradient=true) {model.catalogSection(section)}}}
                         if (cinematic) {
                             val compact = LocalConfiguration.current.screenHeightDp < 480
