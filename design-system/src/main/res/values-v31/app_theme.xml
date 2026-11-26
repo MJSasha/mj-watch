@@ -2,7 +2,6 @@
     <style name="AppTheme" parent="WatchWindowTheme">
         <item name="android:windowBackground">@color/mj_icon_background</item>
         <item name="android:windowSplashScreenBackground">@color/mj_icon_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/startup_motion</item>
-        <item name="android:windowSplashScreenAnimationDuration">470</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/startup_brand</item>
     </style>
 </resources>

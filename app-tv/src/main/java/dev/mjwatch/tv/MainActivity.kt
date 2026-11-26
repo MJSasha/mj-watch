@@ -1,4 +1,5 @@
 package dev.mjwatch.tv
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,7 +8,14 @@ import androidx.lifecycle.ViewModelProvider
 import dev.mjwatch.designsystem.WatchApp
 import dev.mjwatch.designsystem.WatchModel
 class MainActivity: ComponentActivity() {
- override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); enableEdgeToEdge(); val model=ViewModelProvider(this)[WatchModel::class.java];if(savedInstanceState==null)handleInvitation(intent,model); setContent { WatchApp(model,true) } }
+    override fun onCreate(savedInstanceState:Bundle?) {
+        super.onCreate(savedInstanceState)
+        if(Build.VERSION.SDK_INT>=31) splashScreen.setOnExitAnimationListener {it.remove()}
+        enableEdgeToEdge()
+        val model=ViewModelProvider(this)[WatchModel::class.java]
+        if(savedInstanceState==null) handleInvitation(intent,model)
+        setContent { WatchApp(model,true,animateStartup=savedInstanceState==null) }
+    }
     override fun onNewIntent(intent:android.content.Intent){super.onNewIntent(intent);setIntent(intent);handleInvitation(intent,ViewModelProvider(this)[WatchModel::class.java])}
     private fun handleInvitation(value:android.content.Intent,model:WatchModel){
         if(value.action==android.content.Intent.ACTION_VIEW){val raw=value.dataString;if(raw!=null)model.openInvitation(raw)}

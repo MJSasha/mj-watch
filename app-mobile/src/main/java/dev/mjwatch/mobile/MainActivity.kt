@@ -1,5 +1,6 @@
 package dev.mjwatch.mobile
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,6 +23,7 @@ import dev.mjwatch.designsystem.WatchModel
 class MainActivity:ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        if(Build.VERSION.SDK_INT>=31) splashScreen.setOnExitAnimationListener {it.remove()}
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -44,7 +46,7 @@ class MainActivity:ComponentActivity() {
                     .setBeepEnabled(false)
                     .setOrientationLocked(false)
                     .addExtra(Intents.Scan.SHOW_MISSING_CAMERA_PERMISSION_DIALOG,false))
-            })
+            },animateStartup=savedInstanceState==null)
         }
     }
     override fun onPostResume() {

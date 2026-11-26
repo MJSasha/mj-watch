@@ -83,17 +83,18 @@ private data class Destination(val id:String,val title:String,val icon:ImageVect
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
-@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
+@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null,animateStartup:Boolean=false) {
     val state by model.state.collectAsStateWithLifecycle()
     val online = tv || rememberNetworkAvailable()
     val onlineState = rememberSaveableStateHolder()
-    if (state.initializing) {
-        BackHandler {}
-        StartupBanner(animateMark=Build.VERSION.SDK_INT<31)
-    } else {
-        Box(Modifier.fillMaxSize().testTag("app-content")) {
+    Box(Modifier.fillMaxSize()) {
+        if (state.initializing) BackHandler {}
+        else Box(Modifier.fillMaxSize().testTag("app-content")) {
             if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }
             else OfflineHome(state.config)
+        }
+        if(state.initializing || animateStartup) {
+            StartupBanner(waiting=state.initializing,animateMark=animateStartup)
         }
     }
 }

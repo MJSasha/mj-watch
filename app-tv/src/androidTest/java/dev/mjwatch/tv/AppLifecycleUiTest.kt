@@ -51,6 +51,20 @@ class AppLifecycleUiTest {
         compose.onNodeWithTag("startup-banner").assertDoesNotExist()
     }
 
+    @Test fun coldRevealDrawsReadyContentBeforeRemovingArtwork() {
+        Assume.assumeTrue(android.animation.ValueAnimator.areAnimatorsEnabled())
+        val model=compose.runOnIdle {ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(10000) {!model.state.value.initializing}
+        compose.mainClock.autoAdvance=false
+        compose.runOnUiThread {compose.activity.setContent {WatchApp(model,true,animateStartup=true)}}
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithTag("app-content").assertExists()
+        compose.onNodeWithTag("startup-banner").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(550)
+        compose.onNodeWithTag("app-content").assertExists()
+        compose.onNodeWithTag("startup-banner").assertDoesNotExist()
+        compose.mainClock.autoAdvance=true
+    }
     @Test fun startupArtworkCanFinishWhileContentIsLoading() {
         compose.mainClock.autoAdvance=false
         compose.runOnUiThread {compose.activity.setContent {StartupBanner()}}

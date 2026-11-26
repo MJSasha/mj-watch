@@ -4,6 +4,6 @@ MJ Watch uses option 02 of the graphite family. The launcher foreground is two o
 
 Both Android apps use `ic_launcher` for their adaptive launcher icon. Android applies the launcher mask. On API 33 and later, `ic_launcher_monochrome` supplies the separate thematic silhouette and its play cutout. `ic_notification` remains the separate white small-notification resource. Android TV uses its own 320 × 180 banner with the same new mark.
 
-On Android 12 and later, the system starting window animates the lockup and play mark as the activity starts. The Compose loading view uses the settled mark with soft corner gradients during any remaining initialization. Earlier Android versions assemble the mark in the Compose loading view. Startup follows the system animation scale, and content appears as soon as initialization finishes.
+The system starting window uses the same graphite color and centered lockup as the first Compose frame. In Compose the turquoise and emerald shapes move independently into place, with a soft echo and shifting corner gradients. Once the content has drawn underneath, the startup backdrop fades immediately and the shapes finish as the app becomes visible. With animations disabled, the ready screen is shown immediately.
 
 Review the vector at 32, 48, and 64 px with circular, rounded-square, and light and dark monochrome masks. Verify launcher and startup on actual Android renders as well as running the Android checks.
