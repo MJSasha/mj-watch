@@ -62,6 +62,7 @@ fun Activity.coldStartupWindow(restored: Boolean): State<Boolean>? {
 
 private const val EntranceMillis = 700
 private const val RevealMillis = 400
+private const val BackdropFadeStartMillis = 165f
 private const val MarkGoneMillis = 215f
 private const val LightBarsMillis = 310f
 private val OrbitEmerald = Color(0xFF3BDA71)
@@ -100,7 +101,11 @@ fun StartupBanner(
     val graphite = colorResource(R.color.mj_icon_background)
     BoxWithConstraints(
         Modifier.fillMaxSize().testTag("startup-banner")
-            .drawBehind { drawRect(graphite, alpha = 1f - reveal.value.smoothPhase(MarkGoneMillis, RevealMillis.toFloat())) }
+            .drawBehind {
+                // Start below readable contrast so the mark can go dark without an empty frame.
+                val clear = reveal.value.smoothPhase(BackdropFadeStartMillis, RevealMillis.toFloat())
+                drawRect(graphite, alpha = 1f - clear)
+            }
             .clearAndSetSemantics {
                 if (waiting) {
                     contentDescription = "MJWatch. Запускаем приложение"
