@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.AdaptiveIconDrawable
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -54,7 +53,7 @@ class IssueFixesUiTest {
         val dir=File(i.targetContext.getExternalFilesDir(null),"issue-fixes").apply {mkdirs()}
         Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))
     }
-    @Test fun memberCanSaveParserWithoutServerFieldsOrChangingAccount() {
+    @Test fun memberUsesServerSearchEvenWithOldDirectDraft() {
         val model=model()
         compose.onNodeWithText("TorrServer").assertDoesNotExist()
         compose.onNodeWithText("Каталог").assertDoesNotExist()
@@ -62,19 +61,14 @@ class IssueFixesUiTest {
         screenshot("member-settings")
         // Reproduce a direct-mode draft left over before joining a managed server.
         compose.runOnIdle {model.draftConfig=Config(jackett="",torrServer="")}
-        compose.onNodeWithText("Jackett / JacRed").performClick()
-        compose.onNodeWithText("Адрес Jackett / JacRed").performTextReplacement("https://jac.red")
-        compose.runOnIdle {
-            if(android.os.Build.VERSION.SDK_INT>=30)compose.activity.window.insetsController?.hide(android.view.WindowInsets.Type.ime())
-        }
-        val saveButton=hasText("Сохранить") and hasClickAction()
-        compose.onNodeWithTag("settings-list").performScrollToNode(saveButton)
-        compose.waitUntil(5000) {compose.onNode(saveButton).isDisplayed()}
-        compose.onNode(saveButton).performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitUntil(10000) {model.state.value.page=="settings"&&!model.state.value.busy}
+        compose.onNode(hasText("Поиск раздач") and hasClickAction()).performClick()
+        compose.onNodeWithText("Источник поиска задаёт администратор сервера MJWatch.").assertExists()
+        compose.onNodeWithText("Адрес Jackett / JacRed").assertDoesNotExist()
+        compose.onNodeWithText("Сохранить").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Назад").performClick()
+        compose.waitUntil(10000) {model.state.value.page=="settings"}
         Assert.assertEquals(config.scope,model.state.value.config.scope)
         Assert.assertEquals(config.managedUrl,model.state.value.config.managedUrl)
-        Assert.assertEquals("https://jac.red",model.state.value.config.jackett)
         compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Тема"))
         compose.onNodeWithText("Анимации").assertDoesNotExist()
     }

@@ -1247,7 +1247,8 @@ private class ReleaseOptions(
 }
 @Composable private fun SettingsScreen(s:WatchState,model:WatchModel,tv:Boolean,showIntro:Boolean=true,section:String?=null,registerBack: (((() -> Unit)?) -> Unit)?=null) {
     val context=LocalContext.current
-    var c by remember { mutableStateOf(model.draftConfig ?: s.config) }
+    val serverSearch=section=="search"&&s.config.managed
+    var c by remember { mutableStateOf(if(serverSearch) s.config else model.draftConfig ?: s.config) }
     var metadataToken by remember { mutableStateOf(model.draftMetadata) }; var key by remember { mutableStateOf(model.draftKey) }; var user by remember { mutableStateOf(model.draftUser) }; var password by remember { mutableStateOf(model.draftPassword) }
     var stopConfirmation by remember {mutableStateOf(false)}
     fun applySettings() {
@@ -1264,9 +1265,9 @@ private class ReleaseOptions(
         AlertDialog(onDismissRequest={importError=""},title={Text("Импорт и экспорт")},text={Text(importError)},confirmButton={TextButton(modifier=Modifier.focusRequester(errorFocus),onClick={importError=""}) {Text("Понятно")}})
     }
     LaunchedEffect(Unit) { if(model.draftConfig==null) { metadataToken=model.secrets.get("tmdb"); key=model.secrets.get("jackett:${s.config.jackett}");user=model.secrets.get("torrUser:${s.config.torrServer}");password=model.secrets.get("torrPassword:${s.config.torrServer}") }; baseline=listOf(model.secrets.get("jackett:${s.config.jackett}"),model.secrets.get("torrUser:${s.config.torrServer}"),model.secrets.get("torrPassword:${s.config.torrServer}"),model.secrets.get("tmdb")) }
-    LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
+    if(!serverSearch) LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
     val editorImeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
-    val dirty=c!=s.config||listOf(key,user,password,metadataToken)!=baseline
+    val dirty=!serverSearch&&(c!=s.config||listOf(key,user,password,metadataToken)!=baseline)
     val requestBack=rememberUpdatedState<()->Unit>({if(dirty) leave=true else {model.discardDraft();model.back()}})
     DisposableEffect(Unit) {registerBack?.invoke {requestBack.value()};onDispose {registerBack?.invoke(null)}}
     BackHandler(dirty&&!editorImeVisible) {requestBack.value()}
@@ -1345,7 +1346,7 @@ private class ReleaseOptions(
             Text("Оформление",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("system" to "Системная","dark" to "Тёмная","light" to "Светлая").forEach{(id,label)->Pill(label,c.theme==id,tv){c=c.copy(theme=id)}}}
         }}
-        if(!(section=="search"&&c.managed)&&(section!=null||!setup||setupStep==2||c.demo))item {Action(if(s.busy)"Сохранение…" else if(section==null)"Сохранить и продолжить" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy){applySettings()}}
+        if(!serverSearch&&(section!=null||!setup||setupStep==2||c.demo))item {Action(if(s.busy)"Сохранение…" else if(section==null)"Сохранить и продолжить" else "Сохранить",tv,Modifier.fillMaxWidth(),enabled=!s.busy,icon=Icons.Outlined.Check,loading=s.busy){applySettings()}}
         if(s.message.isNotBlank())item {OperationMessage(s.message,error=true)}
         if(section==null)item {SettingsCard("Перенос настроек",Icons.Outlined.ImportExport,tv){
             Action("Импорт конфигурации",tv,secondary=true,icon=Icons.Outlined.FileDownload) {try {val request=filePickerIntent(context,ActivityResultContracts.OpenDocument().createIntent(context,arrayOf("application/json")));if(request==null) importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную." else importer.launch(request)} catch(_:android.content.ActivityNotFoundException) {importError="На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную."}}
