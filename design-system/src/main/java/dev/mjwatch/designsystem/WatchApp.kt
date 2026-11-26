@@ -651,7 +651,13 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     }
     LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
         if(s.failures.isNotEmpty()&&s.nextReleaseCursor==null) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
-        if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {Empty(if(s.message.startsWith("Ничего")) "Ничего не найдено" else "Поиск недоступен",s.message.ifBlank {"Попробуйте другое название или проверьте подключение поиска."},tv,"Изменить запрос") {model.search("");fieldFocus.requestFocus();keyboard?.show()}}
+        if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {
+            val noResults = s.message.startsWith("Ничего")
+            val title = if (noResults) "Ничего не найдено" else "Поиск недоступен"
+            val hint = if (noResults) "Попробуйте более короткое название или другой вариант написания."
+            else s.message.ifBlank { "Попробуйте другое название или проверьте подключение поиска." }
+            Empty(title,hint,tv,"Изменить запрос") {model.search("");fieldFocus.requestFocus();keyboard?.show()}
+        }
         else if(s.message.isNotEmpty()&&s.metadata.isEmpty()) item {Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(s.metadata.isNotEmpty()) item {SectionTitle("Результаты поиска");if(s.metadataCached) Text("Данные из кеша")}
