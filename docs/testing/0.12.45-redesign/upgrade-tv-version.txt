@@ -1,0 +1,11 @@
+Android TV 36. In-place update using the official APKs from test-265 and test-283.
+
+Before update
+    versionCode=1265 minSdk=26 targetSdk=36
+    versionName=0.12.44
+      firstInstallTime=2026-11-26 23:52:42
+
+After update
+    versionCode=1283 minSdk=26 targetSdk=36
+    versionName=0.12.45
+      firstInstallTime=2026-11-26 23:52:42
