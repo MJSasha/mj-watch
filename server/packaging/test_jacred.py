@@ -2,6 +2,7 @@ import io
 import hashlib
 import json
 import pathlib
+import re
 import runpy
 import tempfile
 import threading
@@ -115,6 +116,36 @@ class JacredTest(unittest.TestCase):
                        dict(interval=True)):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 jacred.validate(dict(ready, **change))
+
+    def test_tracker_proxy_round_trips_and_preserves_other_rules(self):
+        other = dict(pattern=r'\.example/', list=['http://127.0.0.1:8080'])
+        previous = dict(GlobalProxy=[other], cffetch=dict(enable=False))
+        proxy = dict(url='socks5://127.0.0.1:40000', hosts=['tracker.example', 'tracker-mirror.example'])
+        draft = jacred.validate(dict(jacred.DEFAULTS, trackerProxy=proxy))
+        config = jacred.merged_config(previous, draft)
+        self.assertEqual(proxy, jacred.tracker_proxy(config))
+        pattern = re.compile(config['GlobalProxy'][0]['pattern'])
+        self.assertTrue(pattern.search('https://TRACKER.example:443/forum'))
+        self.assertTrue(pattern.search('https://tracker-mirror.example/forum'))
+        self.assertFalse(pattern.search('https://tracker.example.evil.example/forum'))
+        self.assertFalse(pattern.search('https://tracker.example:80@evil.example/forum'))
+        self.assertEqual([other], config['GlobalProxy'][1:])
+        self.assertEqual(config['GlobalProxy'], jacred.merged_config(config, jacred.DEFAULTS)['GlobalProxy'])
+        cleared = jacred.merged_config(config, dict(draft, trackerProxy=dict(url='', hosts=[])))
+        self.assertEqual([other], cleared['GlobalProxy'])
+        self.assertEqual(previous['cffetch'], cleared['cffetch'])
+        for change in (dict(url='socks5://192.0.2.1:40000'), dict(url='http://127.0.0.1:65536'),
+                       dict(hosts=['tracker.example|evil.example']), dict(hosts=[])):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                jacred.validate(dict(draft, trackerProxy=dict(proxy, **change)))
+
+    def test_unreachable_tracker_proxy_leaves_existing_config_untouched(self):
+        proxy = dict(url='http://127.0.0.1:40000', hosts=['tracker.example'])
+        with patch.object(jacred, 'report'), patch.object(jacred, 'load') as load, \
+             patch.object(jacred.socket, 'create_connection', side_effect=ConnectionRefusedError):
+            with self.assertRaisesRegex(RuntimeError, 'tracker_proxy_unreachable'):
+                jacred.apply(dict(jacred.DEFAULTS, trackerProxy=proxy))
+        load.assert_not_called()
 
     def test_zip_cannot_write_outside_the_staging_directory(self):
         archive = io.BytesIO()

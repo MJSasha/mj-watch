@@ -101,7 +101,7 @@ class OwnerSsh(private val context:Context,private val secrets:SecretStore) {
   check(before?.optString("state")!="running") {"JacRed уже настраивается. Обновите состояние после завершения."}
   val started=JSONObject(exec(connection,"/usr/bin/python3 /opt/mjwatch/current/jacred.py start",settings.toString()))
   check(started.optString("state")!="busy") {"JacRed уже настраивается. Обновите состояние после завершения."}
-  check(started.optString("state")!="failed") {"Проверьте адрес синхронизации, трекеры и интервал."}
+  check(started.optString("state")!="failed") {"Проверьте настройки синхронизации, сбора и прокси."}
   val deadline=android.os.SystemClock.elapsedRealtime()+310_000
   var snapshot:JSONObject
   do {

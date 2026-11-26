@@ -16,6 +16,7 @@ import re
 import secrets
 import select
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -48,6 +49,9 @@ JOB = 'mjwatch-jacred-operation'
 ROOT_HELPER = '/opt/mjwatch/current/jacred.py'
 ADDR = 'http://127.0.0.1:19117'
 DEFAULTS = dict(syncUrl='', trackers=['rutor', 'nnmclub'], collect=True, interval=120)
+PROXY_PATTERN_PREFIX = r'(?i)(?#MJWatch tracker proxy)^https?://(?:'
+PROXY_PATTERN_SUFFIX = r')(?::[0-9]+)?(?=[/?#]|$)'
+DNS_LABEL = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
 MANAGED_CONFIG = {'listenip', 'listenport', 'apikey', 'devkey', 'web', 'openstats', 'opensync',
                   'syncapi', 'synctrackers', 'timesync', 'collect'}
 WEB_CONFIG = '/api/v1.0/config'
@@ -103,6 +107,37 @@ def settings(config):
                 collect=config.get('collect', False), interval=config.get('timeSync', 120))
 
 
+def validate_tracker_proxy(value):
+    if not isinstance(value, dict):
+        raise ValueError()
+    url, hosts = value.get('url'), value.get('hosts')
+    if not isinstance(url, str) or not isinstance(hosts, list) or any(not isinstance(host, str) for host in hosts):
+        raise ValueError()
+    if url == '' and hosts == []:
+        return dict(url='', hosts=[])
+    match = re.fullmatch(r'(?:http|socks5)://127\.0\.0\.1:([1-9][0-9]{0,4})', url)
+    if (not match or int(match[1]) > 65535 or not 1 <= len(hosts) <= 12
+            or any(len(host) > 253 or not re.fullmatch(rf'{DNS_LABEL}(?:\.{DNS_LABEL})+', host) for host in hosts)
+            or len(set(hosts)) != len(hosts)):
+        raise ValueError()
+    return dict(url=url, hosts=hosts)
+
+
+def managed_proxy_rule(rule):
+    return isinstance(rule, dict) and str(rule.get('pattern', '')).startswith(PROXY_PATTERN_PREFIX)
+
+
+def tracker_proxy(config):
+    for rule in config.get(next((key for key in config if key.lower() == 'globalproxy'), 'globalproxy')) or []:
+        if managed_proxy_rule(rule) and rule['pattern'].endswith(PROXY_PATTERN_SUFFIX):
+            hosts = rule['pattern'][len(PROXY_PATTERN_PREFIX):-len(PROXY_PATTERN_SUFFIX)].split('|')
+            try:
+                return validate_tracker_proxy(dict(url=rule['list'][0], hosts=[host.replace(r'\.', '.') for host in hosts]))
+            except (KeyError, IndexError, TypeError, ValueError):
+                break
+    return dict(url='', hosts=[])
+
+
 def validate(raw):
     url, trackers, collect, interval = (raw.get(k) for k in ('syncUrl', 'trackers', 'collect', 'interval'))
     if not isinstance(url, str) or len(url) > 512 or any(c.isspace() for c in url):
@@ -118,7 +153,10 @@ def validate(raw):
         raise ValueError()
     if (collect or url) and not trackers:
         raise ValueError()
-    return dict(syncUrl=url, trackers=trackers, collect=collect, interval=interval)
+    result = dict(syncUrl=url, trackers=trackers, collect=collect, interval=interval)
+    if 'trackerProxy' in raw:
+        result['trackerProxy'] = validate_tracker_proxy(raw['trackerProxy'])
+    return result
 
 
 def status():
@@ -143,7 +181,7 @@ def status():
     return dict(installed=bool(config) and (RELEASE / 'JacRed').is_file(),
                 running=running, version=VERSION, catalogCount=catalog,
                 manualIndex=load(ACCESS, {}).get('manual', False),
-                settings=settings(config), trackers=TRACKERS,
+                settings=dict(settings(config), trackerProxy=tracker_proxy(config)), trackers=TRACKERS,
                 operation=operation,
                 indexing=load(CONTROL / 'index.json', {}))
 
@@ -295,6 +333,15 @@ def merged_config(previous, draft):
                   devkey=previous.get('devkey') or secrets.token_urlsafe(32),
                   syncapi=draft['syncUrl'], synctrackers=draft['trackers'],
                   timeSync=draft['interval'], collect=draft['collect'])
+    if 'trackerProxy' in draft:
+        proxy = draft['trackerProxy']
+        key = next((key for key in previous if key.lower() == 'globalproxy'), 'globalproxy')
+        rules = [rule for rule in previous.get(key) or [] if not managed_proxy_rule(rule)]
+        if proxy['url']:
+            domains = '|'.join(host.replace('.', r'\.') for host in proxy['hosts'])
+            rules.insert(0, dict(pattern=PROXY_PATTERN_PREFIX + domains + PROXY_PATTERN_SUFFIX,
+                                 useAuth=False, BypassOnLocal=False, list=[proxy['url']]))
+        config[key] = rules
     return config
 
 
@@ -468,6 +515,14 @@ def admin_session():
 
 def apply(raw):
     draft = validate(raw)
+    proxy = draft.get('trackerProxy', {}).get('url')
+    if proxy:
+        report('running', 'proxy')
+        try:
+            with socket.create_connection(('127.0.0.1', urllib.parse.urlsplit(proxy).port), timeout=3):
+                pass
+        except OSError:
+            raise RuntimeError('tracker_proxy_unreachable') from None
     marker = CONTROL / 'owned'
     if not marker.exists():
         managed_paths = (RELEASE.parent, BASE, ACCESS, pathlib.Path('/etc/systemd/system', UNIT),

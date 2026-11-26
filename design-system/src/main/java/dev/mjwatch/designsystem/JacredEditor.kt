@@ -40,8 +40,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.text.NumberFormat
+import java.util.Locale
 
 internal fun jacredStage(stage: String) = when (stage) {
+    "proxy" -> "Проверяем порт прокси на сервере…"
     "download" -> "Скачиваем JacRed и сверяем контрольную сумму…"
     "configure" -> "Готовим сервис и каталог…"
     "start" -> "Запускаем JacRed и проверяем поиск…"
@@ -50,6 +52,7 @@ internal fun jacredStage(stage: String) = when (stage) {
 }
 
 internal fun jacredError(code: String) = when (code) {
+    "tracker_proxy_unreachable" -> "Порт прокси на сервере не отвечает. Проверьте адрес и запуск службы."
     "archive_digest", "archive_size", "archive_layout" -> "Архив JacRed не прошёл проверку."
     "unsupported_arch" -> "Для установки нужен Linux на x86-64 или ARM64."
     "existing_unit" -> "На сервере уже есть служба с таким именем."
@@ -64,6 +67,10 @@ private fun JSONObject.strings(key: String): List<String> = optJSONArray(key)?.l
     List(array.length()) { array.getString(it) }
 }.orEmpty()
 
+private val trackerProxyAddress = Regex("(?:http|socks5)://127\\.0\\.0\\.1:([1-9][0-9]{0,4})")
+private const val dnsLabel = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+private val trackerHostname = Regex("$dnsLabel(?:\\.$dnsLabel)+")
+
 @Composable
 internal fun JacredEditor(snapshot: JSONObject, tv: Boolean, busy: Boolean, onDirty: (Boolean) -> Unit,
                           onRefresh: () -> Unit, onApply: (JSONObject) -> Unit) {
@@ -72,21 +79,33 @@ internal fun JacredEditor(snapshot: JSONObject, tv: Boolean, busy: Boolean, onDi
     val initialTrackers = settings.strings("trackers").toSet()
     val initialCollect = settings.getBoolean("collect")
     val initialInterval = settings.getInt("interval").toString()
+    val initialProxy = settings.optJSONObject("trackerProxy")
+    val initialProxyUrl = initialProxy?.optString("url").orEmpty()
+    val initialProxyHosts = initialProxy?.strings("hosts").orEmpty()
     val revision = settings.toString()
     var syncUrl by remember(revision) { mutableStateOf(initialSync) }
     var selected by remember(revision) { mutableStateOf(initialTrackers) }
     var collect by remember(revision) { mutableStateOf(initialCollect) }
     var interval by remember(revision) { mutableStateOf(initialInterval) }
+    var proxyUrl by remember(revision) { mutableStateOf(initialProxyUrl) }
+    var proxyHostText by remember(revision) { mutableStateOf(initialProxyHosts.joinToString(", ")) }
     val installed = snapshot.optBoolean("installed")
     val activateManualCollection = snapshot.has("manualIndex") && !snapshot.optBoolean("manualIndex")
     val running = snapshot.optBoolean("running")
     val operation = snapshot.optJSONObject("operation")
     val installing = operation?.optString("state") == "running"
-    val changed = syncUrl.trim() != initialSync || selected != initialTrackers || collect != initialCollect || interval != initialInterval
+    val proxyHosts = proxyHostText.lowercase(Locale.ROOT).split(',', '\n').map(String::trim).filter(String::isNotEmpty).distinct()
+    val proxyAddress = proxyUrl.trim()
+    val proxyChanged = proxyAddress != initialProxyUrl || proxyHosts != initialProxyHosts
+    val proxyPort = trackerProxyAddress.matchEntire(proxyAddress)?.groupValues?.get(1)?.toIntOrNull()
+    val proxyValid = (proxyAddress.isEmpty() && proxyHosts.isEmpty()) ||
+        (proxyPort in 1..65535 && proxyHosts.size in 1..12 && proxyHosts.all { it.length <= 253 && trackerHostname.matches(it) })
+    val changed = syncUrl.trim() != initialSync || selected != initialTrackers || collect != initialCollect ||
+        interval != initialInterval || proxyChanged
     val refreshMinutes = interval.toIntOrNull()
     val syncValid = syncUrl.isBlank() || runCatching { endpoint(syncUrl).scheme == "https" }.getOrDefault(false)
     val configured = collect || syncUrl.isNotBlank()
-    val valid = syncValid && refreshMinutes in 30..1440 && (!configured || selected.isNotEmpty())
+    val valid = syncValid && proxyValid && refreshMinutes in 30..1440 && (!configured || selected.isNotEmpty())
     LaunchedEffect(changed) { onDirty(changed) }
 
     SettingsCard("Состояние сервиса", Icons.Outlined.Dns, tv) {
@@ -142,14 +161,26 @@ internal fun JacredEditor(snapshot: JSONObject, tv: Boolean, busy: Boolean, onDi
         }
         if (selected.isEmpty() && configured) SettingsHint("Выберите хотя бы один трекер.")
     }
+    if (initialProxy != null) SettingsDisclosure(
+        "Прокси для трекеров", if (initialProxyUrl.isEmpty()) "Выключен" else "Доменов в маршруте: ${initialProxyHosts.size}",
+        Icons.Outlined.Dns, tv,
+    ) {
+        ServerField(proxyUrl, { proxyUrl = it.take(64) }, "Адрес локального прокси")
+        ServerField(proxyHostText, { proxyHostText = it.take(3072) }, "Домены трекеров через запятую")
+        SettingsHint("Укажите точные домены и адрес прокси на сервере, например socks5://127.0.0.1:40000. Для отключения очистите оба поля.")
+        if (!proxyValid) Text("Укажите HTTP или SOCKS5 на 127.0.0.1 с портом и от 1 до 12 доменов.",
+            color = MaterialTheme.colorScheme.error)
+    }
     Action(
         if (!installed) "Установить JacRed" else if (!running && !changed) "Запустить JacRed"
         else if (activateManualCollection && !changed) "Применить настройки" else "Сохранить настройки",
         tv, Modifier.fillMaxWidth(), enabled = !busy && !installing && valid && (!running || changed || activateManualCollection),
         icon = if (installed) Icons.Outlined.Check else Icons.Outlined.CloudDownload, loading = busy,
     ) {
-        onApply(JSONObject().put("syncUrl", syncUrl.trim()).put("trackers", JSONArray(selected.sorted()))
-            .put("collect", collect).put("interval", refreshMinutes))
+        val draft = JSONObject().put("syncUrl", syncUrl.trim()).put("trackers", JSONArray(selected.sorted()))
+            .put("collect", collect).put("interval", refreshMinutes)
+        if (proxyChanged) draft.put("trackerProxy", JSONObject().put("url", proxyAddress).put("hosts", JSONArray(proxyHosts)))
+        onApply(draft)
     }
 }
 
