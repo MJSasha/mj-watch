@@ -197,8 +197,8 @@ import kotlinx.coroutines.delay
         }
     }
     fun seek(direction:Int) {player()?.let {p -> p.seekTo((p.currentPosition+direction*10_000L).coerceIn(0,duration))}}
-    CompositionLocalProvider(LocalContentColor provides Color(0xFFF0F2EC),LocalRippleConfiguration provides null) {
-    MaterialTheme(colorScheme=darkColorScheme(primary=PlayerLime,onPrimary=Color(0xFF0C0E15),surface=Color(0xFF191E29),onSurface=Color(0xFFF0F2EC))) {
+    CompositionLocalProvider(LocalContentColor provides Color(0xFFF4F4FA),LocalRippleConfiguration provides null) {
+    MaterialTheme(colorScheme=darkColorScheme(primary=PlayerMint,onPrimary=Color(0xFF161622),surface=Color(0xFF222232),onSurface=Color(0xFFF4F4FA))) {
         Box(Modifier.fillMaxSize().onPreviewKeyEvent {event ->
             val code=event.nativeKeyEvent.keyCode
             val down=event.type==KeyEventType.KeyDown
@@ -274,9 +274,9 @@ import kotlinx.coroutines.delay
                                 else -> false
                             }
                         },thumb={},track={
-                            PlayerTimelineTrack(shown,duration,episodeSegments,TvPlayerLime,focused=timelineFocused&&!modal)
+                            PlayerTimelineTrack(shown,duration,episodeSegments,PlayerMint,focused=timelineFocused&&!modal)
                         })
-                        Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF0F2EC),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                        Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF4F4FA),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                     }
                     Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         @Composable fun buttonModifier(target:FocusRequester=remember {FocusRequester()})=Modifier.size(48.dp).then(controlFocus(target)).focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal)
@@ -293,7 +293,7 @@ import kotlinx.coroutines.delay
                 val actionInteraction = remember { MutableInteractionSource() }
                 val dismissInteraction = remember { MutableInteractionSource() }
                 Row(Modifier.align(Alignment.CenterEnd).padding(28.dp)
-                    .background(Color(0xF0191E29),MaterialTheme.shapes.medium).padding(16.dp),
+                    .background(Color(0xF0222232),MaterialTheme.shapes.medium).padding(16.dp),
                     horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
                     Button(modifier=Modifier.testTag("player-prompt").then(controlFocus(promptFocus)).heightIn(min=48.dp),
                         shape=CircleShape, border=tvPromptBorder(actionInteraction), interactionSource=actionInteraction, onClick={
@@ -359,16 +359,15 @@ import kotlinx.coroutines.delay
 }
 }
 
-private val TvPlayerLime=Color(0xFFB4F45B)
 
 /** Let the button draw its state border on the same shape as its surface. */
 @Composable internal fun tvPromptBorder(interaction:MutableInteractionSource, icon:Boolean=false):BorderStroke {
     val focused by interaction.collectIsFocusedAsState()
     val hovered by interaction.collectIsHoveredAsState()
     val color = when {
-        focused && icon -> TvPlayerLime
-        focused -> Color(0xFFF0F2EC)
-        hovered -> Color(0x99F0F2EC)
+        focused && icon -> PlayerMint
+        focused -> Color(0xFFF4F4FA)
+        hovered -> Color(0x99F4F4FA)
         else -> Color.Transparent
     }
     return BorderStroke(if(icon) 1.dp else 1.5.dp, color)
@@ -384,7 +383,7 @@ private val TvPlayerLime=Color(0xFFB4F45B)
             val bounds=Size(size.width-2*inset,size.height-2*inset)
             val radius=CornerRadius(11.dp.toPx())
             drawRoundRect(Color(0x662A303A),origin,bounds,radius)
-            drawRoundRect(Color(0xFFF0F2EC),origin,bounds,radius,style=Stroke(1.5.dp.toPx()))
+            drawRoundRect(Color(0xFFF4F4FA),origin,bounds,radius,style=Stroke(1.5.dp.toPx()))
         }
     }
 }

@@ -58,8 +58,7 @@ internal fun DetailScreen(
 ) {
     val parentColors = MaterialTheme.colorScheme
     val palette = if (parentColors.background.luminance() < .5f) parentColors.copy(
-        background=Color(0xff0c1015),surface=Color(0xff202732),onSurface=Color(0xfff0f2ec),
-        surfaceContainer=Color(0xff202732),surfaceContainerHigh=Color(0xff202732),onSurfaceVariant=Color(0xffb3bdc8)
+        surfaceContainer=parentColors.surface,surfaceContainerHigh=parentColors.surface
     ) else parentColors
     MaterialTheme(colorScheme=palette) {
         BoxWithConstraints(Modifier.fillMaxSize().background(palette.background)) {
@@ -269,7 +268,7 @@ private fun DetailHero(
                 }
                 Column(Modifier.padding(horizontal=inset).widthIn(max=690.dp).padding(top=16.dp),verticalArrangement=Arrangement.spacedBy(if(wide) 12.dp else 9.dp)) {
                     val kind = if (series) "Сериал" else if (m != null || r?.id=="demo:orbit") "Фильм" else "Раздача"
-                    Text(kind.uppercase(),fontSize=12.sp,lineHeight=16.sp,letterSpacing=1.55.sp,fontWeight=FontWeight.SemiBold,color=if(art) Color(0xffd7f7b7) else colors.primary)
+                    Text(kind.uppercase(),fontSize=12.sp,lineHeight=16.sp,letterSpacing=1.55.sp,fontWeight=FontWeight.SemiBold,color=if(art) WatchMint else colors.primary)
                     Text(title,Modifier.testTag("detail-title").semantics { heading() },fontWeight=FontWeight.Bold,
                         fontSize=titleSize.sp,lineHeight=(titleSize*1.02f).sp,letterSpacing=(-titleSize*.04f).sp,
                         maxLines=3,overflow=TextOverflow.Ellipsis,color=colors.onSurface)

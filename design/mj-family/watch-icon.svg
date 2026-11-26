@@ -1,8 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <title>MJWatch — MJ family icon</title>
-  <path id="background" fill="#141925" d="M0 0h108v108H0z"/>
-  <g fill="none" stroke="#C7FF68" stroke-linecap="round" stroke-linejoin="round">
-    <path id="mj-monogram" stroke-width="4.5" d="M32,58 V34 L45,48 L57,34 V58 M76,34 V49 Q76,58 67,58 H66"/>
-    <path id="app-symbol" stroke-width="2.5" d="M42,67 H66 V79 H42 Z M47,67 V79 M61,67 V79 M42,71 H47 M42,75 H47 M61,71 H66 M61,75 H66"/>
+  <title>MJ Watch, graphite family</title>
+  <defs>
+    <linearGradient id="play-1" gradientUnits="userSpaceOnUse" x1="45" y1="23" x2="82" y2="58">
+      <stop stop-color="#0BD6A3"/><stop offset="1" stop-color="#09BDEA"/>
+    </linearGradient>
+    <linearGradient id="play-2" gradientUnits="userSpaceOnUse" x1="30" y1="26" x2="66" y2="68">
+      <stop stop-color="#69F796"/><stop offset="1" stop-color="#00CDA7"/>
+    </linearGradient>
+  </defs>
+  <path fill="#1E222D" d="M0 0h108v108H0z"/>
+  <g transform="translate(54 54) scale(.88) translate(-54 -54)">
+    <path fill="url(#play-1)" d="M45,27 Q45,20 52,21 Q54,21 57,23 L80,38 Q90,45 80,52 L55,67 Q45,72 45,61 Z"/>
+    <path fill="url(#play-2)" d="M27,32 Q27,24 35,26 Q37,26 40,28 L67,43 Q77,49 67,56 L39,72 Q27,78 27,67 Z"/>
+    <path fill="#FDFFFE" d="M43,42 Q43,39 46,41 L57,48 Q60,50 57,52 L46,59 Q43,61 43,58 Z"/>
+    <path fill="none" stroke="#B1BAC8" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" d="M46,84 L48,77 L51,81 L55,77 L54,84 M62,77 L61,81 Q60,85 57,84"/>
   </g>
 </svg>

@@ -2,6 +2,9 @@ package dev.mjwatch.mobile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -29,6 +32,37 @@ class AdaptiveLayoutTest {
   Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
  }
  @After fun restoreRotation(){device.setOrientationNatural();device.unfreezeRotation()}
+ @Test fun floatingNavigationUsesTheLargerOfSystemInsetAndEightDp() {
+  Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
+  val navigation=ui.onNodeWithTag("bottom-navigation").assertIsDisplayed()
+  val window=ui.activity.window
+  val type=WindowInsetsCompat.Type.navigationBars()
+  val controller=WindowCompat.getInsetsController(window,window.decorView)
+  fun bottomInset()=ui.runOnIdle {
+   (ViewCompat.getRootWindowInsets(window.decorView)?.getInsets(type)?.bottom ?: 0)/density
+  }
+  fun navigationGap():Float {
+   val available=ui.onRoot().getUnclippedBoundsInRoot().bottom
+   val bar=navigation.getUnclippedBoundsInRoot().bottom
+   return (available-bar).value
+  }
+  fun assertGap() {
+   val expected=maxOf(8f,bottomInset())
+   Assert.assertEquals("System inset or eight dp, whichever is larger",expected,navigationGap(),1f)
+  }
+  assertGap()
+  try {
+   ui.runOnIdle {controller.hide(type)}
+   ui.waitUntil(5000) {bottomInset()==0f && kotlin.math.abs(navigationGap()-8f)<=1f}
+   assertGap()
+   capture("navigation-zero-inset")
+  } finally {
+   ui.runOnIdle { controller.show(type) }
+  }
+  device.setOrientationLeft()
+  ui.waitUntil(5000) {ui.activity.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE}
+  if(ui.onAllNodesWithTag("bottom-navigation").fetchSemanticsNodes().isNotEmpty()) assertGap()
+ }
  @Test fun boundedActionsFormsAndReleaseBackSurviveRotation() {
   lateinit var model:WatchModel
   ui.runOnIdle{model=ViewModelProvider(ui.activity)[WatchModel::class.java]}
@@ -38,7 +72,8 @@ class AdaptiveLayoutTest {
   val hero=ui.onNodeWithTag("hero-open").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
   Assert.assertTrue("CTA touch height",hero.height/density>=51)
   if(width>=600) Assert.assertTrue("Tablet CTA bounded",hero.width/density<=321)
-  else Assert.assertEquals("Compact CTA fills hero",(width-80).toFloat(),hero.width/density,2f)
+  else Assert.assertEquals("CTA spans the hero caption",(width-64).toFloat(),hero.width/density,2f)
+  ui.onNodeWithTag("hero-open").assertHasClickAction()
   capture("01-home")
   if(width>=800) {
    ui.onNodeWithTag("home-list").performScrollToNode(hasText(DemoReleases.items.last().title))

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.vector.VectorPath
@@ -37,11 +38,11 @@ internal data class PlaybackMenuRow(
     val opensMenu: Boolean = false,
 )
 
-private const val SURFACE = 0xFF191E29.toInt()
-private const val SURFACE_HIGH = 0xFF242B39.toInt()
-private const val TEXT = 0xFFF0F2EC.toInt()
-private const val MUTED = 0xFFABB5C5.toInt()
-private const val ACCENT = 0xFFC7FF68.toInt()
+private const val SURFACE = 0xFF222232.toInt()
+private const val SURFACE_HIGH = 0xFF2B2C40.toInt()
+private const val TEXT = 0xFFF4F4FA.toInt()
+private const val MUTED = 0xFFB6BACD.toInt()
+private val ACCENT = PlayerMint.toArgb()
 
 /** Uses native list selection so Android TV and accessibility can navigate the same rows as touch. */
 internal fun createPlaybackMenu(

@@ -1,98 +1,234 @@
 package dev.mjwatch.designsystem
 
-import androidx.compose.animation.core.*
+import android.animation.ValueAnimator
+import android.app.Activity
+import android.os.Build
+import android.view.ViewTreeObserver
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** One entrance, then a quiet orbit while initialization finishes. All motion uses Compose's duration scale. */
-@Composable fun StartupBanner(modifier:Modifier=Modifier,progress:Float=1f,reveal:Float=0f) {
-    val ambient=rememberInfiniteTransition(label="projector")
-    val orbit by ambient.animateFloat(0f,360f,infiniteRepeatable(tween(6000,easing=LinearEasing)),label="light orbit")
-    val ink=Color(0xFF0C0E15)
-    val white=Color(0xFFF0F2EC)
-    val logo=FastOutSlowInEasing.transform((progress/.65f).coerceIn(0f,1f))
-    val title=FastOutSlowInEasing.transform(((progress-.28f)/.52f).coerceIn(0f,1f))
-    val caption=((progress-.55f)/.45f).coerceIn(0f,1f)
-    BoxWithConstraints(modifier.fillMaxSize().testTag("startup-banner").graphicsLayer {alpha=1f-reveal}
-        .background(ink).semantics(mergeDescendants=true) {
-            contentDescription="MJWatch. Запускаем приложение"
-            progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate
-        },contentAlignment=Alignment.Center) {
-        val compact=maxHeight<400.dp
-        Canvas(Modifier.fillMaxSize()) {
-            val radius=size.minDimension*.7f
-            drawCircle(Brush.radialGradient(listOf(Lime.copy(alpha=.09f*logo),Color.Transparent),center,radius),radius)
-            // A pair of soft projector beams converge behind the emblem.
-            val beamY=center.y-if(compact) 40.dp.toPx() else 58.dp.toPx()
-            for(side in listOf(-1,1)) {
-                val start=Offset(center.x+side*size.width*.55f,beamY-size.height*.16f)
-                val end=Offset(center.x,beamY)
-                drawLine(Brush.linearGradient(listOf(Color.Transparent,Lime.copy(alpha=.08f*logo)),start,end),start,end,1.dp.toPx())
-            }
+private var startupShownInProcess = false
+
+fun Activity.coldStartupWindow(restored: Boolean): State<Boolean>? {
+    val cold = !restored && !startupShownInProcess
+    startupShownInProcess = true
+    if (!cold || !ValueAnimator.areAnimatorsEnabled()) return null
+    val ready = mutableStateOf(Build.VERSION.SDK_INT < 31)
+    if (Build.VERSION.SDK_INT >= 31) {
+        val decor = window.decorView
+        lateinit var focusListener: ViewTreeObserver.OnWindowFocusChangeListener
+        fun reveal() {
+            ready.value = true
+            val observer = decor.viewTreeObserver
+            if (observer.isAlive) observer.removeOnWindowFocusChangeListener(focusListener)
         }
-        Column(Modifier.padding(horizontal=24.dp).graphicsLayer {translationY=-8.dp.toPx()},
-            horizontalAlignment=Alignment.CenterHorizontally) {
-            Box(Modifier.size(if(compact) 144.dp else 184.dp).graphicsLayer {
-                scaleX=(.72f+.28f*logo)*(1f+reveal*.8f);scaleY=scaleX
-            },contentAlignment=Alignment.Center) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val radius=size.minDimension*.42f
-                    drawCircle(Lime.copy(alpha=.10f*logo),radius,style=Stroke(1.dp.toPx()))
-                    val arcSize=Size(radius*2,radius*2)
-                    val topLeft=center-Offset(radius,radius)
-                    repeat(2) {index->
-                        drawArc(Brush.sweepGradient(listOf(Color.Transparent,Lime.copy(alpha=.8f*logo),Color.Transparent)),
-                            orbit+index*180f-120f*(1f-logo),115f*logo,false,topLeft,arcSize,
-                            style=Stroke(2.dp.toPx(),cap=StrokeCap.Round))
-                    }
-                    // Light fragments settle into the lens instead of looping as a busy spinner.
-                    repeat(12) {index->
-                        val angle=index*PI/6+orbit*PI/180*.12
-                        val distance=radius*(1f+(1f-logo)*.65f)
-                        val point=center+Offset(cos(angle).toFloat(),sin(angle).toFloat())*distance
-                        drawCircle(Lime.copy(alpha=(.16f+.5f*(1f-logo))*logo),if(index%3==0) 2.dp.toPx() else 1.dp.toPx(),point)
-                    }
-                }
-                Icon(painterResource(R.drawable.ic_launcher_foreground),null,
-                    Modifier.size(if(compact) 120.dp else 152.dp).graphicsLayer {
-                        alpha=logo;rotationZ=-12f*(1f-logo)
-                    },tint=Lime)
-            }
-            Spacer(Modifier.height(if(compact) 8.dp else 16.dp))
-            Text(buildAnnotatedString {
-                withStyle(SpanStyle(color=Lime)) {append("MJ")}
-                withStyle(SpanStyle(color=white)) {append("Watch")}
-            },fontSize=if(compact) 36.sp else 44.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.8).sp,
-                modifier=Modifier.graphicsLayer {alpha=title;translationY=18.dp.toPx()*(1f-title)})
-            Spacer(Modifier.height(10.dp))
-            Text("Ваше кино на любом экране",color=white.copy(alpha=.65f),fontSize=14.sp,
-                textAlign=TextAlign.Center,modifier=Modifier.graphicsLayer {alpha=caption})
+        focusListener = ViewTreeObserver.OnWindowFocusChangeListener { focused ->
+            if (focused) decor.postOnAnimation { if (!ready.value) reveal() }
+        }
+        decor.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+        splashScreen.setOnExitAnimationListener { cover ->
+            cover.remove()
+            reveal()
         }
     }
+    return ready
+}
+
+private const val EntranceMillis = 700
+private const val RevealMillis = 400
+private const val LightBarsProgress = .77f
+private val OrbitEmerald = Color(0xFF3BDA71)
+private val OrbitCyan = Color(0xFF00CED3)
+
+@Composable
+fun StartupBanner(
+    waiting: Boolean = true,
+    animateMark: Boolean = true,
+    windowReady: Boolean = true,
+    onDarkBackdropChanged: (Boolean) -> Unit = {},
+) {
+    val animate = remember(animateMark) { animateMark && ValueAnimator.areAnimatorsEnabled() }
+    val entrance = remember(animate) { Animatable(if (animate) 0f else EntranceMillis.toFloat()) }
+    val reveal = remember { Animatable(0f) }
+    val assembled by remember(entrance) { derivedStateOf { entrance.value >= EntranceMillis } }
+    val finished by remember { derivedStateOf { reveal.value >= 1f } }
+
+    LaunchedEffect(animate, windowReady) {
+        if (animate && windowReady) {
+            // The native icon and the first Compose frame share the same lockup.
+            withFrameNanos {}
+            entrance.animateTo(EntranceMillis.toFloat(), tween(EntranceMillis, easing = LinearEasing))
+        }
+    }
+    LaunchedEffect(waiting, assembled, windowReady) {
+        if (!waiting && assembled && animate && windowReady) {
+            withFrameNanos {}
+            reveal.animateTo(1f, tween(RevealMillis, easing = FastOutSlowInEasing))
+        }
+    }
+    val darkBackdrop by remember { derivedStateOf { reveal.value < LightBarsProgress } }
+    SideEffect { onDarkBackdropChanged(animate && darkBackdrop) }
+    if (!waiting && (!animate || finished)) return
+
+    val graphite = colorResource(R.color.mj_icon_background)
+    BoxWithConstraints(
+        Modifier.fillMaxSize().testTag("startup-banner")
+            .drawBehind {
+                drawRect(graphite, alpha = reveal.value.backdropOpacity())
+            }
+            .clearAndSetSemantics {
+                if (waiting) {
+                    contentDescription = "MJWatch. Запускаем приложение"
+                    progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+                } else hideFromAccessibility()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val mark = Modifier.size(minOf(288.dp, maxWidth, maxHeight))
+        if (animate) {
+            StartupOrbit(mark, entrance.asState(), reveal.asState())
+            StartupLightPass(reveal.asState())
+        }
+        Box(mark.graphicsLayer {
+            val zoom = 1f + .08f * reveal.value.smoothPhase(0f, .28f)
+            alpha = reveal.value.identityOpacity()
+            transformOrigin = TransformOrigin(.5f, .365f)
+            scaleX = zoom
+            scaleY = zoom
+        }) {
+            val plane = Modifier.fillMaxSize()
+            val nativePlane = plane.graphicsLayer { alpha = 1f - entrance.value.smoothPhase(0f, 150f) }
+            val rear = painterResource(R.drawable.startup_rear)
+            val front = painterResource(R.drawable.startup_front)
+            Image(rear, null, nativePlane)
+            Image(front, null, nativePlane)
+            Image(rear, null, plane.playPlane(entrance.asState(), fromRight = true))
+            Image(front, null, plane.playPlane(entrance.asState(), fromRight = false))
+        }
+        Image(painterResource(R.drawable.startup_brand), null, mark.graphicsLayer {
+            alpha = reveal.value.identityOpacity()
+        })
+    }
+}
+
+private fun Modifier.playPlane(entrance: State<Float>, fromRight: Boolean) = graphicsLayer {
+    val time = entrance.value
+    val converge = if (fromRight) time.smoothPhase(206f, 540f) else time.smoothPhase(180f, 508f)
+    val separation = 1f - converge
+    val bounce = time.smoothPhase(410f, 540f) * (1f - time.smoothPhase(540f, EntranceMillis.toFloat()))
+    alpha = (1.35f * converge).coerceAtMost(1f)
+    translationX = size.width * (if (fromRight) .103f else -.112f) * separation
+    translationY = size.height * (if (fromRight) -.041f else .043f) * separation
+    rotationZ = (if (fromRight) 15f else -13f) * separation
+    transformOrigin = TransformOrigin(.5f, .365f)
+    scaleX = 1f + .04f * bounce
+    scaleY = scaleX
+}
+
+@Composable
+private fun StartupOrbit(modifier: Modifier, entrance: State<Float>, reveal: State<Float>) {
+    Canvas(modifier) {
+        val time = entrance.value
+        val lens = center - Offset(0f, size.height * .135f)
+        val arrive = time.smoothPhase(0f, 180f)
+        val rotation = time.smoothPhase(80f, 540f)
+        val settled = time.smoothPhase(540f, EntranceMillis.toFloat())
+        val opacity = reveal.value.backdropOpacity()
+        val radius = size.minDimension * (.327f - .057f * rotation)
+        val glow = (.07f + .15f * arrive - .045f * settled) * arrive * opacity
+        val halo = radius * 1.78f
+        drawCircle(
+            Brush.radialGradient(listOf(OrbitEmerald.copy(alpha = glow), Color.Transparent), lens, halo),
+            halo, lens,
+        )
+
+        val trace = arrive * (1f - .51f * settled) * opacity
+        val drift = Offset(size.width * .163f, size.height * .097f) * (1f - rotation)
+        drawLightArc(lens - drift, radius, 158f + 117f * rotation, OrbitEmerald, trace)
+        drawLightArc(lens + drift, radius * .94f, -45f + 123f * rotation, OrbitCyan, trace * .9f)
+
+        repeat(9) { index ->
+            val age = time - index % 3 * 24f
+            val fragment = age.smoothPhase(20f, 160f) * (1f - age.smoothPhase(325f, 540f))
+            val angle = (29f + index * 40f + 54f * rotation) * PI / 180
+            val distance = radius * (1.47f + .13f * (index % 3) - .86f * rotation)
+            val position = lens + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * distance
+            val color = if (index % 2 == 0) OrbitEmerald else OrbitCyan
+            val dot = (if (index % 3 == 0) 1.8.dp else 1.dp).toPx()
+            drawCircle(color, dot * 2.1f, position, alpha = fragment * .22f)
+            drawCircle(color, dot, position, alpha = fragment * .85f)
+        }
+    }
+}
+
+private fun DrawScope.drawLightArc(lens: Offset, radius: Float, rotation: Float, color: Color, opacity: Float) {
+    if (opacity <= 0f) return
+    val transparent = color.copy(alpha = 0f)
+    val brush = Brush.sweepGradient(0f to transparent, .17f to color,
+        .34f to transparent, 1f to transparent, center = lens)
+    val topLeft = lens - Offset(radius, radius)
+    val bounds = Size(radius * 2, radius * 2)
+    rotate(rotation, lens) {
+        drawArc(brush, 0f, 124f, false, topLeft, bounds, alpha = opacity * .15f,
+            style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
+        drawArc(brush, 0f, 124f, false, topLeft, bounds, alpha = opacity * .90f,
+            style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+private fun StartupLightPass(reveal: State<Float>) {
+    Canvas(Modifier.fillMaxSize()) {
+        val progress = reveal.value
+        val sweep = progress.smoothPhase(0f, .78f)
+        if (sweep > 0f && sweep < 1f) {
+            val x = size.width * (sweep * 1.45f - .23f)
+            val spread = size.width * .24f
+            val gradient = Brush.horizontalGradient(
+                0f to Color.Transparent, .38f to OrbitEmerald.copy(alpha = .09f),
+                .56f to OrbitCyan.copy(alpha = .23f), 1f to Color.Transparent,
+                startX = x - spread, endX = x + spread,
+            )
+            rotate(-23f, Offset(x, center.y)) {
+                drawRect(gradient, Offset(x - spread, -size.height), Size(spread * 2, size.height * 3),
+                    alpha = sin(PI * sweep).toFloat() * progress.backdropOpacity())
+            }
+        }
+    }
+}
+
+// The backdrop starts clearing at low contrast just before the identity disappears at .35.
+private fun Float.backdropOpacity() = ((1f - this) / .68f).coerceAtMost(1f)
+private fun Float.identityOpacity() = 1f - smoothPhase(.035f, .35f)
+
+private fun Float.smoothPhase(start: Float, end: Float): Float {
+    val t = ((this - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }

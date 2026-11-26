@@ -173,7 +173,7 @@ class TvRemoteControlsTest {
         prompt.performMouseInput { moveTo(center) }
         val hovered=prompt.captureToImage().toPixelMap()
         val x=normal.width/2
-        val firstFill=(0 until normal.height/2).first { normal[x,it]==PlayerLime }
+        val firstFill=(0 until normal.height/2).first { normal[x,it]==PlayerMint }
         val firstHighlight=(0 until normal.height/2).first { normal[x,it]!=hovered[x,it] }
         assertEquals(firstFill,firstHighlight)
     }

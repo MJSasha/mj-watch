@@ -15,14 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.*
-import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -87,39 +81,39 @@ private data class Destination(val id:String,val title:String,val icon:ImageVect
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
-@Composable fun WatchApp(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
+@Composable fun WatchApp(
+    model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null,animateStartup:Boolean=false,startupWindowReady:Boolean=true,
+) {
     val state by model.state.collectAsStateWithLifecycle()
     val online = tv || rememberNetworkAvailable()
     val onlineState = rememberSaveableStateHolder()
-    var startupShown by rememberSaveable {mutableStateOf(false)}
-    var revealing by remember {mutableStateOf(false)}
-    val entrance=remember {Animatable(0f)}
-    val reveal=remember {Animatable(0f)}
-    LaunchedEffect(Unit) {
-        if(!startupShown) {
-            entrance.animateTo(1f,tween(if(tv) 350 else 1100))
-            snapshotFlow {state.initializing}.first {!it}
-            revealing=true
-            withFrameNanos {}
-            reveal.animateTo(1f,tween(if(tv) 200 else 420,easing=FastOutSlowInEasing))
-            startupShown=true
+    var darkStartupBackdrop by remember(animateStartup) { mutableStateOf(animateStartup) }
+    val window = androidx.activity.compose.LocalActivity.current?.window
+    val darkTheme = isWatchDark(state.config.theme)
+    val lightBars = !state.initializing && !darkStartupBackdrop && !darkTheme
+    SideEffect {
+        window?.let {
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                isAppearanceLightStatusBars = lightBars
+                isAppearanceLightNavigationBars = lightBars
+            }
+            if (online && !state.initializing && android.os.Build.VERSION.SDK_INT >= 29) {
+                it.isNavigationBarContrastEnforced = false
+            }
         }
     }
-    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0C0E15)).onPreviewKeyEvent {!startupShown}) {
-        if(!state.initializing&&(startupShown||revealing)) Box(Modifier.fillMaxSize().testTag("app-content").graphicsLayer {
-            alpha=if(startupShown) 1f else reveal.value
-            scaleX=.97f+.03f*alpha;scaleY=scaleX
-        }) {
+    Box(Modifier.fillMaxSize()) {
+        if (state.initializing) BackHandler {}
+        else Box(Modifier.fillMaxSize().testTag("app-content")) {
             if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }
             else OfflineHome(state.config)
         }
-        if(!startupShown||state.initializing) WatchTheme(state.config.theme) {
-            StartupBanner(Modifier.pointerInput(Unit) {
-                awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}
-            },if(startupShown) 1f else entrance.value,if(startupShown) 0f else reveal.value)
+        if(state.initializing || animateStartup) {
+            StartupBanner(state.initializing, animateStartup, startupWindowReady) {
+                darkStartupBackdrop = it
+            }
         }
     }
-    BackHandler(!startupShown) {}
 }
 
 @Composable private fun WatchAppContent(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?) {
@@ -165,7 +159,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(exitRequested) ExitAppDialog(tv,onDismiss={exitRequested=false},onExit={
             model.cancel();model.updates.cancel();PlaybackActivity.stopActivePlayback();activity?.finishAndRemoveTask()
         })
-        SideEffect {activity?.let {a->WindowCompat.getInsetsController(a.window,a.window.decorView).apply {isAppearanceLightStatusBars=colors.background.luminance()>.5;isAppearanceLightNavigationBars=colors.background.luminance()>.5};if(android.os.Build.VERSION.SDK_INT>=29) a.window.isNavigationBarContrastEnforced=false}}
         androidx.tv.material3.MaterialTheme(colorScheme=androidx.tv.material3.darkColorScheme(primary=colors.primary,onPrimary=colors.onPrimary,surface=colors.surface,onSurface=colors.onSurface,surfaceVariant=colors.surfaceVariant,onSurfaceVariant=colors.onSurfaceVariant)) {
             val width=LocalConfiguration.current.screenWidthDp
             val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
@@ -192,30 +185,46 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
             val activeDestination=if(detailNav) state.originPage else page
             Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
-                if(!imeVisible) Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))) {
+                if(!imeVisible) Box {
+                    val bottomInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                    if(!showBottomBar) Spacer(Modifier.windowInsetsBottomHeight(bottomInset))
                     AnimatedVisibility(
                         visible=showBottomBar,
                         enter=fadeIn(tween(180))+expandVertically(tween(240)),
                         exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
                     ) {
-                        NavigationBar(
-                            modifier=Modifier.fillMaxWidth().height(56.dp).testTag("bottom-navigation"),
-                            containerColor=colors.surface,
-                            tonalElevation=0.dp,
-                            windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
-                        ) {
-                            destinations.forEach { destination ->
-                                NavigationBarItem(
-                                    selected=destination.id==activeDestination||destination.id=="library"&&activeDestination=="history",
-                                    enabled=showBottomBar,
-                                    onClick={model.page(destination.id)},
-                                    colors=NavigationBarItemDefaults.colors(
-                                        selectedIconColor=colors.primary,
-                                        unselectedIconColor=colors.onSurfaceVariant,
-                                        indicatorColor=colors.primaryContainer,
-                                    ),
-                                    icon={Icon(destination.icon,destination.title,Modifier.size(24.dp))},
-                                )
+                        val floatingInset=bottomInset.union(WindowInsets(bottom=8.dp))
+                        Column(Modifier.fillMaxWidth().windowInsetsPadding(floatingInset)
+                            .padding(horizontal=8.dp).clip(RoundedCornerShape(22.dp))) {
+                            NavigationBar(
+                                modifier=Modifier.fillMaxWidth().height(52.dp).testTag("bottom-navigation"),
+                                containerColor=colors.surface,
+                                tonalElevation=0.dp,
+                                windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
+                            ) {
+                                val selectionBrush=watchSelectionGradient()
+                                destinations.forEach { destination ->
+                                    val selected=destination.id==activeDestination||destination.id=="library"&&activeDestination=="history"
+                                    NavigationBarItem(
+                                        selected=selected,
+                                        enabled=showBottomBar,
+                                        onClick={model.page(destination.id)},
+                                        colors=NavigationBarItemDefaults.colors(
+                                            selectedIconColor=colors.primary,
+                                            unselectedIconColor=colors.onSurfaceVariant,
+                                            indicatorColor=Color.Transparent,
+                                        ),
+                                        icon={
+                                            Box(
+                                                Modifier.size(60.dp,32.dp)
+                                                    .then(if(selected) Modifier.background(selectionBrush,CircleShape) else Modifier),
+                                                contentAlignment=Alignment.Center,
+                                            ) {
+                                                Icon(destination.icon,destination.title,Modifier.size(24.dp))
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -309,7 +318,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
 }
 @Composable private fun Heading(text:String) {Text(text,fontSize=26.sp,lineHeight=32.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})}
-@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,pill:Boolean=false,onClick:()->Unit) {
+@Composable internal fun Action(text:String,tv:Boolean,modifier:Modifier=Modifier,enabled:Boolean=true,secondary:Boolean=false,icon:ImageVector?=null,loading:Boolean=false,pill:Boolean=false,gradient:Brush?=null,onClick:()->Unit) {
     if(tv) {TvActionButton(text,modifier,enabled,secondary,icon,loading,onClick=onClick);return}
     val colors=MaterialTheme.colorScheme
     val shape=if(pill)RoundedCornerShape(50) else MaterialTheme.shapes.medium
@@ -318,7 +327,19 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         if(loading) CircularProgressIndicator(Modifier.size(20.dp).clearAndSetSemantics {},color=contentColor,strokeWidth=2.dp) else if(icon!=null) Icon(icon,null,Modifier.size(20.dp),tint=contentColor)
         Text(text,fontSize=16.sp,lineHeight=24.sp,fontWeight=FontWeight.Medium,color=contentColor,textAlign=androidx.compose.ui.text.style.TextAlign.Center,modifier=Modifier.weight(1f,fill=false))
     }}
-    Button(onClick=onClick,enabled=enabled&&!loading,modifier=(if(LocalConfiguration.current.screenWidthDp>=600) Modifier.widthIn(max=320.dp) else Modifier).then(modifier).semantics {if(loading){stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}}.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape),shape=shape,colors=ButtonDefaults.buttonColors(containerColor=if(secondary) colors.surface else colors.primary,contentColor=if(secondary) colors.onSurface else colors.onPrimary),contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp)) {content()}
+    Button(
+        onClick=onClick,enabled=enabled&&!loading,shape=shape,
+        modifier=(if(LocalConfiguration.current.screenWidthDp>=600) Modifier.widthIn(max=320.dp) else Modifier)
+            .then(modifier).semantics {
+                if(loading) {stateDescription="Выполняется";progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate}
+            }.heightIn(min=if(secondary) 48.dp else 52.dp).tvFocusRing(true,shape)
+            .then(if(gradient==null) Modifier else Modifier.background(gradient,shape)),
+        colors=ButtonDefaults.buttonColors(
+            containerColor=when {gradient!=null -> Color.Transparent; secondary -> colors.surface; else -> colors.primary},
+            contentColor=when {gradient!=null -> Color(0xFF082323); secondary -> colors.onSurface; else -> colors.onPrimary},
+        ),
+        contentPadding=PaddingValues(horizontal=if(secondary) 20.dp else 24.dp,vertical=12.dp),
+    ) {content()}
 }
 @Composable internal fun Empty(title:String,body:String,tv:Boolean,action:String="Открыть поиск",onClick:()->Unit) {
     val short=!tv&&LocalConfiguration.current.screenHeightDp<480
@@ -457,15 +478,57 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
         Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
-                    Column(Modifier.padding(horizontal=inset).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section) {model.catalogSection(section)}}}
-                        if(cinematic)Box(Modifier.fillMaxWidth().heightIn(min=if(LocalConfiguration.current.screenHeightDp<480) 240.dp else 374.dp).clip(RoundedCornerShape(24.dp))) {
-                            Artwork(hero,s.config,Modifier.matchParentSize(),backdrop=true,demo=hero==null&&s.config.demo);ArtScrim(Modifier.matchParentSize())
-                            Column(Modifier.align(Alignment.BottomStart).widthIn(max=640.dp).padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",fontSize=11.sp,letterSpacing=1.5.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
-                                Text(hero?.title ?: "Тихая орбита",fontSize=35.sp,lineHeight=40.sp,fontWeight=FontWeight.Bold,color=androidx.compose.ui.graphics.Color.White)
-                                Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",fontSize=13.sp,color=androidx.compose.ui.graphics.Color(0xFFDCE1DD))
-                                Action(if(hero?.kind=="tv") "О сериале" else "О фильме",false,Modifier.fillMaxWidth().padding(top=10.dp).testTag("hero-open"),icon=Icons.Outlined.PlayArrow) {if(hero!=null) model.metadata(hero,"hero:${hero.id}") else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")}
+                    Column(Modifier.padding(horizontal=16.dp).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section,gradient=true) {model.catalogSection(section)}}}
+                        if (cinematic) {
+                            val compact=LocalConfiguration.current.screenHeightDp<480
+                            val background=MaterialTheme.colorScheme.background
+                            var captionHeight by remember {mutableIntStateOf(0)}
+                            var actionHeight by remember {mutableIntStateOf(0)}
+                            val blurHeight=actionHeight+with(LocalDensity.current) {24.dp.roundToPx()}
+                            Box(
+                                Modifier.fillMaxWidth().heightIn(min=if(compact) 226.dp else 296.dp)
+                                    .clip(RoundedCornerShape(topStart=20.dp,topEnd=20.dp)),
+                            ) {
+                                Artwork(hero,s.config,Modifier.matchParentSize().blurPosterCaption(blurHeight),
+                                    backdrop=true,demo=hero==null&&s.config.demo)
+                                Box(Modifier.matchParentSize().drawWithCache {
+                                    val shadeEnd=(size.height-captionHeight+20.dp.toPx()).coerceIn(1f,size.height)
+                                    val shade=Brush.verticalGradient(
+                                        colors=listOf(Color.Transparent,Color(0xCC10141E)),
+                                        startY=(shadeEnd-60.dp.toPx()).coerceAtLeast(0f),endY=shadeEnd,
+                                    )
+                                    val fade=Brush.verticalGradient(
+                                        0f to Color.Transparent,.46f to background.copy(alpha=.30f),1f to background,
+                                        startY=(size.height-actionHeight-45.dp.toPx()).coerceAtLeast(0f),
+                                        endY=(size.height-10.dp.toPx()).coerceAtLeast(1f),
+                                    )
+                                    onDrawBehind {drawRect(shade);drawRect(fade)}
+                                })
+                                Column(
+                                    Modifier.align(Alignment.BottomStart).widthIn(max=640.dp).fillMaxWidth()
+                                        .onSizeChanged {captionHeight=it.height}
+                                        .padding(start=16.dp,end=16.dp,top=14.dp,bottom=8.dp),
+                                    verticalArrangement=Arrangement.spacedBy(4.dp),
+                                ) {
+                                    val metadataInk=Color(0xFFE5E8EE)
+                                    Text(if(s.config.demo) "ДЕМОНСТРАЦИЯ" else "НА ВЕЧЕР",
+                                        fontSize=11.sp,letterSpacing=1.sp,color=metadataInk)
+                                    Text(hero?.title ?: "Тихая орбита",
+                                        fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.Bold,color=Color.White)
+                                    Text(hero?.let {"${it.year ?: "Год не указан"} · ${titleKind(it)}"} ?: "Локальное тестовое видео",
+                                        fontSize=13.sp,color=metadataInk)
+                                    Action(
+                                        if(hero?.kind=="tv") "О сериале" else "О фильме",false,
+                                        Modifier.fillMaxWidth().padding(top=6.dp).onSizeChanged {actionHeight=it.height}
+                                            .testTag("hero-open"),
+                                        icon=Icons.Outlined.PlayArrow,pill=true,
+                                        gradient=Brush.horizontalGradient(listOf(Color(0xFF3BDA71),Color(0xFF00CED3))),
+                                    ) {
+                                        if(hero!=null) model.metadata(hero,"hero:${hero.id}")
+                                        else model.open(DemoReleases.items.first(),"hero:${DemoReleases.items.first().id}")
+                                    }
+                                }
                             }
                         }
                     }
@@ -1198,22 +1261,28 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         metadata?.let(::titleSubtitle) ?: e.source
     }
     val colors=MaterialTheme.colorScheme
-    val dark=colors.background.luminance()<.5f
-    val surface=if(dark) androidx.compose.ui.graphics.Color(0xFF1F2732) else colors.surface
-    val secondary=if(dark) androidx.compose.ui.graphics.Color(0xFFB3BDC8) else colors.onSurfaceVariant
-    val track=if(dark) androidx.compose.ui.graphics.Color(0xFF3C4551) else colors.outline.copy(alpha=.32f)
+    val surface=colors.surface
+    val secondary=colors.onSurfaceVariant
+    val track=colors.outline.copy(alpha=.48f)
     val artHeight=if(tv) tvUnit(176f) else 96.dp
     val demoArt=e.id.startsWith("demo:")&&metadata?.backdrop==null&&metadata?.poster==null
     val playbackProgress:(@Composable ()->Unit)? = if(position!=null&&duration!=null) {{
         val fraction by animateFloatAsState(
             (position.toFloat() / duration).coerceIn(0f, 1f), tween(200), label = "history-progress"
         )
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier.padding(top=if(tv) tvUnit(5f) else 4.dp)
-                .fillMaxWidth().height(if(tv) tvUnit(5f) else 4.dp),
-            trackColor = track,gapSize = 0.dp, drawStopIndicator = {}
-        )
+        if (tv) {
+            LinearProgressIndicator(
+                progress={fraction},modifier=Modifier.padding(top=tvUnit(5f)).fillMaxWidth().height(tvUnit(5f)),
+                trackColor=track,gapSize=0.dp,drawStopIndicator={},
+            )
+        } else {
+            Box(
+                Modifier.progressSemantics(fraction).padding(top=4.dp).fillMaxWidth().height(4.dp)
+                    .clip(CircleShape).background(track),
+            ) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(watchProgressGradient(),CircleShape))
+            }
+        }
     }} else null
     var focused by remember {mutableStateOf(false)}
     val cardModifier=Modifier.fillMaxWidth().focusRequester(requester)

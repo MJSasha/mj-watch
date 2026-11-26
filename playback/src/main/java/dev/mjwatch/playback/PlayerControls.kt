@@ -47,7 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
-internal val PlayerLime=Color(0xFFC7FF68)
+internal val PlayerMint=Color(0xFF31F5C8)
 @Composable internal fun PlayerControls(player:()->Player?,title:String,visible:Boolean,mobile:Boolean,keepVisible:Boolean,status:PlaybackStatus?,onRetry:()->Unit,onVisibility:(Boolean)->Unit,onBack:()->Unit,onTracks:()->Unit,onPip:()->Unit,episodeCount:Int=0,episodeIndex:Int=-1,episodeLabel:String="",onEpisode:(Int)->Unit={},episodes:List<PlaybackEpisode> = emptyList(),externalPanel:Boolean=false,onTvBackHandler:((()->Unit)?)->Unit={},onVideo:()->Unit={},mediaInteraction:Int=0,beforeFirstFrame:Boolean=false,artwork:PlaybackArtwork?=null,metrics:PlaybackLoadingMetrics?=null,progress:StartupLoadingProgress?=null,skipSegments:List<SkipSegment> = emptyList(),advanceAfterCredits:(Boolean)->Boolean={false}) {
     val startup=status.takeIf {beforeFirstFrame}
     if(!mobile) {
@@ -99,8 +99,8 @@ internal val PlayerLime=Color(0xFFC7FF68)
     }
     LaunchedEffect(visible,playing,interaction,keepVisible,externalPanel,status) {if(visible&&playing&&status==null&&!keepVisible&&!externalPanel) {delay(4000);onVisibility(false)}}
     fun touch(block:()->Unit) {interaction++;block()}
-    MaterialTheme(colorScheme=darkColorScheme(primary=PlayerLime,onPrimary=Color(0xFF0C0E15),surface=Color(0xFF191E29),onSurface=Color(0xFFF0F2EC))) {
-        CompositionLocalProvider(LocalContentColor provides Color(0xFFF0F2EC)) {Box(Modifier.fillMaxSize()) {
+    MaterialTheme(colorScheme=darkColorScheme(primary=PlayerMint,onPrimary=Color(0xFF161622),surface=Color(0xFF222232),onSurface=Color(0xFFF4F4FA))) {
+        CompositionLocalProvider(LocalContentColor provides Color(0xFFF4F4FA)) {Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().testTag("player-gestures").then(if(!visible&&!splashBlocking)Modifier.semantics {onClick(label="Показать элементы управления"){onVisibility(true);true}} else Modifier).pointerInput(visible,externalPanel,keepVisible,splashBlocking) {
                 if(splashBlocking)return@pointerInput
                 detectTapGestures(onTap={touch {onVisibility(keepVisible||!visible)}},onDoubleTap={offset->
@@ -135,9 +135,9 @@ internal val PlayerLime=Color(0xFFC7FF68)
                                 modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline")
                                     .describeSkipSegments(segments,duration).playerFocus(),
                                 thumb={},
-                                track={PlayerTimelineTrack(position,duration,segments,PlayerLime)},
+                                track={PlayerTimelineTrack(position,duration,segments,PlayerMint)},
                             )
-                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFABB5C5),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
                         FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
@@ -212,7 +212,7 @@ internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
             val bounds=androidx.compose.ui.geometry.Size(size.width-2*inset,size.height-2*inset)
             val radius=androidx.compose.ui.geometry.CornerRadius(11.dp.toPx())
             drawRoundRect(Color(0x662A303A),origin,bounds,radius)
-            drawRoundRect(Color(0xFFF0F2EC),origin,bounds,radius,style=Stroke(1.5.dp.toPx()))
+            drawRoundRect(Color(0xFFF4F4FA),origin,bounds,radius,style=Stroke(1.5.dp.toPx()))
         }
     }
 }

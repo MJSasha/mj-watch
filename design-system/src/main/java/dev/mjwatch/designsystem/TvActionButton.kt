@@ -53,7 +53,7 @@ internal val TvPosterClearance=8.dp
     Button(onClick={if(!blocked)onClick()},interactionSource=source,
         modifier=modifier.heightIn(min=if(secondary) 48.dp else 52.dp).drawWithContent {
             drawContent()
-            // Keep the lime stroke distinct from a lime action without growing the button.
+            // Keep the focus stroke distinct from the filled action without growing the button.
             if(focused) {
                 val inset=4.dp.toPx()
                 drawRoundRect(colors.background,Offset(inset,inset),Size(size.width-2*inset,size.height-2*inset),

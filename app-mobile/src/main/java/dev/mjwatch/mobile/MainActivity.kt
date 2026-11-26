@@ -18,10 +18,12 @@ import dev.mjwatch.core.BackgroundUpdateJob
 import kotlinx.coroutines.flow.first
 import dev.mjwatch.designsystem.WatchApp
 import dev.mjwatch.designsystem.WatchModel
+import dev.mjwatch.designsystem.coldStartupWindow
 
 class MainActivity:ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        val startupWindow=coldStartupWindow(restored = savedInstanceState != null)
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -44,7 +46,7 @@ class MainActivity:ComponentActivity() {
                     .setBeepEnabled(false)
                     .setOrientationLocked(false)
                     .addExtra(Intents.Scan.SHOW_MISSING_CAMERA_PERMISSION_DIALOG,false))
-            })
+            },animateStartup=startupWindow!=null,startupWindowReady=startupWindow?.value ?: true)
         }
     }
     override fun onPostResume() {
