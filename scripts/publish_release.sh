@@ -13,6 +13,12 @@ if [[ "${MJWATCH_DRY_RUN:-false}" == true ]]; then
 fi
 [[ "${GITHUB_REF:-}" == refs/heads/main ]]
 VERSION_NAME=$(sed -n 's/^mjwatchVersionName=//p' gradle.properties)
+CHANGES=$(awk -v version="$VERSION_NAME" '
+  $0 == "## " version {current=1; next}
+  /^## / && current {exit}
+  current && NF {print}
+' CHANGELOG.md)
+[[ -n "$CHANGES" ]]
 TAG="test-${GITHUB_RUN_NUMBER}"
 SERVER_VERSION=${SERVER_SUPPLY#mjwatch-}
 SERVER_VERSION=${SERVER_VERSION%-supply.zip}
@@ -27,8 +33,7 @@ MJWatch $VERSION_NAME — стабильный выпуск.
 - Проверить обновление можно в Настройки → Обновления. Установку подтверждает Android.
 
 Что изменилось:
-- В настройках JacRed можно направить запросы к выбранным доменам через локальный HTTP- или SOCKS5-прокси.
-- MJWatch проверяет доступность порта прокси, сохраняет маршрут и перезапускает JacRed. Для настройки нужен сервер MJWatch $SERVER_VERSION и уже запущенный прокси.
+$CHANGES
 
 FFmpeg распространяется по LGPL 2.1 или новее. [Исходники и пересборка](https://repo.maven.apache.org/maven2/io/put/media3-ffmpeg-decoder/1.11.1+1/media3-ffmpeg-decoder-1.11.1+1-ffmpeg-source.tar.xz).
 
