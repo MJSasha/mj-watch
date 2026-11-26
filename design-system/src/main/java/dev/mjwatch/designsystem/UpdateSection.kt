@@ -20,7 +20,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -29,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.mjwatch.core.UpdateManager
 import dev.mjwatch.core.BackgroundUpdateJob
+import dev.mjwatch.core.UpdateState
 import dev.mjwatch.playback.PlaybackActivity
 import kotlinx.coroutines.*
 
@@ -66,6 +74,7 @@ import kotlinx.coroutines.*
             if(!compact) Text("Доступна ${update.versionName} · сборка ${update.versionCode} · ${update.size/1024/1024} МБ",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             if(state.downloading) {
                 Text("Обновление загружается…")
+                DownloadEstimate(update.versionCode, update.size, state.downloaded)
             } else if(state.ready!=null) {
                 UpdateInstallAction(manager,tv,Modifier.fillMaxWidth())
                 UpdateButton("Загрузить заново") {manager.download()}
@@ -76,25 +85,138 @@ import kotlinx.coroutines.*
     }
 }
 
-@Composable internal fun UpdateInstallAction(manager:UpdateManager,tv:Boolean,modifier:Modifier=Modifier) {
+@Composable
+internal fun DailyUpdateOffer(manager: UpdateManager, state: UpdateState, tv: Boolean, safeHome: Boolean): Modifier {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateFlow.collectAsState()
+    val window = LocalWindowInfo.current
+    val version = state.available?.versionCode
+    var offeredVersion by remember { mutableStateOf<Long?>(null) }
+    var interaction by remember { mutableIntStateOf(0) }
+    var touching by remember { mutableStateOf(false) }
+    var keyHeld by remember { mutableStateOf(false) }
+    val focused = window.isWindowFocused
+    LaunchedEffect(focused, safeHome) {
+        if (!focused || !safeHome) {
+            touching = false
+            keyHeld = false
+        }
+    }
+    val eligible = safeHome && state.automatic && !state.checking && !state.downloading &&
+        lifecycleState == Lifecycle.State.RESUMED && focused && !touching && !keyHeld && version != null
+    LaunchedEffect(safeHome, version, lifecycleState) {
+        if (!safeHome || offeredVersion != version || PlaybackActivity.hasActivePlayback()) offeredVersion = null
+    }
+    LaunchedEffect(eligible, interaction, version) {
+        if (!eligible || version == null || offeredVersion != null) return@LaunchedEffect
+        val idleSince = interaction
+        delay(3_000)
+        if (interaction == idleSince && !touching && !keyHeld && window.isWindowFocused &&
+            lifecycle.currentState == Lifecycle.State.RESUMED && !PlaybackActivity.hasActivePlayback() &&
+            manager.claimDailyOffer(version)
+        ) offeredVersion = version
+    }
+
+    val update = state.available
+    if (safeHome && update != null && offeredVersion == update.versionCode) {
+        val laterFocus = remember { FocusRequester() }
+        val dismiss: () -> Unit = { offeredVersion = null }
+        AlertDialog(
+            onDismissRequest = dismiss,
+            title = { Text("Обновить MJ Watch?") },
+            text = { Text("Доступна версия ${update.versionName}. Установку подтверждает Android.") },
+            confirmButton = {
+                if (state.ready == null) Action("Обновить", tv) {
+                    manager.download()
+                    dismiss()
+                } else UpdateInstallAction(manager, tv, onOfferFinished = dismiss)
+            },
+            dismissButton = {
+                val dialogFocused = LocalWindowInfo.current.isWindowFocused
+                LaunchedEffect(dialogFocused) { if (tv && dialogFocused) laterFocus.requestFocus() }
+                Action("Позже", tv, Modifier.focusRequester(laterFocus), secondary = true, onClick = dismiss)
+            },
+        )
+    }
+
+    if (!state.automatic || !safeHome) return Modifier
+    return Modifier.onPreviewKeyEvent {
+        keyHeld = it.type == KeyEventType.KeyDown
+        interaction++
+        false
+    }.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val pressed = event.changes.any { it.pressed }
+                if (pressed || touching || event.type == PointerEventType.Scroll) interaction++
+                touching = pressed
+            }
+        }
+    }
+}
+
+@Composable internal fun UpdateInstallAction(
+    manager: UpdateManager,
+    tv: Boolean,
+    modifier: Modifier = Modifier,
+    onOfferFinished: (() -> Unit)? = null,
+) {
     val context=LocalContext.current
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val scope=rememberCoroutineScope()
     var installing by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf("")}
+    val install = {
+        installing = true
+        error = ""
+        scope.launch {
+            try {
+                val apk = withContext(Dispatchers.IO) { manager.readyFile() }
+                if (apk == null && onOfferFinished != null) {
+                    manager.download()
+                    onOfferFinished()
+                } else {
+                    checkNotNull(apk) { "APK не прошёл проверку" }
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
+                    PlaybackActivity.stopActivePlayback()
+                    context.startActivity(Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(uri, "application/vnd.android.package-archive")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    onOfferFinished?.invoke()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                error = "Не удалось открыть установщик. Загрузите APK снова или откройте GitHub Releases"
+            } finally {
+                installing = false
+            }
+        }
+    }
+    val permissionLauncher = if (onOfferFinished != null) {
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (context.packageManager.canRequestPackageInstalls()) install() else installing = false
+        }
+    } else null
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         val allowed=remember(lifecycleState) {context.packageManager.canRequestPackageInstalls()}
-        Action(if(allowed) "Установить обновление" else "Разрешить установку",tv,modifier,enabled=!installing) {
-            if(!allowed) {
-                try {context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${context.packageName}")))} catch(_:Exception) {error="Откройте настройки Android и разрешите установку из MJWatch"}
+        val label = if (onOfferFinished != null) "Обновить" else if (allowed) "Установить обновление" else "Разрешить установку"
+        Action(label,tv,modifier,enabled=!installing) {
+            if (installing) return@Action
+            if (allowed) {
+                install()
             } else {
-                installing=true;error=""
-                scope.launch {try {
-                    val apk=withContext(Dispatchers.IO) {manager.readyFile()} ?: throw IllegalStateException("APK не прошёл проверку")
-                    val uri=FileProvider.getUriForFile(context,"${context.packageName}.updates",apk)
-                    PlaybackActivity.stopActivePlayback()
-                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                } catch(_:Exception) {error="Не удалось открыть установщик. Загрузите APK снова или откройте GitHub Releases"} finally {installing=false}}
+                try {
+                    val request = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                    if (permissionLauncher == null) context.startActivity(request) else {
+                        installing = true
+                        permissionLauncher.launch(request)
+                    }
+                } catch (_: Exception) {
+                    installing = false
+                    error = "Откройте настройки Android и разрешите установку из MJWatch"
+                }
             }
         }
         if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error)

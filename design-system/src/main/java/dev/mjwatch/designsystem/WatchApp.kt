@@ -105,7 +105,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     Box(Modifier.fillMaxSize()) {
         if (state.initializing) BackHandler {}
         else Box(Modifier.fillMaxSize().testTag("app-content")) {
-            if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr) }
+            if (online) onlineState.SaveableStateProvider("online") { WatchAppContent(model, tv, scanQr, !darkStartupBackdrop) }
             else OfflineHome(state.config)
         }
         if(state.initializing || animateStartup) {
@@ -116,7 +116,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }
 }
 
-@Composable private fun WatchAppContent(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?) {
+@Composable private fun WatchAppContent(model:WatchModel,tv:Boolean,scanQr:(()->Unit)?,startupSettled:Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val remoteState by model.remote.collectAsStateWithLifecycle()
     if(!tv)RemoteReplacementDialog(model)
@@ -152,7 +152,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         val updateState by model.updates.state.collectAsStateWithLifecycle()
         var updateDialogDismissed by rememberSaveable {mutableStateOf(false)}
         LaunchedEffect(updateState.downloading) {if(updateState.downloading)updateDialogDismissed=false}
-        if(updateState.downloading||updateState.promptInstall&&updateState.ready!=null&&!updateDialogDismissed) UpdateDownloadDialog(
+        val updateDialogVisible = updateState.downloading || updateState.promptInstall && updateState.ready != null && !updateDialogDismissed
+        if(updateDialogVisible) UpdateDownloadDialog(
             updateState,tv,onCancel={model.updates.cancel()},onDismiss={updateDialogDismissed=true},
             installButton={modifier->UpdateInstallAction(model.updates,tv,modifier)}
         )
@@ -162,6 +163,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         androidx.tv.material3.MaterialTheme(colorScheme=androidx.tv.material3.darkColorScheme(primary=colors.primary,onPrimary=colors.onPrimary,surface=colors.surface,onSurface=colors.onSurface,surfaceVariant=colors.surfaceVariant,onSurfaceVariant=colors.onSurfaceVariant)) {
             val width=LocalConfiguration.current.screenWidthDp
             val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
+            val updateOfferInput = DailyUpdateOffer(model.updates, updateState, tv,
+                safeHome = startupSettled && state.configured && state.page == "home" && !imeVisible &&
+                    !exitRequested && !updateDialogVisible && state.legacyHistoryRecords == 0 &&
+                    remoteState.conflict == null && snackbar.currentSnackbarData == null)
             val rail=tv||(width>=600&&LocalConfiguration.current.screenHeightDp>=480&&!imeVisible)
             val railItems=if(rail) listOf(destinations[0],destinations[1],Destination("history","История",Icons.Outlined.History),destinations[2],destinations[3]) else destinations
             val releaseSheet=!tv&&width<840&&state.page=="releases"
@@ -184,7 +189,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val detailNav=page=="detail" && width<600 && LocalConfiguration.current.screenHeightDp>=480
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
             val activeDestination=if(detailNav) state.originPage else page
-            Scaffold(containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
+            Scaffold(modifier=updateOfferInput,containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
                 if(!imeVisible) Box {
                     val bottomInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
                     if(!showBottomBar) Spacer(Modifier.windowInsetsBottomHeight(bottomInset))

@@ -39,6 +39,7 @@ import dev.mjwatch.core.UpdateState
             Text("${(fraction*100).toInt()}%",fontSize=28.sp,fontWeight=FontWeight.Bold)
             LinearProgressIndicator(progress={fraction},modifier=Modifier.fillMaxWidth().height(8.dp).testTag("update-download-progress"))
             Text("Загружено ${state.downloaded/1024/1024} из ${update.size/1024/1024} МБ")
+            if (state.downloading) DownloadEstimate(update.versionCode, update.size, state.downloaded)
             Text(if(state.downloaded>=update.size) "Проверяем APK и подпись…" else "После загрузки проверим APK. Установку подтверждает Android.")
             } else Text("MJWatch ${update.versionName} загружен. APK и подпись проверены. Можно установить обновление.")
         }

@@ -309,6 +309,7 @@ private fun DownloadStatus(item: OfflineDownload) {
             progress = { (item.bytesDownloaded.toFloat() / item.totalBytes).coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth()
         )
+        if (item.error == null) DownloadEstimate(item.id, item.totalBytes, item.bytesDownloaded)
     }
 }
 
