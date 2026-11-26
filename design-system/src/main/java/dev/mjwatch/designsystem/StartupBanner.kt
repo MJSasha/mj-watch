@@ -5,11 +5,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
     val assembly=remember(animate) {Animatable(if(animate) 0f else 1f)}
     val backdrop=remember {Animatable(1f)}
     val markOpacity=remember {Animatable(1f)}
+    val revealFinished by remember {derivedStateOf {backdrop.value==0f && markOpacity.value==0f}}
     var assembled by remember(animate) {mutableStateOf(!animate)}
     LaunchedEffect(animate) {
         if(animate) {
@@ -44,12 +45,12 @@ import androidx.compose.ui.unit.dp
     LaunchedEffect(waiting,assembled) {
         if(!waiting && assembled && animate) markOpacity.animateTo(0f,tween(90))
     }
-    if(!waiting && (!animate || (backdrop.value==0f && markOpacity.value==0f))) return
+    if(!waiting && (!animate || revealFinished)) return
 
-    val progress=assembly.value
+    val graphite=colorResource(R.color.mj_icon_background)
     BoxWithConstraints(
         Modifier.fillMaxSize().testTag("startup-banner")
-            .background(colorResource(R.color.mj_icon_background).copy(alpha=backdrop.value))
+            .drawBehind {drawRect(graphite,alpha=backdrop.value)}
             .clearAndSetSemantics {
                 if(waiting) {
                     contentDescription = "MJWatch. Запускаем приложение"
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
         contentAlignment=Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
+            val progress=assembly.value
             val radius=size.minDimension*.82f
             val drift=radius*.08f*(1f-progress)
             val emerald=Offset(-radius*.19f-drift,-radius*.4f)
@@ -70,6 +72,7 @@ import androidx.compose.ui.unit.dp
         val markFrame=minOf(288.dp,maxWidth,maxHeight*.8f)
         val mark=Modifier.size(markFrame)
         Image(painterResource(R.drawable.startup_echo),null,mark.graphicsLayer {
+            val progress=assembly.value
             alpha=markOpacity.value*.32f*4f*progress*(1f-progress)
             translationX=-markFrame.toPx()*(.05f+.17f*(1f-progress))
             translationY=-markFrame.toPx()*(.14f-.08f*(1f-progress))
@@ -77,6 +80,7 @@ import androidx.compose.ui.unit.dp
             scaleY=scaleX
         })
         Image(painterResource(R.drawable.startup_rear),null,mark.graphicsLayer {
+            val progress=assembly.value
             alpha=markOpacity.value*progress
             translationX=markFrame.toPx()*.14f*(1f-progress)
             translationY=-markFrame.toPx()*(.14f+.14f*(1f-progress))
@@ -84,6 +88,7 @@ import androidx.compose.ui.unit.dp
             scaleY=scaleX
         })
         Image(painterResource(R.drawable.startup_front),null,mark.graphicsLayer {
+            val progress=assembly.value
             alpha=markOpacity.value*progress
             translationX=-markFrame.toPx()*.15f*(1f-progress)
             translationY=-markFrame.toPx()*(.14f-.08f*(1f-progress))
@@ -91,6 +96,7 @@ import androidx.compose.ui.unit.dp
             scaleY=scaleX
         })
         Image(painterResource(R.drawable.startup_brand),null,mark.graphicsLayer {
+            val progress=assembly.value
             alpha=backdrop.value
             translationY=markFrame.toPx()*.17f*(progress/.42f).coerceAtMost(1f)
         })
