@@ -187,7 +187,7 @@ class RemotePlaybackService:Service() {
                 if(artworkKey==key)artwork=bitmap
             }
         }
-        val actions=PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_STOP or if(video.seek)PlaybackState.ACTION_SEEK_TO else 0L
+        val actions=PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_STOP or if(video.seek)PlaybackState.ACTION_SEEK_TO else 0L
         val status=when(video.status){"playing"->PlaybackState.STATE_PLAYING;"paused"->PlaybackState.STATE_PAUSED;"loading"->PlaybackState.STATE_BUFFERING;"error"->PlaybackState.STATE_ERROR;else->PlaybackState.STATE_STOPPED}
         session.setPlaybackState(PlaybackState.Builder().setActions(actions).setState(status,video.position,if(video.status=="playing")1f else 0f,SystemClock.elapsedRealtime()).build())
         session.setMetadata(MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE,video.title).putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE,target.name).putString(MediaMetadata.METADATA_KEY_ARTIST,target.name).putLong(MediaMetadata.METADATA_KEY_DURATION,video.duration).putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART,artwork).build())
@@ -208,7 +208,7 @@ class RemotePlaybackService:Service() {
         val pending=PendingIntent.getActivity(this,26,launch,PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session.setSessionActivity(pending)
         val action=if(state.value.target?.video?.status=="playing")"pause" else "play"
-        val transport=PendingIntent.getForegroundService(this,27,Intent(this,RemotePlaybackService::class.java).setAction(action),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val transport=PendingIntent.getService(this,27,Intent(this,RemotePlaybackService::class.java).setAction(action),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val builder=Notification.Builder(this,"remote-video").setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(state.value.target?.name ?: "MJWatch").setContentIntent(pending).setOngoing(state.value.target?.video?.active==true).setVisibility(Notification.VISIBILITY_PUBLIC)
         if(state.value.target?.video?.active==true)builder.addAction(Notification.Action.Builder(if(action=="pause")android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,if(action=="pause")"Пауза" else "Воспроизвести",transport).build()).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0))
         return builder.build()
