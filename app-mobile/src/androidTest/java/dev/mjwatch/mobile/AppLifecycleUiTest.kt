@@ -113,6 +113,34 @@ class AppLifecycleUiTest {
         compose.onNodeWithTag("update-download-progress").assertDoesNotExist()
         compose.runOnIdle {Assert.assertFalse(shown)}
     }
+    @Test fun apkEstimateAppearsAfterTransferAndDisappearsWhenStalled() {
+        val update = AppUpdate(10_000, "9.9.9", "dev.mjwatch.mobile", "", "", 20L * 1024 * 1024, "", "")
+        var state by mutableStateOf(UpdateState(available = update, downloading = true))
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnUiThread {
+                compose.activity.setContent { WatchTheme("dark") { UpdateDownloadDialog(state, false, onCancel = {}) } }
+            }
+            compose.mainClock.advanceTimeByFrame()
+            compose.onNodeWithTag("download-estimate").assertDoesNotExist()
+            compose.runOnUiThread { state = state.copy(downloaded = 1024 * 1024) }
+            compose.mainClock.advanceTimeBy(64)
+            repeat(4) {
+                Thread.sleep(1_080)
+                compose.runOnUiThread { state = state.copy(downloaded = state.downloaded + 1024 * 1024) }
+                compose.mainClock.advanceTimeBy(1_000)
+            }
+            compose.onNodeWithTag("download-estimate").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Осталось примерно", substring = true).assertExists()
+            capture("download-estimate")
+            Thread.sleep(1_100)
+            compose.mainClock.advanceTimeBy(1_024)
+            compose.onNodeWithTag("download-estimate").assertDoesNotExist()
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
     @Test fun verifiedDownloadKeepsDialogAndOffersInstall() {
         val update=AppUpdate(10000,"0.8.13","dev.mjwatch.mobile","","",20L*1024*1024,"","")
         var state by mutableStateOf(UpdateState(available=update,downloading=true,downloaded=update.size))

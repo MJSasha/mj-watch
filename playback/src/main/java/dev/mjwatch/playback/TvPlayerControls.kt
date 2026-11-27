@@ -18,16 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -259,7 +254,7 @@ import kotlinx.coroutines.delay
                         .onSizeChanged { footerHeight = it.height }.padding(horizontal=44.dp,vertical=34.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                     val shown=remote.preview ?: position
                     Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Text(playerTime(shown),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
+                        Text(playerTime(shown,duration),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                     Slider(value=shown.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),onValueChange={remote.previewSeek(it.toLong(),duration,0,0,0);interact()},onValueChangeFinished={remote.confirmSeek()?.let {player()?.seekTo(it)};interact()},valueRange=0f..duration.coerceAtLeast(1).toFloat(),enabled=seekable&&duration>0,
                         modifier=Modifier.weight(1f).height(48.dp).testTag("player-timeline").describeSkipSegments(episodeSegments,duration).then(controlFocus(timelineFocus)).onFocusChanged {timelineFocused=it.isFocused;if(!it.hasFocus)remote.cancelSeek()}.onPreviewKeyEvent {event ->
                             val down=event.type==KeyEventType.KeyDown
@@ -276,14 +271,14 @@ import kotlinx.coroutines.delay
                         },thumb={},track={
                             PlayerTimelineTrack(shown,duration,episodeSegments,PlayerMint,focused=timelineFocused&&!modal)
                         })
-                        Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFF4F4FA),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                        Text(playerTime(duration,shown),fontSize=12.sp,color=Color(0xFFF4F4FA),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                     }
                     Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         @Composable fun buttonModifier(target:FocusRequester=remember {FocusRequester()})=Modifier.size(48.dp).then(controlFocus(target)).focusProperties {up=if(seekable)timelineFocus else backFocus;down=FocusRequester.Cancel}.tvPlayerFocus(!modal)
                         if(episodes.size>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.testTag("player-previous-episode").focusProperties {left=FocusRequester.Cancel}.then(buttonModifier()),onClick={interact();onEpisode(episodeIndex-1)}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
-                        IconButton(modifier=Modifier.focusProperties {if(episodeIndex<=0)left=FocusRequester.Cancel}.then(buttonModifier()),enabled=seekable,onClick={interact();seek(-1)}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                        IconButton(modifier=Modifier.focusProperties {if(episodeIndex<=0)left=FocusRequester.Cancel}.then(buttonModifier()),enabled=seekable,onClick={interact();seek(-1)}) {Icon(Icons.Outlined.Replay10,"Назад на 10 секунд")}
                         IconButton(onClick={interact();player()?.let {if(it.playWhenReady)it.pause() else it.play()}},modifier=Modifier.size(width=52.dp,height=48.dp).testTag("player-play").then(buttonModifier(playFocus))) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
-                        IconButton(modifier=buttonModifier(),enabled=seekable,onClick={interact();seek(1)}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                        IconButton(modifier=buttonModifier(),enabled=seekable,onClick={interact();seek(1)}) {Icon(Icons.Outlined.Forward10,"Вперёд на 10 секунд")}
                         if(episodes.size>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodes.lastIndex,modifier=Modifier.testTag("player-next-episode").then(buttonModifier()),onClick={interact();onEpisode(episodeIndex+1)}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
                     }
                     }

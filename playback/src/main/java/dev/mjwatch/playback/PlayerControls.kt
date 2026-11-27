@@ -21,8 +21,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -31,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -42,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
@@ -125,7 +121,7 @@ internal val PlayerMint=Color(0xFF31F5C8)
                     Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding()
                         .onSizeChanged { footerHeight = it.height }.padding(horizontal=28.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth().testTag("player-time-row"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Text(playerTime(position),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
+                            Text(playerTime(position,duration),fontSize=12.sp,modifier=Modifier.widthIn(min=40.dp).testTag("player-position"))
                             Slider(
                                 value=position.toFloat().coerceIn(0f,duration.coerceAtLeast(1).toFloat()),
                                 onValueChange={scrubbing=true;position=it.toLong();interaction++},
@@ -137,14 +133,14 @@ internal val PlayerMint=Color(0xFF31F5C8)
                                 thumb={},
                                 track={PlayerTimelineTrack(position,duration,segments,PlayerMint)},
                             )
-                            Text(playerTime(duration),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
+                            Text(playerTime(duration,position),fontSize=12.sp,color=Color(0xFFB6BACD),modifier=Modifier.widthIn(min=40.dp).testTag("player-duration"))
                         }
                         FlowRow(Modifier.fillMaxWidth().testTag("player-controls-actions"),horizontalArrangement=Arrangement.SpaceBetween,verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
                             if(episodeCount>1) IconButton(enabled=episodeIndex>0,modifier=Modifier.size(48.dp).testTag("player-previous-episode").playerFocus(),onClick={touch {onEpisode(episodeIndex-1)}}) {Icon(Icons.Outlined.SkipPrevious,"Предыдущая серия")}
-                            IconButton(modifier=Modifier.size(48.dp).playerFocus(),onClick={touch {player()?.seekBack()}}) {BasicText("−10",Modifier.clearAndSetSemantics {contentDescription="Назад на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                            IconButton(modifier=Modifier.size(48.dp).playerFocus(),onClick={touch {player()?.seekBack()}}) {Icon(Icons.Outlined.Replay10,"Назад на 10 секунд")}
                             IconButton(onClick={touch {player()?.let {if(it.playWhenReady) it.pause() else it.play()}}},modifier=Modifier.size(56.dp).testTag("player-play").playerFocus()) {Icon(if(playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,if(playing) "Пауза" else "Воспроизвести",Modifier.size(24.dp))}
-                            IconButton(modifier=Modifier.size(48.dp).playerFocus(),onClick={touch {player()?.seekForward()}}) {BasicText("+10",Modifier.clearAndSetSemantics {contentDescription="Вперёд на 10 секунд"},style=TextStyle(color=LocalContentColor.current,fontSize=16.sp),maxLines=1,autoSize=TextAutoSize.StepBased(minFontSize=10.sp,maxFontSize=16.sp))}
+                            IconButton(modifier=Modifier.size(48.dp).playerFocus(),onClick={touch {player()?.seekForward()}}) {Icon(Icons.Outlined.Forward10,"Вперёд на 10 секунд")}
                             if(episodeCount>1) IconButton(enabled=episodeIndex>=0&&episodeIndex<episodeCount-1,modifier=Modifier.size(48.dp).testTag("player-next-episode").playerFocus(),onClick={touch {onEpisode(episodeIndex+1)}}) {Icon(Icons.Outlined.SkipNext,"Следующая серия")}
                             }
                             FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
@@ -201,7 +197,14 @@ internal fun PlayerChrome(visible: Boolean, modifier: Modifier, content: @Compos
     ) { content() }
 }
 
-internal fun playerTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
+internal fun playerTime(ms: Long, timelineMs: Long = 0L): String {
+    val seconds = ms.coerceAtLeast(0) / 1_000
+    return if (maxOf(ms, timelineMs) >= 3_600_000L) {
+        "%d:%02d:%02d".format(seconds / 3_600, seconds / 60 % 60, seconds % 60)
+    } else {
+        "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+}
 
 @Composable internal fun Modifier.playerFocus():Modifier {
     var focused by remember {mutableStateOf(false)}

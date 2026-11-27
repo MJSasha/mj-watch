@@ -48,7 +48,7 @@ internal fun TitleCast(
     var actor by remember { mutableStateOf<CastMember?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     val cast = rememberCredits(attempt) { model.cast(title.id, config) }
-    LazyColumn(Modifier.fillMaxSize().testTag("detail-cast-list"), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("detail-cast-list"), contentPadding = PaddingValues(bottom = 24.dp + LocalFloatingNavigationClearance.current)) {
         item(key = "detail-header") { header() }
         item {
             val members = cast?.getOrNull().orEmpty()

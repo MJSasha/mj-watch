@@ -186,6 +186,17 @@ class UpdateManager(private val context:Context,private val scope:CoroutineScope
         BackgroundUpdateJob.schedule(context, state.value.automatic)
         check(automatic=true)
     }
+    fun claimDailyOffer(version: Long): Boolean = synchronized(prefs) {
+        val current = state.value
+        if (!current.automatic || current.checking || current.downloading ||
+            current.available?.versionCode != version || version <= versionCode
+        ) return@synchronized false
+
+        val now = System.currentTimeMillis()
+        val lastOffer = prefs.getLong("lastDailyOffer", 0)
+        if (lastOffer != 0L && now - lastOffer < 24 * 60 * 60 * 1000L) return@synchronized false
+        prefs.edit().putLong("lastDailyOffer", now).commit()
+    }
     fun check(automatic:Boolean=false) {
         if(state.value.checking||state.value.downloading) return
         if(automatic&&(!state.value.automatic||updateWork.isLocked||System.currentTimeMillis()-prefs.getLong("lastAttempt",0)<900_000)) return

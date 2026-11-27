@@ -1,7 +1,6 @@
 package dev.mjwatch.designsystem
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -133,7 +132,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val downloadSeason = season?.takeIf { !tv && !config.demo }
         val listState = rememberLazyListState()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
-            contentPadding = PaddingValues(bottom = if (wide) 48.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
+            contentPadding = PaddingValues(bottom = (if (wide) 48.dp else 20.dp) + LocalFloatingNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(gap)) {
             item("detail-header") { header() }
             if (!seasons.isNullOrEmpty()) item("seasons") {
                 val strip = rememberLazyListState(initialFirstVisibleItemIndex = seasons.orEmpty().indexOf(season).coerceAtLeast(0))
@@ -144,7 +143,7 @@ private fun episodeStill(path: String, config: Config): String? {
                         val shape = RoundedCornerShape(50)
                         val colors = MaterialTheme.colorScheme
                         Box(Modifier.heightIn(min=48.dp).tvFocusRing(true,shape).clip(shape)
-                            .background(colors.surface).then(if (selected) Modifier.border(1.dp,colors.primary,shape) else Modifier)
+                            .then(if (selected) Modifier.background(watchSelectionGradient()) else Modifier.background(colors.surface))
                             .selectable(selected=selected, role=Role.RadioButton, onClick={ season = number })
                             .padding(horizontal=13.dp,vertical=6.dp), contentAlignment=Alignment.Center) {
                             Text(if (number == 0) "Спецвыпуски" else "Сезон $number",

@@ -96,7 +96,7 @@ class OfflinePlaybackUiTest {
                             if(request.method=="GET")streamed.add(id)
                             MockResponse().setHeader("Content-Type","video/mp4")
                                 .setBody(Buffer().write(payload)).apply {
-                                    if(id==31)throttleBody(128*1024,1200,TimeUnit.MILLISECONDS)
+                                    if(id==17 || id==31) throttleBody(128*1024,if(id==31)1200 else 850,TimeUnit.MILLISECONDS)
                                 }
                         }
                         else -> MockResponse().setResponseCode(404)
@@ -156,13 +156,17 @@ class OfflinePlaybackUiTest {
                     awaitTag("offline-list")
                     val store = OfflineDownloads.get(context)
                     for ((id, _) in media.files) {
-                        if(id==31) {
+                        if(id==17 || id==31) {
                             runBlocking {withTimeout(12000) {
                                 store.observe(config).first {list -> list.any {
                                     it.fileId==id&&it.state==OfflineState.DOWNLOADING&&it.bytesDownloaded>it.totalBytes/4
                                 }}
                             }}
-                            capture("$viewport-downloading")
+                            awaitTag("download-estimate")
+                            ui.onNodeWithTag("offline-list").performScrollToNode(hasTestTag("download-estimate"))
+                            capture(if(id==17) "$viewport-movie-download-estimate" else "$viewport-downloading")
+                        }
+                        if(id==31) {
                             assertTrue(device.pressHome())
                             ui.waitUntil(5000) {
                                 var background = false
