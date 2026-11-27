@@ -188,16 +188,48 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val railFocus=remember(tv) {railItems.associate {it.id to FocusRequester()}}
             val searchFieldFocus=remember {FocusRequester()}
             val settingsSectionFocus=remember {FocusRequester()}
+            val screenFocus=remember {FocusRequester()}
             var railFocused by remember {mutableStateOf(false)}
-            val railDestination=when {
+            var pendingRailPage by remember {mutableStateOf<String?>(null)}
+            var railArrowHeld by remember {mutableStateOf(false)}
+            var enterRailPage by remember {mutableStateOf<String?>(null)}
+            val displayedRailDestination=when {
                 top -> page
                 page.startsWith("settings-") || page.startsWith("managed-") || page.startsWith("server-") ||
                     page in setOf("connections","connection-choice") -> "settings"
                 else -> state.originPage
             }
+            val railDestination=pendingRailPage ?: displayedRailDestination
+            LaunchedEffect(railFocused,pendingRailPage,railArrowHeld) {
+                val destination=pendingRailPage ?: return@LaunchedEffect
+                if(!railFocused) {
+                    pendingRailPage=null
+                } else if(!railArrowHeld) {
+                    // Let a quick series of presses finish before composing a destination.
+                    delay(150)
+                    if(pendingRailPage==destination&&railFocused&&!railArrowHeld) {
+                        model.page(destination)
+                        pendingRailPage=null
+                    }
+                }
+            }
+            LaunchedEffect(page,enterRailPage) {
+                if(enterRailPage==page) {
+                    withFrameNanos {}
+                    when(page) {
+                        "search" -> searchFieldFocus
+                        "settings" -> settingsSectionFocus
+                        else -> screenFocus
+                    }.requestFocus()
+                    enterRailPage=null
+                }
+            }
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            BackHandler(tv&&top&&state.configured&&!imeVisible&&railFocused!=(page=="home")) {
+            BackHandler(tv&&top&&state.configured&&!imeVisible&&(!railFocused&&page=="home"||railFocused&&railDestination!="home")) {
+                pendingRailPage=null
+                enterRailPage=null
+                railArrowHeld=false
                 if(page!="home") model.page("home")
                 railFocus.getValue("home").requestFocus()
             }
@@ -260,7 +292,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 ) else padding
                 Row(Modifier.fillMaxSize().padding(screenPadding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                     if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp)
-                        .then(if(tv) Modifier.onFocusChanged {railFocused=it.hasFocus}.focusProperties {
+                        .then(if(tv) Modifier.onFocusChanged {
+                            railFocused=it.hasFocus
+                            if(!it.hasFocus) railArrowHeld=false
+                        }.focusProperties {
                             onEnter={if(requestedFocusDirection==FocusDirection.Left) railFocus[railDestination]?.requestFocus()}
                         }.focusGroup() else Modifier),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
@@ -282,20 +317,34 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                         Key.DirectionDown -> 1
                                         else -> 0
                                     }
-                                    if(step==0) false else {
-                                        if(event.type==KeyEventType.KeyDown) railItems.getOrNull(index+step)?.let {next->
-                                            if(railFocus.getValue(next.id).requestFocus()&&next.id!=railDestination) model.page(next.id)
+                                    when {
+                                        step!=0 -> {
+                                            railArrowHeld=event.type==KeyEventType.KeyDown
+                                            if(railArrowHeld) railItems.getOrNull(index+step)?.let {next->
+                                                if(railFocus.getValue(next.id).requestFocus()) {
+                                                    pendingRailPage=next.id.takeUnless {it==displayedRailDestination}
+                                                }
+                                            }
+                                            true
                                         }
-                                        true
+                                        event.key==Key.DirectionRight&&event.type==KeyEventType.KeyDown&&pendingRailPage==d.id -> {
+                                            pendingRailPage=null
+                                            enterRailPage=d.id
+                                            model.page(d.id)
+                                            true
+                                        }
+                                        else -> false
                                     }
                                 }
                             else Modifier.size(48.dp)
                             RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(remoteNavigation)) {
+                                pendingRailPage=null
                                 if(!tv||page!=d.id) model.page(d.id)
                             }
                         }
                     }
-                    Column(Modifier.weight(1f).fillMaxHeight().imePadding().clipToBounds().softEntrance(screenKey)) {
+                    Column(Modifier.weight(1f).fillMaxHeight().imePadding().clipToBounds()
+                        .then(if(tv) Modifier else Modifier.softEntrance(screenKey))) {
                         if(!(tv&&(cinematic||page=="search"))&&page!="detail"&&!(tv&&page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
@@ -307,7 +356,6 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
                         val edge=page in setOf("home","detail")||page=="releases"&&!tv||page=="settings"&&!state.configured&&!tv
-                        val screenFocus=remember {FocusRequester()}
                         LaunchedEffect(page,tv) {
                             if(tv&&page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
                         }
@@ -1099,6 +1147,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }
     val videos=remember(visibleFiles) {visibleFiles.filter {it.video&&!it.sample}}
     val initialFileFocus=remember {FocusRequester()}
+    val fileListFocus=remember {FocusRequester()}
     var focusInitialFile by remember {mutableStateOf(tv)}
     val initialFileId=videos.firstOrNull()?.serverFileId
     LaunchedEffect(initialFileId) {
@@ -1261,6 +1310,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }
     val controls:@Composable ()->Unit={Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
         if(tv) {
+            SettingsGroup(true) {SettingsCheckbox("Все файлы и sample",showAll) {showAll=it}}
             Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(1.3f).clip(RoundedCornerShape(18.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)
             Text(file?.let {fileLabel(it.path)} ?: "Выберите видеофайл",fontSize=20.sp,fontWeight=FontWeight.Bold)
         }
@@ -1296,7 +1346,11 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                 }
                 if(episode!=null)Pill("Серия $episode · показать все серии",true,tv){episode=null;selection=null}
             }
-            if(tv)SettingsGroup(true){Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){seasonChoices()}}
+            if(tv)SettingsGroup(true) {
+                Column(Modifier.padding(12.dp).focusProperties {
+                    onExit={if(requestedFocusDirection==FocusDirection.Down) fileListFocus.requestFocus()}
+                }.focusGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {seasonChoices()}
+            }
             else SettingsCard("Сезоны и серии",Icons.Outlined.Layers,false){seasonChoices()}
         }
         if (seasonFiles.isNotEmpty() && seasonToDownload != null && !s.config.demo) {
@@ -1307,8 +1361,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
             Text("В раздаче не удалось определить файлы сезона. Отметьте нужные файлы в списке.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if(tv)SettingsGroup(true){SettingsCheckbox("Все файлы и sample",showAll){showAll=it}}
-        else SettingsDisclosure("Дополнительные файлы","Sample и служебные файлы",Icons.Outlined.FolderOpen,false) {
+        if(!tv)SettingsDisclosure("Дополнительные файлы","Sample и служебные файлы",Icons.Outlined.FolderOpen,false) {
             SettingsToggle("Все файлы и sample",showAll,{showAll=it},description="Показать также образцы видео и файлы без видео.")
         }
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -1320,7 +1373,8 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     Row(Modifier.fillMaxSize().padding(bottom=20.dp),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             if(tv)header()
-            LazyColumn(Modifier.weight(1f).testTag("file-list"),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
+            LazyColumn(Modifier.weight(1f).testTag("file-list")
+                .then(if(tv) Modifier.focusRequester(fileListFocus).focusGroup() else Modifier),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
                 if(!tv)item {header()}
                 if(indexed==null) item {LoadingIndicator("Готовим список файлов…")}
                 else if(visibleFiles.isEmpty())item {Empty("Нет файлов для выбранного сезона или серии","Попробуйте другой сезон или покажите все серии.",tv,"Показать все серии"){season=null;episode=null;selection=null}}

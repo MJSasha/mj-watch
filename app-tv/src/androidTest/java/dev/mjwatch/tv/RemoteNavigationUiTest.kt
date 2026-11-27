@@ -69,6 +69,38 @@ class RemoteNavigationUiTest {
         compose.onNode(hasText("Оформление") and isFocused()).assertExists()
     }
 
+    @Test fun heldUpMovesAcrossRailBeforeOpeningHome() {
+        val model=startAtHome()
+        repeat(4) { remote.pressDPadDown() }
+        compose.waitUntil(5000) { model.state.value.page=="settings" }
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val uptime=android.os.SystemClock.uptimeMillis()
+        val up=android.view.KeyEvent.KEYCODE_DPAD_UP
+        repeat(4) { repeatCount ->
+            instrumentation.sendKeySync(android.view.KeyEvent(uptime,android.os.SystemClock.uptimeMillis(),
+                android.view.KeyEvent.ACTION_DOWN,up,repeatCount))
+            compose.waitForIdle()
+            Assert.assertEquals("Passing over a destination must not open it while Up is held", "settings",model.state.value.page)
+        }
+        compose.onNode(hasText("Главная") and isFocused()).assertExists()
+        instrumentation.sendKeySync(android.view.KeyEvent(uptime,android.os.SystemClock.uptimeMillis(),
+            android.view.KeyEvent.ACTION_UP,up,0))
+        compose.waitUntil(5000) { model.state.value.page=="home" }
+        compose.onNode(hasText("Главная") and isFocused()).assertIsSelected()
+    }
+
+    @Test fun downFromFileSeasonFilterEntersEpisodeList() {
+        val model=startAtHome()
+        compose.runOnIdle { model.open(DemoReleases.items.last());model.prepare() }
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("file-3").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Сезон 1").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithText("Сезон 1").assertIsFocused()
+        remote.pressDPadDown()
+        compose.onNodeWithTag("file-3").assertIsFocused()
+        remote.pressDPadDown()
+        compose.onNodeWithTag("file-17").assertIsFocused()
+    }
+
     @Test fun searchAndEpisodeSelectionRestoreTheirOwnFocus() {
         val model=startAtHome()
         remote.pressDPadDown()
