@@ -2,6 +2,8 @@ package dev.mjwatch.mobile
 
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -48,8 +50,20 @@ class OpenIssuesUiTest {
         Assert.assertEquals(96f,poster.height.value,1f)
         Assert.assertEquals(2f/3f,poster.width.value/poster.height.value,0.02f)
         Assert.assertEquals("Artwork must not inflate the history row",96f,series.height.value,1f)
+        val seriesCard=ui.onNodeWithTag("library-demo:series")
+        if(ui.onAllNodesWithTag("bottom-navigation").fetchSemanticsNodes().isNotEmpty()) {
+            val navigation=ui.onNodeWithTag("bottom-navigation")
+            val overlap=series.bottom+8.dp-navigation.getUnclippedBoundsInRoot().top
+            if(overlap>0.dp) {
+                val pixels=overlap.value*ui.activity.resources.displayMetrics.density
+                ui.onNodeWithTag("home-list").performSemanticsAction(SemanticsActions.ScrollBy) {scroll -> scroll(0f,pixels)}
+                ui.waitUntil(5000) {
+                    seriesCard.getUnclippedBoundsInRoot().bottom<=navigation.getUnclippedBoundsInRoot().top
+                }
+            }
+        }
         capture("cards")
-        ui.onNodeWithTag("library-demo:series").performTouchInput {longClick()}
+        seriesCard.performTouchInput {longClick()}
         ui.onNodeWithText("Удалить").assertIsDisplayed()
         ui.onNodeWithText("Отмена").assertIsDisplayed()
         capture("history-dialog")
