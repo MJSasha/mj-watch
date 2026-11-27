@@ -118,19 +118,21 @@ class OfflinePlaybackUiTest {
             ActivityScenario.launch(MainActivity::class.java).use {scenario ->
                 awaitTag("app-content")
                 for(media in listOf(film,series)) {
+                    val inlineReleaseTab=media===film&&selectSubset
                     scenario.onActivity { activity ->
                         val model=ViewModelProvider(activity)[WatchModel::class.java]
                         model.open(Release("offline-fixture:${media.hash}","${media.title} 720p","Тестовый TorrServer",
                             hash=media.hash,magnet="magnet:?xt=urn:btih:${media.hash}"),
-                            metadata=Metadata("tmdb:${if(media===film)"movie" else "tv"}:${media.files.first().first}",media.title,null,null,
+                            metadata=if(inlineReleaseTab) null else Metadata("tmdb:${if(media===film)"movie" else "tv"}:${media.files.first().first}",media.title,null,null,
                                 kind=if(media===film)"movie" else "tv"))
                     }
-                    ui.onNodeWithTag("detail-sources").performClick()
+                    ui.onNodeWithTag(if(inlineReleaseTab) "detail-tab-releases" else "detail-sources").performClick()
                     awaitTag("source-download")
                     val release=hasText("${media.title} 720p") and hasClickAction()
                     ui.onNodeWithTag("release-list").performScrollToNode(release)
                     ui.onNode(release).performClick()
-                    ui.onNodeWithTag("source-download").performClick()
+                    if(inlineReleaseTab) capture("$viewport-inline-release-actions")
+                    ui.onNodeWithTag("source-download").assertIsEnabled().performTouchInput { click() }
                     awaitTag("file-list")
                     if (media === film) {
                         val id = media.files.single().first

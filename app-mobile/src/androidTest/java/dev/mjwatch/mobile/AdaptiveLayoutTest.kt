@@ -61,6 +61,7 @@ class AdaptiveLayoutTest {
    assertActionsClear()
    capture("inline-release-actions-zero-inset")
    watch.assertIsEnabled().performTouchInput { click() }
+   ui.waitUntil(10000) {model.state.value.page=="files"}
    ui.onNodeWithTag("file-list").assertIsDisplayed()
    ui.onNodeWithTag("bottom-navigation").assertDoesNotExist()
   } finally {
