@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import org.json.JSONArray
@@ -380,9 +381,12 @@ class OfflineDownloads private constructor(private val app: Context) {
         var selected = file
         var reopened = false
         var refreshed = false
+        val view = if (api != null) java.util.UUID.randomUUID().toString() else null
         while (true) {
             val stream = gateway.stream(handle, selected)
-            val request = Request.Builder().url(stream.uri).apply {
+            val url = if (view == null) stream.uri else stream.uri.toHttpUrl().newBuilder()
+                .setQueryParameter("view", view).setQueryParameter("download", "1").build().toString()
+            val request = Request.Builder().url(url).apply {
                 stream.headers.forEach { (key, value) -> header(key, value) }
             }.build()
             try {

@@ -36,10 +36,20 @@ func TestLastSeenWritesAreThrottled(t *testing.T) {
 	}
 }
 
+func admitTestStream(s *Server, user, session string) bool {
+	view, _ := s.acquireStream(identity{User: user}, streamKey{session: session}, false)
+	return view != nil
+}
+
+func releaseTestStream(s *Server, session string) {
+	key := streamKey{session: session}
+	s.releaseStream(key, s.streams[key])
+}
+
 func TestStreamAdmissionProtectsUpstreamAndLogsNoCredentials(t *testing.T) {
 	s, token := fixture(t)
 	s.maxStreams = 1
-	if !s.acquireStream("other", "other-view") || s.acquireStream("third", "third-view") {
+	if !admitTestStream(s, "other", "other-view") || admitTestStream(s, "third", "third-view") {
 		t.Fatal("one-stream profile")
 	}
 	i, _ := s.identity(token)
@@ -56,19 +66,19 @@ func TestStreamAdmissionProtectsUpstreamAndLogsNoCredentials(t *testing.T) {
 	if !strings.Contains(logs.String(), "category=playback status=429") || strings.Contains(logs.String(), token) || strings.Contains(logs.String(), handle) || strings.Contains(logs.String(), "hidden") {
 		t.Fatal("unsafe diagnostic", logs.String())
 	}
-	if !s.acquireStream("other", "other-view") || s.acquireStream("other", "other-view") {
+	if !admitTestStream(s, "other", "other-view") || admitTestStream(s, "other", "other-view") {
 		t.Fatal("seek overlap must allow exactly two requests")
 	}
-	s.releaseStream("other", "other-view")
-	if s.acquireStream("third", "third-view") {
+	releaseTestStream(s, "other-view")
+	if admitTestStream(s, "third", "third-view") {
 		t.Fatal("overlap released logical slot too early")
 	}
-	s.releaseStream("other", "other-view")
-	if !s.acquireStream(i.User, "owner-view") {
+	releaseTestStream(s, "other-view")
+	if !admitTestStream(s, i.User, "owner-view") {
 		t.Fatal("slot not released")
 	}
-	s.releaseStream(i.User, "owner-view")
-	if len(s.active) != 0 {
+	releaseTestStream(s, "owner-view")
+	if len(s.streams) != 0 {
 		t.Fatal("inactive counters retained")
 	}
 }

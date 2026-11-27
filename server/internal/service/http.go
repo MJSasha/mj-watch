@@ -44,7 +44,7 @@ type identity struct {
 	LastSeen                    int64
 }
 
-var Version = "0.1.25"
+var Version = "0.1.26"
 
 type Server struct {
 	maxStreams         int
@@ -60,8 +60,8 @@ type Server struct {
 	Client            *http.Client
 	mu                sync.Mutex
 	rates             map[string][]time.Time
-	active            map[string]int
-	streamRequests    map[string]int
+	streams           map[streamKey]*activeStream
+	stoppedStreams    map[streamKey]time.Time
 	tmdbMu            sync.Mutex
 	tmdbAPIPause      time.Time
 	tmdbImagePause    time.Time
@@ -80,7 +80,7 @@ func New(db *sql.DB, c Config) *Server {
 	memory := resources.Read()
 	recommended := memory.Streams()
 	streams, perUser := ReadStreamSettings(db).Effective(recommended)
-	return &Server{maxStreams: streams, maxStreamsPerUser: perUser, recommendedStreams: recommended, passwordSlots: make(chan struct{}, min(2, recommended)), playbackSlots: make(chan struct{}, recommended), uploadSlots: make(chan struct{}, min(2, recommended)), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, active: map[string]int{}, streamRequests: map[string]int{}}
+	return &Server{maxStreams: streams, maxStreamsPerUser: perUser, recommendedStreams: recommended, passwordSlots: make(chan struct{}, min(2, recommended)), playbackSlots: make(chan struct{}, recommended), uploadSlots: make(chan struct{}, min(2, recommended)), dummyPassword: dummy, DB: db, Config: c, Client: &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, rates: map[string][]time.Time{}, streams: make(map[streamKey]*activeStream), stoppedStreams: make(map[streamKey]time.Time)}
 }
 func (s *Server) limit(key string, n int, period time.Duration) bool {
 	s.mu.Lock()

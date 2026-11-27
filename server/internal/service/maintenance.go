@@ -133,10 +133,8 @@ func (s *Server) maintenanceTick(ctx context.Context, now time.Time) {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	s.mu.Lock()
-	active := 0
-	for _, n := range s.active {
-		active += n
-	}
+	active := len(s.streams)
+	s.expireStoppedStreams(now)
 	maxStreams := s.maxStreams
 	s.mu.Unlock()
 	log.Printf("event=resources available_bytes=%d total_bytes=%d heap_bytes=%d disk_free_bytes=%d streams=%d max_streams=%d goroutines=%d", memory.Available, memory.Total, stats.HeapAlloc, uint64(fs.Bavail)*uint64(fs.Bsize), active, maxStreams, runtime.NumGoroutine())

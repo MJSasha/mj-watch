@@ -25,10 +25,10 @@ func TestStreamSettingsPersistAndDoNotInterruptExistingViews(t *testing.T) {
 	if code = update(2, 2, revision); code != 200 {
 		t.Fatal(code)
 	}
-	if !s.acquireStream("viewer", "one") || !s.acquireStream("viewer", "two") {
+	if !admitTestStream(s, "viewer", "one") || !admitTestStream(s, "viewer", "two") {
 		t.Fatal("configured second view rejected")
 	}
-	if s.acquireStream("viewer", "three") {
+	if admitTestStream(s, "viewer", "three") {
 		t.Fatal("account/global limit bypassed")
 	}
 	if update(3, 3, revision) != 409 {
@@ -48,15 +48,15 @@ func TestStreamSettingsPersistAndDoNotInterruptExistingViews(t *testing.T) {
 	if update(1, 1, snapshot["revision"].(string)) != 200 {
 		t.Fatal("could not lower limit")
 	}
-	if len(s.streamRequests) != 2 || s.acquireStream("another", "new") {
+	if len(s.streams) != 2 || admitTestStream(s, "another", "new") {
 		t.Fatal("lowering interrupted views or admitted a new one")
 	}
-	s.releaseStream("viewer", "one")
-	s.releaseStream("viewer", "two")
-	if !s.acquireStream("viewer", "new") {
+	releaseTestStream(s, "one")
+	releaseTestStream(s, "two")
+	if !admitTestStream(s, "viewer", "new") {
 		t.Fatal("released slot unavailable")
 	}
-	s.releaseStream("viewer", "new")
+	releaseTestStream(s, "new")
 	_, snapshot = call(t, s, token, "GET", "admin/playback/settings", nil)
 	if update(0, 0, snapshot["revision"].(string)) != 200 || s.maxStreams != s.recommendedStreams {
 		t.Fatal("automatic profile not restored")
