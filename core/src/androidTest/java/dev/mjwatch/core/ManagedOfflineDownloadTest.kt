@@ -62,8 +62,14 @@ class ManagedOfflineDownloadTest {
                 assertArrayEquals(bytes, part.readBytes())
                 val requests = List(server.requestCount) { server.takeRequest() }
                 assertEquals(listOf("/root/api/v1/auth/refresh", "/root/api/v1/me",
-                    "/root/api/v1/playback/expired-handle/stream?file=7", "/root/api/v1/playback/expired-handle",
-                    "/root/api/v1/playback", "/root/api/v1/playback/fresh-handle/stream?file=41"), requests.map { it.path })
+                    "/root/api/v1/playback/expired-handle/stream", "/root/api/v1/playback/expired-handle",
+                    "/root/api/v1/playback", "/root/api/v1/playback/fresh-handle/stream"), requests.map { it.requestUrl!!.encodedPath })
+                val streams = listOf(requests[2].requestUrl!!, requests[5].requestUrl!!)
+                assertEquals(listOf("7", "41"), streams.map { it.queryParameter("file") })
+                assertTrue(streams.all { it.queryParameter("download") == "1" })
+                val view = streams.first().queryParameter("view")
+                assertTrue(!view.isNullOrBlank())
+                assertEquals(view, streams.last().queryParameter("view"))
                 assertEquals("initial-refresh", JSONObject(requests.first().body.readUtf8()).getString("refreshToken"))
                 assertTrue(requests.drop(1).all { it.getHeader("Authorization") == "Bearer fresh-access" })
                 assertEquals("bytes=2-", requests.last().getHeader("Range"))
