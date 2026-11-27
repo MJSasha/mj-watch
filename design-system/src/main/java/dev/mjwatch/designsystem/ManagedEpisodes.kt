@@ -132,7 +132,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val downloadSeason = season?.takeIf { !tv && !config.demo }
         val listState = rememberLazyListState()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
-            contentPadding = PaddingValues(bottom = if (wide) 48.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
+            contentPadding = PaddingValues(bottom = (if (wide) 48.dp else 20.dp) + LocalFloatingNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(gap)) {
             item("detail-header") { header() }
             if (!seasons.isNullOrEmpty()) item("seasons") {
                 val strip = rememberLazyListState(initialFirstVisibleItemIndex = seasons.orEmpty().indexOf(season).coerceAtLeast(0))

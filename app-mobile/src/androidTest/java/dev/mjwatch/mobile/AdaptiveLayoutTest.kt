@@ -32,6 +32,38 @@ class AdaptiveLayoutTest {
   Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
  }
  @After fun restoreRotation(){device.setOrientationNatural();device.unfreezeRotation()}
+ @Test fun floatingNavigationAllowsContentBehindItAndAboveItAtScrollEnd() {
+  Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
+  val instrumentation=InstrumentationRegistry.getInstrumentation()
+  val theme=InstrumentationRegistry.getArguments().getString("navigationTheme") ?: "dark"
+  lateinit var model:WatchModel
+  ui.runOnIdle { model=ViewModelProvider(ui.activity)[WatchModel::class.java] }
+  ui.waitUntil(15000){model.state.value.configured}
+  runBlocking { Settings(instrumentation.targetContext).save(model.state.value.config.copy(theme=theme)) }
+  ui.waitUntil(5000){model.state.value.config.theme==theme}
+  ui.runOnIdle { model.page("settings") }
+  val list=ui.onNodeWithTag("settings-list").assertIsDisplayed()
+  val navigation=ui.onNodeWithTag("bottom-navigation").assertIsDisplayed()
+  Assert.assertTrue("Scroll viewport extends behind floating navigation",
+   list.getUnclippedBoundsInRoot().bottom>=navigation.getUnclippedBoundsInRoot().bottom)
+  list.performTouchInput { swipe(center, center.copy(y=center.y-130f), 500L) }
+  capture("floating-navigation-$theme")
+  val controller=WindowCompat.getInsetsController(ui.activity.window,ui.activity.window.decorView)
+  val type=WindowInsetsCompat.Type.navigationBars()
+  try {
+   ui.runOnIdle { controller.hide(type) }
+   ui.waitUntil(5000) {
+    ui.runOnIdle { ViewCompat.getRootWindowInsets(ui.activity.window.decorView)?.getInsets(type)?.bottom==0 }
+   }
+   capture("floating-navigation-$theme-zero-inset")
+  } finally {
+   ui.runOnIdle { controller.show(type) }
+  }
+  repeat(3) { list.performTouchInput { swipeUp() } }
+  val lastAction=ui.onNodeWithText("Выйти из приложения").assertIsDisplayed()
+  Assert.assertTrue("Last action scrolls clear of the floating navigation",
+   lastAction.getUnclippedBoundsInRoot().bottom<=navigation.getUnclippedBoundsInRoot().top)
+ }
  @Test fun floatingNavigationUsesTheLargerOfSystemInsetAndEightDp() {
   Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
   val navigation=ui.onNodeWithTag("bottom-navigation").assertIsDisplayed()

@@ -79,6 +79,7 @@ import kotlinx.coroutines.withContext
 
 private data class Destination(val id:String,val title:String,val icon:ImageVector)
 internal val LocalImages=staticCompositionLocalOf<ImageLoader> {error("Image loader unavailable")}
+internal val LocalFloatingNavigationClearance = compositionLocalOf { 0.dp }
 private val destinations=listOf(Destination("home","Главная",Icons.Filled.Home),Destination("search","Поиск",Icons.Outlined.Search),Destination("library","Моё",Icons.Filled.Bookmarks),Destination("settings","Настройки",Icons.Filled.Settings))
 
 @Composable fun WatchApp(
@@ -188,6 +189,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
             val detailNav=page=="detail" && width<600 && LocalConfiguration.current.screenHeightDp>=480
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
+            val floatingNavigation=showBottomBar&&!imeVisible
             val activeDestination=if(detailNav) state.originPage else page
             Scaffold(modifier=updateOfferInput,containerColor=colors.background,snackbarHost={SnackbarHost(snackbar)},bottomBar={
                 if(!imeVisible) Box {
@@ -199,11 +201,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         exit=fadeOut(tween(120))+shrinkVertically(tween(200)),
                     ) {
                         val floatingInset=bottomInset.union(WindowInsets(bottom=8.dp))
+                        val shape=RoundedCornerShape(22.dp)
                         Column(Modifier.fillMaxWidth().windowInsetsPadding(floatingInset)
-                            .padding(horizontal=8.dp).clip(RoundedCornerShape(22.dp))) {
+                            .padding(horizontal=8.dp).border(1.dp,colors.outline.copy(alpha=.35f),shape).clip(shape)) {
                             NavigationBar(
                                 modifier=Modifier.fillMaxWidth().height(52.dp).testTag("bottom-navigation"),
-                                containerColor=floatingNavigationColor(),
+                                containerColor=colors.surface,
                                 tonalElevation=0.dp,
                                 windowInsets=WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal),
                             ) {
@@ -235,7 +238,13 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     }
                 }
             }) {padding->
-                Row(Modifier.fillMaxSize().padding(padding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
+                val clearance=if(floatingNavigation) padding.calculateBottomPadding() else 0.dp
+                val direction=LocalLayoutDirection.current
+                val screenPadding=if(floatingNavigation) PaddingValues(
+                    start=padding.calculateStartPadding(direction), top=padding.calculateTopPadding(),
+                    end=padding.calculateEndPadding(direction),
+                ) else padding
+                Row(Modifier.fillMaxSize().padding(screenPadding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                     if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
                         Spacer(Modifier.height(if(tv) 24.dp else 28.dp))
@@ -272,6 +281,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             val bounded=if(tv) page=="settings-search"||page=="settings-server"&&!state.config.managed
                                 else page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(page=="settings-server"&&state.config.managed)
                             BoundedPane(bounded,maxWidth=if(tv) tvUnit(720f) else if(page=="releases"||page=="files") 840.dp else 640.dp) {
+                            CompositionLocalProvider(LocalFloatingNavigationClearance provides clearance) {
                             saved.SaveableStateProvider(screenKey) {
                                 when(page) {
                                     "invitation-register"->InvitationScreen(model,tv)
@@ -298,8 +308,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 }
                             }
                             }
+                            }
                             if(state.busy&&page in setOf("home","library","history")) {
-                                Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp),shape=MaterialTheme.shapes.medium) {
+                                Surface(Modifier.align(Alignment.BottomCenter).padding(bottom=clearance).padding(12.dp),shape=MaterialTheme.shapes.medium) {
                                     LoadingIndicator("Открываем карточку…",Modifier.widthIn(max=280.dp))
                                 }
                             }
@@ -481,7 +492,7 @@ private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&
         val columns=if(maxWidth>=680.dp) 2 else 1
         val catalogueCardWidth = ((maxWidth - inset - 28.dp) / 2).coerceIn(120.dp, 200.dp)
         Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
+        LazyColumn(Modifier.weight(1f).testTag("home-list"),state=rememberLazyListState(),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp+LocalFloatingNavigationClearance.current)) {
             if(s.config.metadataProvider=="tmdb"||s.config.demo) item {
                     Column(Modifier.padding(horizontal=16.dp).animateContentSize(tween(240)),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {CatalogSection.entries.forEach {section->Pill(section.label,s.catalogSection==section,gradient=true) {model.catalogSection(section)}}}
@@ -649,7 +660,7 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
             WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
         }
     }
-    LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(vertical=16.dp)) {
+    LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
         if(s.failures.isNotEmpty()&&s.nextReleaseCursor==null) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {
             val noResults = s.message.startsWith("Ничего")
@@ -896,7 +907,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         if(displayed==null&&detailHeader==null) {
             if(scrollingHeader) Box(Modifier.padding(horizontal=detailInset)) {header()}
             Spacer(Modifier.weight(1f))
-        } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp)) {
+        } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp+LocalFloatingNavigationClearance.current)) {
             if(detailHeader!=null) item(key="detail-header") {detailHeader()}
             if(scrollingHeader && sourceStatus==null) item(key="release-filters-header") {Box(Modifier.padding(horizontal=detailInset)) {header()}}
             items(releases,key={it.id}) {r->Box(Modifier.padding(horizontal=detailInset)) {
@@ -1357,7 +1368,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         val bookmarkOnly=tab=="Буду смотреть"
         val columns=if(tv) 4 else 2
         val cards=remember(filtered,bookmarkOnly,columns) {filtered.chunked(if(bookmarkOnly) columns else 1)}
-        if(tab=="Загрузки"&&!tv) OfflineScreen(libraryState.config) else LazyColumn(contentPadding=PaddingValues(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+        if(tab=="Загрузки"&&!tv) OfflineScreen(libraryState.config) else LazyColumn(contentPadding=PaddingValues(top=8.dp,bottom=8.dp+LocalFloatingNavigationClearance.current),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             if(library==null) item {LoadingIndicator("Загружаем библиотеку…")}
             else if(filtered.isEmpty()) item { Empty("Пока пусто",if(tab=="Буду смотреть") "Сохраните фильм или сериал на потом" else if(!libraryState.config.managed) "В direct история и позиции не сохраняются. Избранное доступно отдельно." else "Здесь появится то, что вы смотрели",tv,onClick={model.page("search")}) }
             items(cards,key={it.first().key}) {row ->
@@ -1519,7 +1530,7 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         }
         return
     }
-    LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(vertical=16.dp)) {
+    LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
         item {SettingsCard("Источники и сервер",Icons.Outlined.Hub,false){ConnectionLinks(s,model,false)}}
         if(s.config.managed)item {SettingsCard("Аккаунт",Icons.Outlined.PersonOutline,false){AccountLinks(s,model,false)}}
         item {PlaybackPreferences(false,model)}

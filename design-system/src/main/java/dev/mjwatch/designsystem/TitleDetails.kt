@@ -170,7 +170,7 @@ private fun DetailContent(
                 tab == "Раздачи" -> DetailSources(s,model,tv,inset,header)
                 tab == "Актёры" && castTitle != null -> TitleCast(castTitle,s.config,model,tv,inset,header)
                 else -> LazyColumn(
-                    Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom=24.dp),
+                    Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom=24.dp+LocalFloatingNavigationClearance.current),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     item(key="detail-header") { header() }

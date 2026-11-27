@@ -49,10 +49,6 @@ private val WatchTypography=Typography(
     labelLarge=TextStyle(fontFamily=FontFamily.SansSerif,fontWeight=FontWeight.Medium,fontSize=14.sp,lineHeight=20.sp))
 @Composable internal fun featureSurfaceGradient():Brush=Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHigh,MaterialTheme.colorScheme.surface))
 
-@Composable internal fun floatingNavigationColor(): Color =
-    if (MaterialTheme.colorScheme.background.luminance() < .5f) Color(0xFF2D2D3F)
-    else Color(0xFFDFE8E6)
-
 @Composable internal fun watchSelectionGradient():Brush {
     val dark = MaterialTheme.colorScheme.background.luminance() < .5f
     return Brush.horizontalGradient(if(dark) listOf(Color(0xFF075E45),Color(0xFF125762))

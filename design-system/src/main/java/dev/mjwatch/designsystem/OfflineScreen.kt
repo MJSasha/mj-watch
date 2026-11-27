@@ -119,7 +119,7 @@ internal fun OfflineScreen(config: Config, offline: Boolean = false) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 320.dp),
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("offline-list"),
-            contentPadding = PaddingValues(vertical = 8.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalFloatingNavigationClearance.current),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
