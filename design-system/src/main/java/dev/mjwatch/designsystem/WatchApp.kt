@@ -933,6 +933,17 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     var season by rememberSaveable {mutableStateOf(s.releaseSeason)}
     var voice by rememberSaveable {mutableStateOf<String?>(null)}
     var filters by remember {mutableStateOf(false)}
+    val filterButtonFocus=remember {FocusRequester()}
+    val filterDialogFocus=remember {FocusRequester()}
+    var restoreFilterFocus by remember {mutableStateOf(false)}
+    val windowFocused=LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused,filters,restoreFilterFocus) {
+        if(restoreFilterFocus&&!filters&&windowFocused) {
+            withFrameNanos {}
+            filterButtonFocus.requestFocus()
+            restoreFilterFocus=false
+        }
+    }
     var focusInitialRelease by rememberSaveable {mutableStateOf(tv&&detailHeader==null)}
     val releaseScroll=rememberLazyListState()
     if(s.busy) {
@@ -985,8 +996,12 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"
         releaseScroll.requestScrollToItem(if(detailHeader==null) 0 else 1)
     }
-    if(filters) ReleaseFiltersDialog(tv,releases.size.takeUnless {filtering},onReset={resetFilters()},onDismiss={filters=false}) {
-        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,(listOf("Все",filter)+options?.qualities.orEmpty()).distinct(),filter,tv){filter=it}
+    if(filters) ReleaseFiltersDialog(tv,releases.size.takeUnless {filtering},filterDialogFocus,onReset={resetFilters()},onDismiss={
+        restoreFilterFocus=tv
+        filters=false
+    }) {
+        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,(listOf("Все",filter)+options?.qualities.orEmpty()).distinct(),
+            filter,tv,selectedFocus=filterDialogFocus) {filter=it}
         if(seasons.isNotEmpty())ReleaseFilterChoices("Сезон",Icons.Outlined.Layers,listOf("Все сезоны")+seasons.map {"Сезон $it"},season?.let {"Сезон $it"} ?: "Все сезоны",tv){label->season=seasons.firstOrNull {"Сезон $it"==label}}
         if(voices.isNotEmpty())ReleaseFilterChoices("Озвучка",Icons.Outlined.RecordVoiceOver,listOf("Любая озвучка")+voices,voice ?: "Любая озвучка",tv,hint="Определена по названию раздачи. Точные дорожки доступны в плеере."){voice=it.takeUnless {it=="Любая озвучка"}}
         ReleaseFilterChoices("Источник",Icons.Outlined.Storage,listOf("Все источники")+options?.sources.orEmpty(),source,tv){source=it}
@@ -1002,7 +1017,9 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
             }
         }
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,secondary=true,icon=Icons.Outlined.Tune){focusInitialRelease=false;filters=true}
+            Action(if(activeFilters==0)"Фильтры" else "Фильтры · $activeFilters",tv,
+                modifier=if(tv) Modifier.focusRequester(filterButtonFocus) else Modifier,
+                secondary=true,icon=Icons.Outlined.Tune) {focusInitialRelease=false;filters=true}
             if(activeFilters>0)TextButton(onClick={resetFilters()},modifier=Modifier.tvFocusRing(tv)){Text("Сбросить всё")}
         }
         if(seasons.isNotEmpty()) LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
