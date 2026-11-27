@@ -1,0 +1,7 @@
+https://github.com/MJSasha/mj-watch/releases/tag/test-289 2026-11-27T00:43:26Z ae10173e7d3cc25fbf198131d5b00825d718dd01
+MJWatch-mobile.apk ae9ecd912b883aa9c3b7b8b0bdaf372646a925766cc4e5c4e1f27155dd1c65b9 88589182
+MJWatch-tv.apk c3f147db1ad4b0c0822a49ee6931e95dbdfeab202899271b3592ea9db3934c98 88511190
+Signer #1 certificate SHA-256 digest: c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad
+package: name='dev.mjwatch.mobile' versionCode='1289' versionName='0.12.46' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+Signer #1 certificate SHA-256 digest: c695e45c49e8f38f44927b763c9fa74bc8a0e70e3a774c4081e91e1e054e7fad
+package: name='dev.mjwatch.tv' versionCode='1289' versionName='0.12.46' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
