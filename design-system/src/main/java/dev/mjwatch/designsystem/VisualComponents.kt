@@ -265,15 +265,22 @@ internal class TVBringIntoView(private val clearance:Float):androidx.compose.fou
 internal val LocalTvNavigation=staticCompositionLocalOf {false}
 internal val LocalTvShelfFocus=staticCompositionLocalOf<((FocusRequester,Boolean)->Unit)?> {null}
 
-/** Once the IME closes, Up/Down belong to the remote, not the text cursor. */
-@Composable internal fun Modifier.tvFieldNavigation():Modifier {
+/** With no keyboard shown, arrows navigate the screen instead of moving the text cursor. */
+@Composable internal fun Modifier.tvFieldNavigation(horizontal:Boolean=false):Modifier {
     if(!LocalTvNavigation.current) return this
     val focus=LocalFocusManager.current
     val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
     return onPreviewKeyEvent {event->
-        if(imeVisible||event.key !in listOf(Key.DirectionDown,Key.DirectionUp)) false
+        val direction=when(event.key) {
+            Key.DirectionUp -> FocusDirection.Up
+            Key.DirectionDown -> FocusDirection.Down
+            Key.DirectionLeft -> FocusDirection.Left.takeIf {horizontal}
+            Key.DirectionRight -> FocusDirection.Right.takeIf {horizontal}
+            else -> null
+        }
+        if(imeVisible||direction==null) false
         else {
-            if(event.type==KeyEventType.KeyDown) focus.moveFocus(if(event.key==Key.DirectionDown) FocusDirection.Down else FocusDirection.Up)
+            if(event.type==KeyEventType.KeyDown) focus.moveFocus(direction)
             true
         }
     }
