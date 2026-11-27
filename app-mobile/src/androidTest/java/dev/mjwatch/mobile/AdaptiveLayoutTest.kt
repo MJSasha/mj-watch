@@ -32,6 +32,41 @@ class AdaptiveLayoutTest {
   Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
  }
  @After fun restoreRotation(){device.setOrientationNatural();device.unfreezeRotation()}
+ @Test fun inlineReleaseActionsStayAboveNavigationAndRespondToTouch() {
+  Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
+  Assume.assumeTrue(ui.activity.resources.configuration.screenHeightDp>=480)
+  val model=ui.runOnIdle { ViewModelProvider(ui.activity)[WatchModel::class.java] }
+  ui.waitUntil(15000){model.state.value.configured}
+  ui.runOnIdle { model.open(DemoReleases.items.first()) }
+  val list=ui.onNodeWithTag("release-list")
+  ui.onNodeWithTag("detail-tab-releases").performTouchInput { click() }
+  val navigation=ui.onNodeWithTag("bottom-navigation")
+  val watch=ui.onNodeWithTag("source-continue")
+  val download=ui.onNodeWithTag("source-download")
+  fun assertActionsClear() {
+   val navigationTop=navigation.assertIsDisplayed().getUnclippedBoundsInRoot().top
+   for(action in listOf(watch,download)) {
+    Assert.assertTrue("Release action must be above the floating navigation",
+     action.assertIsDisplayed().getUnclippedBoundsInRoot().bottom<=navigationTop)
+   }
+  }
+  val window=ui.activity.window
+  val type=WindowInsetsCompat.Type.navigationBars()
+  val controller=WindowCompat.getInsetsController(window,window.decorView)
+  assertActionsClear()
+  try {
+   ui.runOnIdle {controller.hide(type)}
+   ui.waitUntil(5000) {ui.runOnIdle {ViewCompat.getRootWindowInsets(window.decorView)?.getInsets(type)?.bottom==0}}
+   list.performTouchInput { swipeUp() }
+   assertActionsClear()
+   capture("inline-release-actions-zero-inset")
+   watch.assertIsEnabled().performTouchInput { click() }
+   ui.onNodeWithTag("file-list").assertIsDisplayed()
+   ui.onNodeWithTag("bottom-navigation").assertDoesNotExist()
+  } finally {
+   ui.runOnIdle {controller.show(type)}
+  }
+ }
  @Test fun floatingNavigationAllowsContentBehindItAndAboveItAtScrollEnd() {
   Assume.assumeTrue(ui.activity.resources.configuration.screenWidthDp<600)
   val instrumentation=InstrumentationRegistry.getInstrumentation()
