@@ -2,6 +2,8 @@ package dev.mjwatch.mobile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -27,6 +29,23 @@ class SettingsUiTest {
     compose.waitForIdle();Thread.sleep(350);compose.mainClock.advanceTimeBy(500);compose.waitForIdle();val i=InstrumentationRegistry.getInstrumentation();i.waitForIdleSync()
     val dir=File(i.targetContext.getExternalFilesDir(null),"settings-fixes").apply {mkdirs()}
     Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))
+ }
+ private fun openSettingsRow(label:String) {
+    val list=compose.onNodeWithTag("settings-list")
+    val row=compose.onNodeWithText(label)
+    list.performScrollToNode(hasText(label))
+    if(compose.onAllNodesWithTag("bottom-navigation").fetchSemanticsNodes().isNotEmpty()) {
+        val navigation=compose.onNodeWithTag("bottom-navigation")
+        val overlap=row.getUnclippedBoundsInRoot().bottom+8.dp-navigation.getUnclippedBoundsInRoot().top
+        if(overlap>0.dp) {
+            val pixels=overlap.value*compose.activity.resources.displayMetrics.density
+            list.performSemanticsAction(SemanticsActions.ScrollBy) {scroll->scroll(0f,pixels)}
+            compose.waitUntil(5000) {
+                row.getUnclippedBoundsInRoot().bottom<=navigation.getUnclippedBoundsInRoot().top
+            }
+        }
+    }
+    row.performTouchInput {click()}
  }
  @Test fun independentConnectionPagesAndConsistentPreferenceRows() {
     lateinit var model:WatchModel
@@ -55,13 +74,11 @@ class SettingsUiTest {
     screenshot("catalog")
     compose.onNodeWithContentDescription("Назад").performClick()
     compose.waitUntil(5000) {model.state.value.page=="settings"}
-    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Субтитры"))
-    compose.onNodeWithText("Субтитры").performClick()
+    openSettingsRow("Субтитры")
     compose.onNode(hasText("Выключены") and isSelectable()).performClick()
     val prefs=InstrumentationRegistry.getInstrumentation().targetContext.getSharedPreferences("playback-preferences",0)
     Assert.assertTrue(prefs.getBoolean("subtitles-off",false))
-    compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Обновления"))
-    compose.onNodeWithText("Обновления").performClick()
+    openSettingsRow("Обновления")
     compose.onNodeWithText("Обновление MJWatch").assertExists()
     compose.onNodeWithText("Проверить сейчас").assertExists()
     screenshot("updates")
