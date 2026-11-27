@@ -1,0 +1,5 @@
+dev.mjwatch.mobile.OpenIssuesUiTest:.
+
+Time: 6.229
+
+OK (1 test)
