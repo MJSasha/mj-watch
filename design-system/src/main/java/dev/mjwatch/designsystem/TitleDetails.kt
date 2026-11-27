@@ -124,11 +124,18 @@ private fun DetailContent(
     val primaryFocus = remember { FocusRequester() }
     val tabFocus = remember { FocusRequester() }
     var focusTab by remember(id) { mutableStateOf(false) }
-    var firstFocus by remember(id) { mutableStateOf(true) }
+    var lastEpisode by rememberSaveable(id) { mutableStateOf<Int?>(null) }
+    var restoreEpisode by remember(id) { mutableStateOf(lastEpisode) }
+    var chooseEpisode by remember(id) { mutableStateOf(false) }
+    var firstFocus by remember(id) { mutableStateOf(restoreEpisode == null || tab != "Серии") }
+    val openEpisodes: (() -> Unit)? = if (tv && showEpisodes && saved == null) {{
+        selectedTab = "Серии"
+        chooseEpisode = true
+    }} else null
     val header: @Composable () -> Unit = {
         Column {
             DetailHero(
-                s, model, title, series != null, bookmarked, saved, offline, offlinePosition, tv, compact, wide, panelWidth, inset, primaryFocus, choose
+                s, model, title, series != null, bookmarked, saved, offline, offlinePosition, tv, compact, wide, panelWidth, inset, primaryFocus, openEpisodes, choose
             )
             Column(Modifier.widthIn(max=1200.dp).fillMaxWidth().padding(horizontal=inset).padding(top=if(wide) 24.dp else 20.dp)) {
                 if (!tv) {
@@ -166,7 +173,10 @@ private fun DetailContent(
     }) {
         tabStates.SaveableStateProvider(tab) {
             when {
-                tab == "Серии" && series != null -> ManagedEpisodes(series,s.config,model,tv,titleProgress,header=header)
+                tab == "Серии" && series != null -> ManagedEpisodes(series,s.config,model,tv,titleProgress,
+                    chooseEpisode=chooseEpisode,restoreEpisode=restoreEpisode,
+                    onFocusPlaced={chooseEpisode=false;restoreEpisode=null},
+                    onOpenEpisode={lastEpisode=it},header=header)
                 tab == "Раздачи" -> DetailSources(s,model,tv,inset,header)
                 tab == "Актёры" && castTitle != null -> TitleCast(castTitle,s.config,model,tv,inset,header)
                 else -> LazyColumn(
@@ -224,7 +234,8 @@ private fun DetailContent(
 @Composable
 private fun DetailHero(
     state: WatchState, model: WatchModel, title: String, series: Boolean, bookmarked: Boolean,
-    saved: Progress?, offline: OfflineDownload?, offlinePosition: Progress?, tv: Boolean, compact: Boolean, wide: Boolean, width: Dp, inset: Dp, focus: FocusRequester, choose: () -> Unit
+    saved: Progress?, offline: OfflineDownload?, offlinePosition: Progress?, tv: Boolean, compact: Boolean, wide: Boolean, width: Dp, inset: Dp, focus: FocusRequester,
+    openEpisodes: (() -> Unit)?, choose: () -> Unit
 ) {
     val context = LocalContext.current
     val player = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
@@ -282,6 +293,7 @@ private fun DetailHero(
                         val label = when {
                             offlinePosition != null -> "Продолжить скачанное с ${time(offlinePosition.positionMs)}"
                             offline != null -> "Смотреть скачанное"
+                            openEpisodes != null -> "Выбрать серию"
                             saved == null -> "Выбрать раздачу"
                             series && episode != null -> "Продолжить · серия $episode"
                             else -> "Продолжить с ${time(saved.positionMs)}"
@@ -289,6 +301,7 @@ private fun DetailHero(
                         val primaryTag = when {
                             offline != null -> "detail-offline"
                             saved != null -> "detail-resume"
+                            openEpisodes != null -> "detail-choose-episode"
                             else -> "detail-sources"
                         }
                         val primaryModifier = Modifier.focusRequester(focus).testTag(primaryTag)
@@ -306,7 +319,8 @@ private fun DetailHero(
                                         offlineError = safeError(e)
                                     }
                                 }
-                            } else if (saved == null) choose() else model.resume(saved)
+                            } else if (openEpisodes != null) openEpisodes()
+                            else if (saved == null) choose() else model.resume(saved)
                             Unit
                         }
                         if (tv) {

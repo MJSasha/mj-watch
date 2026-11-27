@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.input.key.*
+
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
@@ -183,10 +185,22 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 "library","history"->if(tv) "" else state.config.profileKey
                 else->""
             }
-            val railFocus=remember {FocusRequester()};var railFocused by remember {mutableStateOf(false)}
+            val railFocus=remember(tv) {railItems.associate {it.id to FocusRequester()}}
+            val searchFieldFocus=remember {FocusRequester()}
+            val settingsSectionFocus=remember {FocusRequester()}
+            var railFocused by remember {mutableStateOf(false)}
+            val railDestination=when {
+                top -> page
+                page.startsWith("settings-") || page.startsWith("managed-") || page.startsWith("server-") ||
+                    page in setOf("connections","connection-choice") -> "settings"
+                else -> state.originPage
+            }
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
-            BackHandler(tv&&state.page=="home"&&!railFocused&&state.configured) {railFocus.requestFocus()}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
+            BackHandler(tv&&top&&state.configured&&!imeVisible&&railFocused!=(page=="home")) {
+                if(page!="home") model.page("home")
+                railFocus.getValue("home").requestFocus()
+            }
             val detailNav=page=="detail" && width<600 && LocalConfiguration.current.screenHeightDp>=480
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
             val floatingNavigation=showBottomBar&&!imeVisible
@@ -245,16 +259,40 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                     end=padding.calculateEndPadding(direction),
                 ) else padding
                 Row(Modifier.fillMaxSize().padding(screenPadding).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
-                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                    if(rail&&state.configured) Column(Modifier.width(if(tv) tvUnit(112f) else 88.dp).fillMaxHeight().background(colors.background).drawBehind {val x=size.width-1f;drawLine(colors.onSurface.copy(alpha=.06f),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),1f)}.padding(top=if(tv) tvUnit(28f) else 24.dp,bottom=24.dp)
+                        .then(if(tv) Modifier.onFocusChanged {railFocused=it.hasFocus}.focusProperties {
+                            onEnter={if(requestedFocusDirection==FocusDirection.Left) railFocus[railDestination]?.requestFocus()}
+                        }.focusGroup() else Modifier),horizontalAlignment=Alignment.CenterHorizontally) {
                         Text("MJ",color=colors.primary,fontSize=if(tv) 23.sp else 26.sp,fontWeight=FontWeight.Bold)
                         Spacer(Modifier.height(if(tv) 24.dp else 28.dp))
-                        railItems.forEach {d->
+                        railItems.forEachIndexed {index,d->
                             if(d.id=="settings") Spacer(Modifier.weight(1f))
-                            val selected = when {
-                                state.page.startsWith("settings-") || state.page == "connections" -> d.id == "settings"
-                                else -> state.page == d.id || (!top && state.originPage == d.id)
+                            val selected=railDestination==d.id
+                            val remoteNavigation=if(tv) Modifier.size(width=tvUnit(96f),height=72.dp)
+                                .focusRequester(railFocus.getValue(d.id))
+                                .focusProperties {
+                                    if(page==d.id) when(d.id) {
+                                        "search" -> right=searchFieldFocus
+                                        "settings" -> right=settingsSectionFocus
+                                    }
+                                }
+                                .onPreviewKeyEvent {event->
+                                    val step=when(event.key) {
+                                        Key.DirectionUp -> -1
+                                        Key.DirectionDown -> 1
+                                        else -> 0
+                                    }
+                                    if(step==0) false else {
+                                        if(event.type==KeyEventType.KeyDown) railItems.getOrNull(index+step)?.let {next->
+                                            if(railFocus.getValue(next.id).requestFocus()&&next.id!=railDestination) model.page(next.id)
+                                        }
+                                        true
+                                    }
+                                }
+                            else Modifier.size(48.dp)
+                            RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(remoteNavigation)) {
+                                if(!tv||page!=d.id) model.page(d.id)
                             }
-                            RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(if(tv) Modifier.size(width=tvUnit(96f),height=72.dp) else Modifier.size(48.dp)).then(if(d.id=="home") Modifier.focusRequester(railFocus) else Modifier).onFocusChanged {railFocused=it.isFocused}) {model.page(d.id)}
                         }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight().imePadding().clipToBounds().softEntrance(screenKey)) {
@@ -285,8 +323,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             saved.SaveableStateProvider(screenKey) {
                                 when(page) {
                                     "invitation-register"->InvitationScreen(model,tv)
-                                    "home"->HomeScreen(state,currentLibrary,model,tv)
-                                    "settings"->if(state.configured) SettingsOverview(state,model,tv,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
+                                    "home"->HomeScreen(state,currentLibrary,model,tv,!railFocused)
+                                    "settings"->if(state.configured) SettingsOverview(state,model,tv,settingsSectionFocus,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
                                     "connection-choice","managed-login","server-overview","server-resources","server-tmdb","server-history","server-retention","server-torr","server-jacred","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,registerBack={editorBack=it})
@@ -295,8 +333,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
                                     "settings-catalog"->if(state.config.managed) Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)){SettingsCard("Каталог и обложки",Icons.Outlined.Movie,tv){SettingsHint("Каталог TMDB работает через сервер MJWatch. Ключ хранится у владельца сервера.");Action("Проверить каталог",tv,Modifier.fillMaxWidth(),loading=state.catalogBusy){model.refreshCatalog(true)};OperationMessage(state.catalogMessage);SettingsActionRow(Icons.Outlined.ManageAccounts,"Аккаунт и сервер","Управление подключением",tv){model.page("managed-account")}}} else SettingsScreen(state,model,tv,showIntro=false,section="catalog",registerBack={editorBack=it})
                                     "settings-updates"->LazyColumn(Modifier.testTag("settings-list"),contentPadding=PaddingValues(vertical=16.dp)) {item {UpdateSection(model.updates,tv)}}
-                                    "search"->BoundedPane(!tv,maxWidth=840.dp) {SearchScreen(state,model,tv,searchScroll)}
-                                    "library","history"->LibraryScreen(state,currentLibrary,model,tv)
+                                    "search"->BoundedPane(!tv,maxWidth=840.dp) {SearchScreen(state,model,tv,searchScroll,searchFieldFocus,!railFocused)}
+                                    "library","history"->LibraryScreen(state,currentLibrary,model,tv,!railFocused)
                                     "detail"->if(!tv&&width>=840&&state.originPage=="search") Row(Modifier.fillMaxSize()) {
                                         Column(Modifier.weight(1f).fillMaxHeight().padding(24.dp)) {Heading("Поиск");Spacer(Modifier.height(16.dp));SearchScreen(state,model,false,searchScroll)}
                                         VerticalDivider()
@@ -389,11 +427,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
         }
     }
 }
-@Composable private fun TvHomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel) {
+@Composable private fun TvHomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,allowAutoFocus:Boolean) {
     val entries=library?.titles.orEmpty()
     var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     var lastCard by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
-    val restoreCard=remember(s.catalogSection) {lastCard}
+    val restoreCard=remember(s.catalogSection) {lastCard.takeIf {allowAutoFocus}}
     val hero=s.catalog.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: s.catalog.firstOrNull()
     val continuing=remember(library) {entries.filter {it.canContinue(library?.unfinishedReleaseIds.orEmpty())}}
     val inset=tvUnit(40f)
@@ -406,7 +444,14 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     }}
     var started by remember {mutableStateOf(false)}
     val hasCards=continuing.isNotEmpty()||s.catalog.isNotEmpty()||s.config.demo
-    LaunchedEffect(hasCards) {if(hasCards&&!started) {started=true;delay(100);if(lastCard==null)shelfFocus.requestFocus()}}
+    LaunchedEffect(hasCards,allowAutoFocus) {
+        if(!allowAutoFocus) started=true
+        if(hasCards&&!started) {
+            delay(100)
+            started=true
+            if(lastCard==null) shelfFocus.requestFocus()
+        }
+    }
     val rows=buildList {
         if(s.catalog.isEmpty()&&!s.config.demo)add("status")
         if(continuing.isNotEmpty())add("continue")
@@ -479,8 +524,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 
 private fun LibraryTitle.canContinue(unfinished:Set<String>) = entry.openedAt>0&&releaseIds.any {it in unfinished}
 
-@Composable private fun HomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean) {
-    if(tv) {TvHomeScreen(s,library,model);return}
+@Composable private fun HomeScreen(s:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean,allowAutoFocus:Boolean) {
+    if(tv) {TvHomeScreen(s,library,model,allowAutoFocus);return}
     val entries=library?.titles.orEmpty()
     val continuing=remember(library) {entries.filter {it.canContinue(library?.unfinishedReleaseIds.orEmpty())}}
     val category=s.catalogSection.label;var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
@@ -626,14 +671,32 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     }
 }
 
-@Composable private fun SearchScreen(s:WatchState,model:WatchModel,tv:Boolean,listState:LazyListState) {
+@Composable private fun SearchScreen(
+    s:WatchState,model:WatchModel,tv:Boolean,listState:LazyListState,
+    fieldFocus:FocusRequester=remember {FocusRequester()},allowAutoFocus:Boolean=true,
+) {
     val keyboard=LocalSoftwareKeyboardController.current
-    val fieldFocus=remember {FocusRequester()}
-    val focusManager=LocalFocusManager.current
-    var focusResultsOnReady by remember {mutableStateOf(false)}
-    LaunchedEffect(tv,s.busy,focusResultsOnReady) {
-        if(tv&&focusResultsOnReady&&!s.busy) {withFrameNanos {};focusManager.moveFocus(FocusDirection.Down);focusResultsOnReady=false}
+    val resultsFocus=remember {FocusRequester()}
+    val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
+    var fieldFocused by remember {mutableStateOf(false)}
+    var submitQuery by remember {mutableStateOf<String?>(null)}
+    var lastQuery by rememberSaveable {mutableStateOf("")}
+    LaunchedEffect(s.query) {
+        if(tv&&s.query!=lastQuery) {
+            listState.scrollToItem(0)
+            lastQuery=s.query
+        }
     }
+    LaunchedEffect(submitQuery,s.query,s.busy,imeVisible,fieldFocused) {
+        if(submitQuery==null) return@LaunchedEffect
+        if(submitQuery!=s.query||!fieldFocused) submitQuery=null
+        else if(!s.busy&&!imeVisible) {
+            withFrameNanos {}
+            if(fieldFocused) resultsFocus.requestFocus()
+            submitQuery=null
+        }
+    }
+    val restoreResult=remember {allowAutoFocus}
     var resultTab by rememberSaveable {mutableStateOf("Каталог")}
     val showReleases=s.metadata.isEmpty()||resultTab=="Раздачи"
     LoadReleasePageOnScroll(listState,s.nextReleaseCursor,s.results,
@@ -646,7 +709,9 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     val posterRows=remember(s.metadata,posterColumns) {s.metadata.chunked(posterColumns)}
     Column(Modifier.fillMaxSize().padding(top=if(tv) 24.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
-        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) focusResultsOnReady=true}),modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation().focusRequester(fieldFocus).testTag("search-field"),shape=RoundedCornerShape(28.dp))
+        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) submitQuery=s.query}),
+        modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation(horizontal=true)
+            .focusRequester(fieldFocus).onFocusChanged {fieldFocused=it.isFocused}.testTag("search-field"),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
     if(tv) {
         if(s.busy) LoadingIndicator("Поиск…")
@@ -657,10 +722,16 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     ) {LoadingIndicator("Поиск…")}
     if(s.metadata.isNotEmpty()) {
         Box(if(tv) Modifier else Modifier.softEntrance("search-tabs",offset=0.dp)) {
-            WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {resultTab=it}
+            WatchTabs(listOf("Каталог","Раздачи"),resultTab,tv) {
+                if(it!=resultTab) {
+                    resultTab=it
+                    if(tv) listState.requestScrollToItem(0)
+                }
+            }
         }
     }
-    LazyColumn(Modifier.weight(1f),state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
+    LazyColumn(Modifier.weight(1f).then(if(tv) Modifier.focusRequester(resultsFocus).focusGroup() else Modifier),
+        state=listState,verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
         if(s.failures.isNotEmpty()&&s.nextReleaseCursor==null) item { Text("Не ответили источники: ${s.failures.joinToString("; ")}",color=MaterialTheme.colorScheme.error); Action("Повторить недоступные источники",tv) {model.loadMore(true)} }
         if(!s.busy&&s.query.length>=2&&s.results.isEmpty()&&s.metadata.isEmpty()) item {
             val noResults = s.message.startsWith("Ничего")
@@ -673,11 +744,11 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
         if(s.query.length<2) item { Text("Введите не менее двух символов. Поиск раздач работает без каталога.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         if(s.metadata.isNotEmpty()) item {SectionTitle("Результаты поиска");if(s.metadataCached) Text("Данные из кеша")}
         if(resultTab=="Каталог") items(posterRows,key={it.joinToString {m->m.id}}) {row -> Row(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220)),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
+            row.forEach {m -> Column(Modifier.weight(1f)) {MetadataCard(m,s.config,tv,restoreResult&&s.focusKey==m.id) {keyboard?.hide();model.metadata(m)}}}
             repeat(posterColumns-row.size) {Spacer(Modifier.weight(1f))}
         }}
         if(showReleases) items(s.results,key={it.id}) {r->
-            ReleaseCard(r,tv,s.focusKey==r.id) {keyboard?.hide();model.open(r)}
+            ReleaseCard(r,tv,restoreResult&&s.focusKey==r.id) {keyboard?.hide();model.open(r)}
         }
         if(showReleases&&s.more&&!s.busy) item(key=releasePageFooter(s.nextReleaseCursor)) {
             ReleasePageAction(s,tv,{model.loadMore()},model::retryReleaseSearch)
@@ -1027,6 +1098,16 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         }.map {it.first}
     }
     val videos=remember(visibleFiles) {visibleFiles.filter {it.video&&!it.sample}}
+    val initialFileFocus=remember {FocusRequester()}
+    var focusInitialFile by remember {mutableStateOf(tv)}
+    val initialFileId=videos.firstOrNull()?.serverFileId
+    LaunchedEffect(initialFileId) {
+        if(focusInitialFile&&initialFileId!=null) {
+            withFrameNanos {}
+            focusInitialFile=false
+            initialFileFocus.requestFocus()
+        }
+    }
     val positionByPath=remember(progress,release?.id) {
         progress.asReversed().filter {it.releaseId==release?.id}.associateBy {it.path}
     }
@@ -1247,7 +1328,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                     Box(if(tv) Modifier else Modifier.animateItem(placementSpec=tween(220))) {
                         val selected=if(s.downloadSelection)f.serverFileId in downloadSelection.orEmpty() else selection==f.serverFileId
                         FileCard(f,tv,selected,progress=positionByPath[f.path],multiSelect=s.downloadSelection,
-                            focus=tv&&f.serverFileId==(selection ?: videos.firstOrNull()?.serverFileId)) {
+                            modifier=if(tv&&f.serverFileId==initialFileId) Modifier.focusRequester(initialFileFocus) else Modifier) {
                             if(s.downloadSelection) {
                                 if(f.canDownload&&!queueing) {
                                     val ids=downloadSelection.orEmpty()
@@ -1347,7 +1428,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }
 }
 
-@Composable private fun LibraryScreen(libraryState:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean) {
+@Composable private fun LibraryScreen(libraryState:WatchState,library:WatchModel.LibrarySnapshot?,model:WatchModel,tv:Boolean,allowAutoFocus:Boolean) {
     var tab by rememberSaveable { mutableStateOf(if(model.state.value.page=="history") "История" else "Продолжить") }
     LaunchedEffect(libraryState.openDownloadsRequested) {
         if(!tv&&libraryState.page=="library"&&libraryState.openDownloadsRequested) {
@@ -1356,6 +1437,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         }
     }
     var returnFocusId by rememberSaveable {mutableStateOf<String?>(null)}
+    val restoreFocusId=remember {returnFocusId.takeIf {allowAutoFocus}}
     val filtered=remember(library,tab) {
         library?.titles.orEmpty().filter {entry->
             when(tab) {
@@ -1379,7 +1461,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                         Box(Modifier.weight(1f)) {
                             LibraryCard(e,library?.latestProgress.orEmpty(),libraryState,model,tv,
                                 showMenu=tab!="Продолжить",bookmarkOnly=bookmarkOnly,
-                                restoreFocus=returnFocusId==e.key,onOpen={returnFocusId=e.key})
+                                restoreFocus=restoreFocusId==e.key,onOpen={returnFocusId=e.key})
                         }
                     }
                     if(bookmarkOnly) repeat(columns-row.size) {Spacer(Modifier.weight(1f))}
@@ -1507,7 +1589,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
 }
 internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
-@Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean,onExit:()->Unit) {
+@Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean,sectionFocus:FocusRequester,onExit:()->Unit) {
     var section by rememberSaveable {mutableStateOf("Подключения")}
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var themes by remember {mutableStateOf(false)}
@@ -1517,12 +1599,23 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         listOf("system" to "Как в системе","dark" to "Тёмная","light" to "Светлая").forEach {(id,label)->PreferenceChoice(label,s.config.theme==id,tv) {scope.launch {Settings(context).save(s.config.copy(theme=id))}}}
     }}
     if(tv) {
+        val panelFocus=remember {FocusRequester()}
         Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
-            Column(Modifier.width(tvUnit(320f)).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->Action(label,true,Modifier.fillMaxWidth(),secondary=section!=label) {section=label}}
+            Column(Modifier.width(tvUnit(320f)).verticalScroll(rememberScrollState()).focusProperties {
+                onEnter={if(requestedFocusDirection==FocusDirection.Left) sectionFocus.requestFocus()}
+            }.focusGroup(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->
+                    val active=section==label
+                    Action(label,true,Modifier.fillMaxWidth().then(if(active) Modifier.focusRequester(sectionFocus) else Modifier)
+                        .focusProperties {right=panelFocus}
+                        .onFocusChanged {if(it.isFocused) section=label}
+                        .semantics {selected=active;role=Role.Tab},secondary=!active) {section=label}
+                }
                 Action("Выйти из приложения",true,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical=4.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {when(section) {
+            val sectionScroll=key(section) {rememberScrollState()}
+            Column(Modifier.weight(1f).verticalScroll(sectionScroll).padding(vertical=4.dp)
+                .focusRequester(panelFocus).focusGroup(),verticalArrangement=Arrangement.spacedBy(16.dp)) {when(section) {
                 "Подключения"->SettingsCard("Источники и сервер",Icons.Outlined.Hub,true){ConnectionLinks(s,model,true)}
                 "Аккаунт"->AccountLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true,model)

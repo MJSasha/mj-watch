@@ -18,6 +18,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -81,6 +84,7 @@ private fun episodeStill(path: String, config: Config): String? {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ManagedEpisodes(
     item: Metadata, config: Config, model: WatchModel, tv: Boolean, progress: List<Progress> = emptyList(),
+    chooseEpisode: Boolean, restoreEpisode: Int?, onFocusPlaced: () -> Unit, onOpenEpisode: (Int) -> Unit,
     header: @Composable () -> Unit = {}
 ) {
     val catalog = remember(item.id, config) { model.episodeCatalog(item.id, config) }
@@ -119,6 +123,7 @@ private fun episodeStill(path: String, config: Config): String? {
     fun releases(episode: Episode, targetId: String? = null, download: Boolean = false) {
         val number = season ?: return
         menu = null
+        if (tv) onOpenEpisode(episode.number)
         model.findSeriesReleases(item, number, episode.number, targetId, download)
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -131,6 +136,29 @@ private fun episodeStill(path: String, config: Config): String? {
         val groups = remember(episodes, columns) { episodes.orEmpty().chunked(columns) }
         val downloadSeason = season?.takeIf { !tv && !config.demo }
         val listState = rememberLazyListState()
+        val seasonFocus = remember { FocusRequester() }
+        val firstEpisodeFocus = remember { FocusRequester() }
+        val returnFocus = remember { FocusRequester() }
+        LaunchedEffect(tv, chooseEpisode, restoreEpisode, season, groups) {
+            if (!tv) return@LaunchedEffect
+            if (chooseEpisode && season != null) {
+                listState.scrollToItem(1)
+                withFrameNanos {}
+                if (seasonFocus.requestFocus()) onFocusPlaced()
+            } else if (restoreEpisode != null && groups.isNotEmpty()) {
+                val row = groups.indexOfFirst { episodes -> episodes.any { it.number == restoreEpisode } }
+                if (row < 0) {
+                    listState.scrollToItem(1)
+                    withFrameNanos {}
+                    if (seasonFocus.requestFocus()) onFocusPlaced()
+                } else {
+                    val key = "season-$season-row-${groups[row].first().number}"
+                    if (listState.layoutInfo.visibleItemsInfo.none { it.key == key }) listState.scrollToItem(3 + row)
+                    withFrameNanos {}
+                    if (returnFocus.requestFocus()) onFocusPlaced()
+                }
+            }
+        }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().testTag("detail-episode-grid"),
             contentPadding = PaddingValues(bottom = (if (wide) 48.dp else 20.dp) + LocalFloatingNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(gap)) {
             item("detail-header") { header() }
@@ -142,7 +170,12 @@ private fun episodeStill(path: String, config: Config): String? {
                         val selected = season == number
                         val shape = RoundedCornerShape(50)
                         val colors = MaterialTheme.colorScheme
-                        Box(Modifier.heightIn(min=48.dp).tvFocusRing(true,shape).clip(shape)
+                        val navigation = if (tv) Modifier
+                            .then(if (selected) Modifier.focusRequester(seasonFocus) else Modifier)
+                            .focusProperties {
+                                if (groups.isNotEmpty()) down = firstEpisodeFocus
+                            } else Modifier
+                        Box(navigation.heightIn(min=48.dp).tvFocusRing(true,shape).clip(shape)
                             .then(if (selected) Modifier.background(watchSelectionGradient()) else Modifier.background(colors.surface))
                             .selectable(selected=selected, role=Role.RadioButton, onClick={ season = number })
                             .padding(horizontal=13.dp,vertical=6.dp), contentAlignment=Alignment.Center) {
@@ -194,10 +227,17 @@ private fun episodeStill(path: String, config: Config): String? {
                         horizontalArrangement = Arrangement.spacedBy(gap)) {
                         group.forEach { episode ->
                             val position = positions[EpisodeNumber(season, episode.number)]
-                            EpisodeTile(item, episode, position, catalog.demo, tv, tileWidth, Modifier.weight(1f),
+                            val navigation = if (tv) Modifier
+                                .then(if (index == 0 && episode == group.first()) Modifier.focusRequester(firstEpisodeFocus) else Modifier)
+                                .then(if (episode.number == restoreEpisode) Modifier.focusRequester(returnFocus) else Modifier)
+                                .focusProperties { if (index == 0) up = seasonFocus }
+                                else Modifier
+                            EpisodeTile(item, episode, position, catalog.demo, tv, tileWidth, Modifier.weight(1f).then(navigation),
                                 onMenu = { menu = episode }, onPlay = {
-                                    if (position != null && !position.completed && position.positionMs > 0) model.resume(position)
-                                    else releases(episode)
+                                    if (position != null && !position.completed && position.positionMs > 0) {
+                                        if (tv) onOpenEpisode(episode.number)
+                                        model.resume(position)
+                                    } else releases(episode)
                                 })
                         }
                         repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
@@ -210,7 +250,7 @@ private fun episodeStill(path: String, config: Config): String? {
         val position = positions[EpisodeNumber(season, episode.number)]
         val actions: @Composable () -> Unit = {
             if (position != null && !position.completed && position.positionMs > 0) {
-                Action("Продолжить", tv, Modifier.fillMaxWidth(), icon = Icons.Outlined.PlayArrow) { menu = null; model.resume(position) }
+                Action("Продолжить", tv, Modifier.fillMaxWidth(), icon = Icons.Outlined.PlayArrow) { menu = null; if (tv) onOpenEpisode(episode.number); model.resume(position) }
             }
             Action("Раздачи", tv, Modifier.fillMaxWidth().testTag("episode-sources"), secondary = true, icon = Icons.Outlined.Tune) { releases(episode) }
             if (!tv) {

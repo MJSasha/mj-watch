@@ -30,6 +30,80 @@ class RemoteNavigationUiTest {
         val i=InstrumentationRegistry.getInstrumentation();val dir=File(i.targetContext.getExternalFilesDir(null),"issues-8-12").apply {mkdirs()}
         Assert.assertTrue(UiDevice.getInstance(i).takeScreenshot(File(dir,"$name.png")))
     }
+    private val remote get()=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    private fun startAtHome():WatchModel {
+        lateinit var model:WatchModel
+        compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(10000) {model.state.value.config.demo&&model.state.value.page=="home"}
+        compose.waitUntil(5000) {compose.onAllNodes(hasText(DemoReleases.items.first().title) and isFocused()).fetchSemanticsNodes().isNotEmpty()}
+        remote.pressBack()
+        compose.onNode(hasText("Главная") and isFocused()).assertExists()
+        return model
+    }
+
+    @Test fun arrowsPreviewRailAndSettingsWithoutExecutingActions() {
+        val model=startAtHome()
+        remote.pressDPadDown()
+        compose.waitUntil(5000) {model.state.value.page=="search"}
+        compose.onNode(hasText("Поиск") and isFocused()).assertExists()
+        compose.onNodeWithTag("search-field").assertIsDisplayed()
+        shot("tv-rail-search")
+        for(destination in listOf("history","library","settings")) {
+            remote.pressDPadDown()
+            compose.waitUntil(5000) {model.state.value.page==destination}
+        }
+        compose.onNode(hasText("Настройки") and isFocused()).assertExists()
+        remote.pressDPadRight()
+        compose.onNode(hasText("Подключения") and isFocused()).assertIsSelected()
+        remote.pressDPadDown()
+        compose.onNode(hasText("Воспроизведение") and isFocused()).assertIsSelected()
+        compose.onNodeWithText("Предпочтительное качество").assertIsDisplayed()
+        remote.pressDPadDown()
+        compose.onNode(hasText("Оформление") and isFocused()).assertIsSelected()
+        compose.onNodeWithText("Тема приложения").assertIsDisplayed()
+        shot("tv-settings-preview")
+        remote.pressDPadRight()
+        compose.onNode(hasText("Как в системе") and isFocused()).assertExists()
+        Assert.assertEquals("light",model.state.value.config.theme)
+        remote.pressDPadLeft()
+        compose.onNode(hasText("Оформление") and isFocused()).assertExists()
+    }
+
+    @Test fun searchAndEpisodeSelectionRestoreTheirOwnFocus() {
+        val model=startAtHome()
+        remote.pressDPadDown()
+        compose.waitUntil(5000) {model.state.value.page=="search"}
+        val field=compose.onNodeWithTag("search-field").assertIsDisplayed()
+        remote.pressDPadRight()
+        field.assertIsFocused()
+        field.performTextReplacement("сериал")
+        field.performImeAction()
+        val result=compose.onNodeWithText(DemoReleases.items.last().title)
+        compose.waitUntil(10000) {compose.onAllNodes(hasText(DemoReleases.items.last().title) and isFocused()).fetchSemanticsNodes().isNotEmpty()}
+        shot("tv-search-result")
+        remote.pressDPadCenter()
+        compose.waitUntil(5000) {model.state.value.page=="detail"}
+        compose.onNodeWithTag("detail-choose-episode").assertIsFocused()
+        remote.pressDPadCenter()
+        compose.onNode(hasText("Сезон 1") and isFocused()).assertIsSelected()
+        remote.pressDPadDown()
+        compose.onNodeWithTag("episode-1").assertIsFocused()
+        remote.pressDPadRight()
+        val episode=compose.onNodeWithTag("episode-2").assertIsFocused()
+        shot("tv-episode-selection")
+        remote.pressDPadCenter()
+        compose.waitUntil(5000) {model.state.value.page=="releases"&&!model.state.value.busy}
+        Assert.assertEquals(2,model.state.value.releaseEpisode)
+        remote.pressBack()
+        compose.waitUntil(5000) {model.state.value.page=="detail"}
+        episode.assertIsFocused()
+        remote.pressBack()
+        compose.waitUntil(5000) {model.state.value.page=="search"}
+        Assert.assertEquals("сериал",model.state.value.query)
+        compose.waitUntil(5000) {compose.onAllNodes(hasText(DemoReleases.items.last().title) and isFocused()).fetchSemanticsNodes().isNotEmpty()}
+        result.assertIsFocused()
+    }
+
     @Test fun connectionScreensFocusTheirFirstUsefulControl() {
         lateinit var model:WatchModel
         compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}

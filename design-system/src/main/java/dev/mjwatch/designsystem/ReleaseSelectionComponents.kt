@@ -10,8 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
@@ -61,14 +59,12 @@ import kotlinx.coroutines.delay
 
 internal val TorrentFile.canDownload get()=video&&size>0&&serverFileId>0
 
-@Composable internal fun FileCard(file:TorrentFile,tv:Boolean,selected:Boolean,progress:Progress?=null,focus:Boolean=false,
+@Composable internal fun FileCard(file:TorrentFile,tv:Boolean,selected:Boolean,progress:Progress?=null,modifier:Modifier=Modifier,
     multiSelect:Boolean=false,onClick:()->Unit) {
-    val requester=remember {FocusRequester()}
     val location=remember {BringIntoViewRequester()}
-    LaunchedEffect(focus) {if(focus){delay(100);requester.requestFocus()}}
-    LaunchedEffect(selected,multiSelect) {if(selected&&!multiSelect){delay(100);location.bringIntoView()}}
+    LaunchedEffect(selected,multiSelect) {if(!tv&&selected&&!multiSelect){delay(100);location.bringIntoView()}}
     val number=remember(file.path){episodeNumber(file.path)}
-    val modifier=Modifier.fillMaxWidth().testTag("file-${file.serverFileId}").focusRequester(requester)
+    val cardModifier=modifier.fillMaxWidth().testTag("file-${file.serverFileId}")
         .bringIntoViewRequester(location).semantics {
             if(multiSelect) {
                 role=Role.Checkbox
@@ -79,7 +75,7 @@ internal val TorrentFile.canDownload get()=video&&size>0&&serverFileId>0
                 role=Role.RadioButton
             }
         }
-    NativeCard(tv,modifier,selected,onClick=onClick) {
+    NativeCard(tv,cardModifier,selected,onClick=onClick) {
         Row(Modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
             Surface(shape=MaterialTheme.shapes.small,color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.size(44.dp)) {
                 Box(contentAlignment=Alignment.Center) {
