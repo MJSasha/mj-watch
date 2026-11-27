@@ -10,8 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.state.ToggleableState
@@ -23,18 +26,36 @@ import androidx.compose.ui.window.DialogProperties
 import dev.mjwatch.core.*
 import kotlinx.coroutines.delay
 
-@Composable internal fun ReleaseFilterChoices(title:String,icon:ImageVector,options:List<String>,selected:String,tv:Boolean,hint:String?=null,onSelect:(String)->Unit) {
+@Composable internal fun ReleaseFilterChoices(
+    title:String,icon:ImageVector,options:List<String>,selected:String,tv:Boolean,hint:String?=null,
+    selectedFocus:FocusRequester?=null,onSelect:(String)->Unit,
+) {
     SettingsCard(title,icon,tv) {
         FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(if(tv)8.dp else 0.dp)) {
-            options.forEach {label->Pill(if(label=="2160p")"4K" else label,selected==label,tv){onSelect(label)}}
+            options.forEach {label->key(label) {
+                val active=selected==label
+                val modifier=if(tv&&active&&selectedFocus!=null) Modifier.focusRequester(selectedFocus) else Modifier
+                Pill(if(label=="2160p")"4K" else label,active,tv,modifier=modifier) {onSelect(label)}
+            }}
         }
         if(hint!=null)Text(hint,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-@Composable internal fun ReleaseFiltersDialog(tv:Boolean,count:Int?,onReset:()->Unit,onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
+@Composable internal fun ReleaseFiltersDialog(
+    tv:Boolean,count:Int?,initialFocus:FocusRequester,onReset:()->Unit,onDismiss:()->Unit,
+    content:@Composable ColumnScope.()->Unit,
+) {
     val configuration=LocalConfiguration.current
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        val windowFocused=LocalWindowInfo.current.isWindowFocused
+        var focusPlaced by remember {mutableStateOf(false)}
+        LaunchedEffect(windowFocused) {
+            if(tv&&windowFocused&&!focusPlaced) {
+                withFrameNanos {}
+                focusPlaced=initialFocus.requestFocus()
+            }
+        }
         Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.background,modifier=Modifier.testTag("release-filters-dialog").padding(16.dp).widthIn(max=if(tv)840.dp else 640.dp).fillMaxWidth().heightIn(max=(configuration.screenHeightDp*.92f).dp)) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start=20.dp,end=8.dp,top=8.dp,bottom=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
