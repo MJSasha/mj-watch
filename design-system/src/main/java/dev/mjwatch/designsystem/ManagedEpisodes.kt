@@ -22,6 +22,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -37,6 +42,7 @@ import dev.mjwatch.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import okhttp3.Request
 import org.json.JSONObject
 
@@ -136,8 +142,10 @@ private fun episodeStill(path: String, config: Config): String? {
         val groups = remember(episodes, columns) { episodes.orEmpty().chunked(columns) }
         val downloadSeason = season?.takeIf { !tv && !config.demo }
         val listState = rememberLazyListState()
+        val firstEpisodeRow = 3 // Header, seasons, then episode count.
         val seasonFocus = remember { FocusRequester() }
         val firstEpisodeFocus = remember { FocusRequester() }
+        val scope = rememberCoroutineScope()
         val returnFocus = remember { FocusRequester() }
         LaunchedEffect(tv, chooseEpisode, restoreEpisode, season, groups) {
             if (!tv) return@LaunchedEffect
@@ -153,7 +161,7 @@ private fun episodeStill(path: String, config: Config): String? {
                     if (seasonFocus.requestFocus()) onFocusPlaced()
                 } else {
                     val key = "season-$season-row-${groups[row].first().number}"
-                    if (listState.layoutInfo.visibleItemsInfo.none { it.key == key }) listState.scrollToItem(3 + row)
+                    if (listState.layoutInfo.visibleItemsInfo.none { it.key == key }) listState.scrollToItem(firstEpisodeRow + row)
                     withFrameNanos {}
                     if (returnFocus.requestFocus()) onFocusPlaced()
                 }
@@ -172,8 +180,20 @@ private fun episodeStill(path: String, config: Config): String? {
                         val colors = MaterialTheme.colorScheme
                         val navigation = if (tv) Modifier
                             .then(if (selected) Modifier.focusRequester(seasonFocus) else Modifier)
-                            .focusProperties {
-                                if (groups.isNotEmpty()) down = firstEpisodeFocus
+                            .onPreviewKeyEvent { event ->
+                                if (event.key != Key.DirectionDown || groups.isEmpty()) false
+                                else {
+                                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+                                        scope.launch {
+                                            if (listState.layoutInfo.visibleItemsInfo.none { it.index == firstEpisodeRow }) {
+                                                listState.scrollToItem(firstEpisodeRow)
+                                                withFrameNanos {}
+                                            }
+                                            firstEpisodeFocus.requestFocus()
+                                        }
+                                    }
+                                    true
+                                }
                             } else Modifier
                         Box(navigation.heightIn(min=48.dp).tvFocusRing(true,shape).clip(shape)
                             .then(if (selected) Modifier.background(watchSelectionGradient()) else Modifier.background(colors.surface))
@@ -230,7 +250,11 @@ private fun episodeStill(path: String, config: Config): String? {
                             val navigation = if (tv) Modifier
                                 .then(if (index == 0 && episode == group.first()) Modifier.focusRequester(firstEpisodeFocus) else Modifier)
                                 .then(if (episode.number == restoreEpisode) Modifier.focusRequester(returnFocus) else Modifier)
-                                .focusProperties { if (index == 0) up = seasonFocus }
+                                .focusProperties {
+                                    if (index == 0 && listState.layoutInfo.visibleItemsInfo.any { it.key == "seasons" }) {
+                                        up = seasonFocus
+                                    }
+                                }
                                 else Modifier
                             EpisodeTile(item, episode, position, catalog.demo, tv, tileWidth, Modifier.weight(1f).then(navigation),
                                 onMenu = { menu = episode }, onPlay = {
