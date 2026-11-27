@@ -1,0 +1,5 @@
+dev.mjwatch.mobile.PhoneTvTest:.
+
+Time: 30.435
+
+OK (1 test)
