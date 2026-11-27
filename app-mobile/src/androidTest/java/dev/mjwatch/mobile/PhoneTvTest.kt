@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 package dev.mjwatch.mobile
 
+import android.app.NotificationManager
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -8,7 +9,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import dev.mjwatch.core.*
 import dev.mjwatch.designsystem.WatchModel
 import dev.mjwatch.playback.*
@@ -17,10 +20,11 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.junit.*
 import java.io.File
+import java.util.regex.Pattern
 
 class PhoneTvTest {
     @get:Rule(order=0)val seed=object:org.junit.rules.ExternalResource(){override fun before()=runBlocking<Unit> {
-        Assume.assumeTrue("Isolated four-emulator fixture only",InstrumentationRegistry.getArguments().getString("isolatedRemote")=="true")
+        Assume.assumeTrue("Isolated emulator fixture only",InstrumentationRegistry.getArguments().getString("isolatedRemote")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val response=JSONObject(java.net.URL("http://127.0.0.1:18444/bootstrap").readText())
         val config=Config(connectionMode="managed",managedUrl=response.getString("url"),serverId=response.getString("serverId"),userId=response.getString("userId"),metadataProvider="none",theme="dark")
@@ -45,6 +49,87 @@ class PhoneTvTest {
         val dir=File(context.getExternalFilesDir(null),"phone-tv-proof").apply{mkdirs()}
         Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
         Assert.assertNull("Android displayed an ANR dialog; see $name.png",device.findObject(androidx.test.uiautomator.By.textContains("isn't responding")))
+    }
+    @Test fun backgroundNotificationControlsTheActualTv() {
+        lateinit var model:WatchModel
+        compose.runOnIdle {model=ViewModelProvider(compose.activity)[WatchModel::class.java]}
+        compose.waitUntil(15000){!model.state.value.initializing&&model.managed.state.value.syncedAt>0}
+        val tv=runBlocking(Dispatchers.IO) {
+            withTimeout(25000) {
+                var receiver:ManagedDevice?
+                do {
+                    receiver=managedDevices(api().authorized("devices")).firstOrNull {it.name=="Гостиная"&&it.type=="tv"&&it.available}
+                    if(receiver==null)delay(500)
+                }while(receiver==null)
+                receiver
+            }
+        }
+        compose.runOnIdle {
+            RemotePlaybackService.connect(context,tv.id,tv.name)
+            model.open(Release("demo:remote","Тихая орбита","fixture",magnet="magnet:?xt=urn:btih:0123456789012345678901234567890123456789"))
+        }
+        waitFor("TV connected"){RemotePlaybackService.state.value.canLaunch}
+        compose.onNodeWithTag("detail-sources").performClick()
+        compose.waitUntil(10000){compose.onAllNodesWithTag("source-continue").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("source-continue").performClick()
+        compose.onNodeWithTag("source-continue-tv").performClick()
+        compose.waitUntil(25000){compose.onAllNodesWithTag("file-17").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("file-17").performClick()
+        compose.onNodeWithTag("file-continue").performClick()
+        waitFor("TV first frame"){RemotePlaybackService.state.value.target?.video?.status=="playing"&&!RemotePlaybackService.state.value.busy}
+        val target=RemotePlaybackService.state.value.target!!
+        fun actual()=snapshot(tv.id,target.instance).video
+        fun mediaButton(description:String)=device.wait(
+            Until.findObject(By.pkg("com.android.systemui").desc(Pattern.compile(description,Pattern.CASE_INSENSITIVE))),7000
+        ) ?: error("System media button absent: "+description)
+        fun capture(name:String) {
+            val dir=File(context.getExternalFilesDir(null),"phone-tv-proof").apply {mkdirs()}
+            Assert.assertTrue(device.takeScreenshot(File(dir,"$name.png")))
+        }
+        fun sendNotificationAction(title:String) {
+            val notifications=context.getSystemService(NotificationManager::class.java)
+            var pending:android.app.PendingIntent?=null
+            waitFor("Notification exposes $title") {
+                pending=notifications.activeNotifications.singleOrNull {it.id==2601}
+                    ?.notification?.actions?.singleOrNull {it.title.toString()==title}?.actionIntent
+                pending!=null
+            }
+            pending!!.send()
+        }
+        try {
+            device.pressHome()
+            Assert.assertNotEquals(context.packageName,device.currentPackageName)
+            device.openNotification()
+            val pause=mediaButton(".*(pause|пауза).*")
+            capture("13-shade-before-pause")
+            pause.click()
+            waitFor("Shade Pause reached ExoPlayer on TV"){actual().status=="paused"}
+            val paused=actual().position
+            Thread.sleep(1300)
+            Assert.assertEquals("Actual paused position is frozen",paused,actual().position)
+            val play=mediaButton("^(play|воспроизвести)$")
+            capture("14-shade-after-pause")
+            play.click()
+            waitFor("Shade Play advanced ExoPlayer on TV"){actual().let {it.status=="playing"&&it.position>paused+400}}
+            mediaButton(".*(pause|пауза).*")
+            capture("15-shade-after-resume")
+            java.net.URL("http://127.0.0.1:18445/tv-pause").readText()
+            waitFor("TV local Pause still works"){actual().status=="paused"}
+            mediaButton("^(play|воспроизвести)$")
+            java.net.URL("http://127.0.0.1:18445/tv-play").readText()
+            waitFor("TV local Play still works"){actual().status=="playing"}
+            mediaButton(".*(pause|пауза).*")
+            sendNotificationAction("Пауза")
+            waitFor("Notification action Pause reached ExoPlayer on TV"){actual().status=="paused"}
+            sendNotificationAction("Воспроизвести")
+            waitFor("Notification action Play reached ExoPlayer on TV"){actual().status=="playing"}
+            mediaButton(".*(pause|пауза).*")
+            RemotePlaybackService.mediaController()!!.transportControls.stop()
+            waitFor("Receiver is ready for the next test"){!actual().active}
+        } finally {
+            device.pressBack()
+            RemotePlaybackService.disconnect(context)
+        }
     }
     @Test fun realReceiverAndAndroidSystemSession() {
         lateinit var model:WatchModel
