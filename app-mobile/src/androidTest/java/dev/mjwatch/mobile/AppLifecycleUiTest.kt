@@ -113,7 +113,7 @@ class AppLifecycleUiTest {
         compose.onNodeWithTag("update-download-progress").assertDoesNotExist()
         compose.runOnIdle {Assert.assertFalse(shown)}
     }
-    @Test fun apkEstimateAppearsAfterTransferAndDisappearsWhenStalled() {
+    @Test fun apkEstimateStaysVisibleBetweenBurstsAndClearsWhenComplete() {
         val update = AppUpdate(10_000, "9.9.9", "dev.mjwatch.mobile", "", "", 20L * 1024 * 1024, "", "")
         var state by mutableStateOf(UpdateState(available = update, downloading = true))
         compose.mainClock.autoAdvance = false
@@ -133,8 +133,13 @@ class AppLifecycleUiTest {
             compose.onNodeWithTag("download-estimate").assertIsDisplayed()
             compose.onNodeWithContentDescription("Осталось примерно", substring = true).assertExists()
             capture("download-estimate")
-            Thread.sleep(1_100)
-            compose.mainClock.advanceTimeBy(1_024)
+            repeat(2) {
+                Thread.sleep(1_100)
+                compose.mainClock.advanceTimeBy(1_024)
+                compose.onNodeWithTag("download-estimate").assertIsDisplayed()
+            }
+            compose.runOnUiThread { state = state.copy(downloaded = update.size) }
+            compose.mainClock.advanceTimeByFrame()
             compose.onNodeWithTag("download-estimate").assertDoesNotExist()
         } finally {
             compose.mainClock.autoAdvance = true
