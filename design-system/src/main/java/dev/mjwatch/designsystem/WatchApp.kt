@@ -902,12 +902,14 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }}
     val scrollingHeader=!tv||detailHeader!=null
     val entrance=if(!tv&&detailHeader==null) Modifier.softEntrance("releases-loaded",offset=4.dp) else Modifier
+    val showActions=!tv&&releases.isNotEmpty()
+    val navigationClearance=LocalFloatingNavigationClearance.current
     Column(entrance,verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if(!scrollingHeader) header()
         if(displayed==null&&detailHeader==null) {
             if(scrollingHeader) Box(Modifier.padding(horizontal=detailInset)) {header()}
             Spacer(Modifier.weight(1f))
-        } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp+LocalFloatingNavigationClearance.current)) {
+        } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp+if(showActions) 0.dp else navigationClearance)) {
             if(detailHeader!=null) item(key="detail-header") {detailHeader()}
             if(scrollingHeader && sourceStatus==null) item(key="release-filters-header") {Box(Modifier.padding(horizontal=detailInset)) {header()}}
             items(releases,key={it.id}) {r->Box(Modifier.padding(horizontal=detailInset)) {
@@ -939,7 +941,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
             }}
         }
         val selected=if(filtering) null else releases.firstOrNull {it.id==selectedId}
-        if(!tv&&releases.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=detailInset).padding(bottom=12.dp)) {
+        if(showActions) BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=detailInset).padding(bottom=12.dp+navigationClearance)) {
             val gap=8.dp
             val density = LocalDensity.current
             val buttonWidth = if (maxWidth >= 320.dp * density.fontScale.coerceAtLeast(1f)) {
