@@ -19,14 +19,22 @@ internal fun streamLimitScope(error:Throwable?):String? {
     return null
 }
 
+internal fun streamWasStopped(error:Throwable?):Boolean =
+    generateSequence(error){it.cause}.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().any {cause->
+        cause.responseCode==410&&(
+            cause.headerFields.entries.any {it.key.equals("X-MJWatch-Error",true)&&"stream_stopped" in it.value}||
+                runCatching {JSONObject(cause.responseBody.toString(Charsets.UTF_8)).optString("code")}.getOrDefault("")=="stream_stopped"
+        )
+    }
+
 internal class StreamLoadErrorPolicy:DefaultLoadErrorHandlingPolicy(3) {
     override fun getRetryDelayMsFor(info:LoadErrorHandlingPolicy.LoadErrorInfo):Long =
         if ((info.exception as? HttpDataSource.InvalidResponseCodeException)?.responseCode == 403 ||
-            streamLimitScope(info.exception) != null) C.TIME_UNSET
+            streamLimitScope(info.exception) != null || streamWasStopped(info.exception)) C.TIME_UNSET
         else super.getRetryDelayMsFor(info)
 }
 
 internal fun streamLimitStatus(scope:String)=PlaybackStatus(
     "Достигнут лимит просмотров",
     (if(scope=="account")"На вашем аккаунте уже занят лимит одновременных просмотров. " else "На сервере уже занят лимит одновременных просмотров. ")+
-        "Остановите видео на другом устройстве и нажмите «Повторить». Владелец может изменить лимиты в настройках TorrServer.",retry=true)
+        "Остановите видео на другом устройстве и нажмите «Повторить». Владелец может посмотреть активные просмотры и остановить их в настройках TorrServer.",retry=true)

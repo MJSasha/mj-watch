@@ -141,6 +141,7 @@ class PlaybackActivity : ComponentActivity() {
     private var startedAt=0L
     private var playbackConfig:Config?=null
     private var playbackSession=java.util.UUID.randomUUID().toString()
+    private var streamView=java.util.UUID.randomUUID().toString()
     private var remoteContentId=""
     private var playbackSequence=0L
     private var contentIdentity=""
@@ -318,7 +319,7 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPlayerError(error: PlaybackException) {
                     if (firstFrame) frozenFrame.hold(waitForFirstFrame = true)
                     save()
-                    if(!offline&&streamLimitScope(error)!=null){showPlaybackFailure(error);return}
+                    if(!offline&&(streamLimitScope(error)!=null||streamWasStopped(error))){showPlaybackFailure(error);return}
                     if(!released&&decoderFallback.recover(this@PlaybackActivity,player,error)) {
                         terminalError=false;startedAt=System.currentTimeMillis()
                         status=PlaybackStatus("Восстанавливаем декодер","Пробуем совместимый режим или другой декодер.",loading=true,compact=firstFrame)
@@ -351,7 +352,11 @@ class PlaybackActivity : ComponentActivity() {
     private fun validStreamUri(uri:String,config:Config):Boolean = uri.startsWith("asset:") ||
         runCatching {uri.toHttpUrl().origin()==endpoint(if(config.managed) config.managedUrl else config.torrServer).origin()}.getOrDefault(false)
 
-    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(uri)
+    private fun mediaItem(uri:String)=MediaItem.Builder().setUri(
+        if(!offline&&playbackConfig?.managed==true&&!uri.startsWith("asset:"))
+            uri.toHttpUrl().newBuilder().setQueryParameter("view",streamView).build().toString()
+        else uri
+    )
         .apply {if(path.substringAfterLast('.').equals("mkv",ignoreCase=true))setMimeType(MimeTypes.VIDEO_MATROSKA)}.setMediaId(contentIdentity.ifBlank {"$releaseId|$path"})
         .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra("title") ?: path).setSubtitle(path.substringAfterLast('/')).build()).build()
     /** ExoPlayer owns one stream at a time. The session also exposes the activity's episode queue. */
@@ -599,6 +604,10 @@ class PlaybackActivity : ComponentActivity() {
             status=localFailureStatus(error,retry=error!=null)
             return
         }
+        if(streamWasStopped(error)) {
+            status=PlaybackStatus("Просмотр остановлен","Владелец сервера остановил этот просмотр. Нажмите «Повторить», чтобы открыть видео снова.",retry=true)
+            return
+        }
         (limitScope ?: streamLimitScope(error))?.let {status=streamLimitStatus(it);return}
         val format=(error as? ExoPlaybackException)?.rendererFormat
         val details=format?.let {f->listOfNotNull(f.codecs,if(f.width>0&&f.height>0) "${f.width}×${f.height}" else null,if(f.channelCount>0) "Каналов: ${f.channelCount}" else null,error?.failedMediaCodec()?.name?.let {"Декодер: $it"}).joinToString(" · ")}.orEmpty()
@@ -607,7 +616,10 @@ class PlaybackActivity : ComponentActivity() {
     private fun recoverPlayback(automatic:Boolean) {
         if(!::player.isInitialized||released||recoveryJob?.isActive==true)return
         val config=playbackConfig ?: return
-        if(!automatic)retries=0
+        if(!automatic) {
+            retries=0
+            streamView=java.util.UUID.randomUUID().toString()
+        }
         val position=player.currentPosition.coerceAtLeast(0)
         val playing=player.playWhenReady
         terminalError=false;startedAt=System.currentTimeMillis()

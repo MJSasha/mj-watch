@@ -351,6 +351,7 @@ private enum class JacredSection(val title: String) {
    "server-torr"->{
     var limitsDirty by remember{mutableStateOf(false)};var torrDirty by remember{mutableStateOf(false)};var limitsRevision by remember{mutableIntStateOf(0)}
     Text("Настройки TorrServer",fontSize=26.sp,fontWeight=FontWeight.Bold)
+    if(managed.me?.optString("role")=="admin") PlaybackStreamsPanel(s.config,model.secrets,tv)
     PlaybackLimitsPanel(s,model,tv,onDirty={limitsDirty=it;dirty=it||torrDirty},onSaved={limitsRevision++})
     key(s.config.managedUrl){HostPanel(s,model,tv,HostPanelKind.TorrServer,limitsRevision=limitsRevision,onDirty={torrDirty=it;dirty=it||limitsDirty})}
    }

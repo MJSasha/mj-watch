@@ -236,22 +236,48 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 			return
 		}
 	}
+	var progress *streamProgress
+	var view *activeStream
 	if len(parts) == 3 && !stats {
-		key := i.Session + ":" + hash + ":" + strconv.Itoa(index)
-		if !s.acquireStream(i.User, key) {
+		viewID := r.URL.Query().Get("view")
+		if len(viewID) > 64 {
+			fail(w, 400, "invalid_view")
+			return
+		}
+		key := streamKey{
+			session: i.Session, hash: hash, view: viewID, index: index,
+			download: r.URL.Query().Get("download") == "1",
+		}
+		var scope string
+		view, scope = s.acquireStream(i, key, r.Method == "HEAD")
+		switch scope {
+		case "stopped":
+			w.Header().Set("X-MJWatch-Error", "stream_stopped")
+			fail(w, 410, "stream_stopped")
+			return
+		case "overlap":
+			w.Header().Set("Retry-After", "1")
+			fail(w, 503, "stream_busy")
+			return
+		case "server", "account":
 			w.Header().Set("Retry-After", "5")
 			w.Header().Set("X-MJWatch-Error", "stream_limit")
-			s.mu.Lock()
-			scope := "server"
-			if s.active[i.User] >= s.maxStreamsPerUser {
-				scope = "account"
-			}
-			s.mu.Unlock()
 			w.Header().Set("X-MJWatch-Limit-Scope", scope)
 			fail(w, 429, "stream_limit")
 			return
 		}
-		defer s.releaseStream(i.User, key)
+		if view == nil {
+			// HEAD is a metadata probe and has no viewing slot.
+			ctx, finish := context.WithTimeout(r.Context(), 25*time.Second)
+			defer finish()
+			r = r.WithContext(ctx)
+		} else {
+			defer s.releaseStream(key, view)
+			progress = &streamProgress{Writer: w, started: time.Now()}
+			ctx, finish := s.watchStream(r.Context(), w, i.Session, view.stopped, progress, streamIdleTimeout)
+			defer finish()
+			r = r.WithContext(ctx)
+		}
 	}
 
 	b, _ := json.Marshal(map[string]string{"action": "get", "hash": hash})
@@ -276,10 +302,13 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		return
 	}
 	found := false
+	var filename string
 	if files, ok := torrent["file_stats"].([]any); ok {
 		for _, f := range files {
 			if m, ok := f.(map[string]any); ok && m["id"] == float64(index) {
 				found = true
+				filename, _ = m["path"].(string)
+				break
 			}
 		}
 	}
@@ -291,26 +320,13 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 		respond(w, 200, safePlaybackStats(torrent))
 		return
 	}
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				var alive int
-				e := s.DB.QueryRow("SELECT COUNT(*) FROM sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id WHERE s.id=? AND s.refresh_exp>? AND d.revoked=0 AND u.blocked=0", i.Session, time.Now().Unix()).Scan(&alive)
-				if e != nil || alive != 1 {
-					http.NewResponseController(w).SetWriteDeadline(time.Now())
-					cancel()
-					return
-				}
-			}
-		}
-	}()
+	if view != nil {
+		s.mu.Lock()
+		view.File = filename
+		s.mu.Unlock()
+	}
+	ctx := r.Context()
+
 	req, _ := http.NewRequestWithContext(ctx, r.Method, s.Config.TorrURL+"/stream?"+url.Values{"link": {hash}, "index": {strconv.Itoa(index)}, "play": {""}}.Encode(), nil)
 	if s.Config.TorrUser != "" {
 		req.SetBasicAuth(s.Config.TorrUser, s.Config.TorrPassword)
@@ -340,13 +356,13 @@ func (s *Server) playback(w http.ResponseWriter, r *http.Request, path string, i
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != "HEAD" {
 		started := time.Now()
-		copied, err := io.CopyBuffer(w, resp.Body, make([]byte, 32*1024))
+		copied, err := io.CopyBuffer(progress, resp.Body, make([]byte, 32*1024))
 		outcome := "complete"
 		if err != nil {
 			outcome = "interrupted"
 		}
 		if ctx.Err() != nil {
-			outcome = "client_or_session_closed"
+			outcome = "cancelled"
 		}
 		log.Printf("event=stream_end outcome=%s bytes=%d duration_ms=%d", outcome, copied, time.Since(started).Milliseconds())
 	}
@@ -411,41 +427,4 @@ func (s *Server) prepareMagnet(id, hash, magnet string) {
 		state = "ready"
 	}
 	s.DB.Exec("UPDATE playback_jobs SET state=? WHERE handle=?", state, id)
-}
-
-func (s *Server) acquireStream(user, key string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Allow the brief overlap of old/new Range requests for the same viewing
-	// session when seeking or reconnecting; it uses the same torrent cache.
-	if requests := s.streamRequests[key]; requests > 0 {
-		if requests >= 2 {
-			return false
-		}
-		s.streamRequests[key]++
-		return true
-	}
-	active := 0
-	for _, n := range s.active {
-		active += n
-	}
-	if s.active[user] >= s.maxStreamsPerUser || active >= s.maxStreams {
-		return false
-	}
-	s.active[user]++
-	s.streamRequests[key] = 1
-	return true
-}
-func (s *Server) releaseStream(user, key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.streamRequests[key] > 1 {
-		s.streamRequests[key]--
-		return
-	}
-	delete(s.streamRequests, key)
-	s.active[user]--
-	if s.active[user] <= 0 {
-		delete(s.active, user)
-	}
 }
