@@ -1593,9 +1593,8 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     var baseline by remember {mutableStateOf(listOf("","","",""))}
     var preview by remember { mutableStateOf<Config?>(null) }; var importError by remember { mutableStateOf("") }
     if(importError.isNotBlank()) {
-        val errorFocus=remember {FocusRequester()}
-        LaunchedEffect(importError) {if(tv) {withFrameNanos {};errorFocus.requestFocus()}}
-        AlertDialog(onDismissRequest={importError=""},title={Text("Импорт и экспорт")},text={Text(importError)},confirmButton={TextButton(modifier=Modifier.focusRequester(errorFocus),onClick={importError=""}) {Text("Понятно")}})
+        AlertDialog(onDismissRequest={importError=""},title={Text("Импорт и экспорт")},text={Text(importError)},
+            confirmButton={TextButton(modifier=Modifier.tvDialogStartFocus(tv).tvFocusRing(tv),onClick={importError=""}) {Text("Понятно")}})
     }
     LaunchedEffect(Unit) { if(model.draftConfig==null) { metadataToken=model.secrets.get("tmdb"); key=model.secrets.get("jackett:${s.config.jackett}");user=model.secrets.get("torrUser:${s.config.torrServer}");password=model.secrets.get("torrPassword:${s.config.torrServer}") }; baseline=listOf(model.secrets.get("jackett:${s.config.jackett}"),model.secrets.get("torrUser:${s.config.torrServer}"),model.secrets.get("torrPassword:${s.config.torrServer}"),model.secrets.get("tmdb")) }
     if(!serverSearch) LaunchedEffect(c,key,user,password,metadataToken) {model.draftConfig=c;model.draftKey=key;model.draftUser=user;model.draftPassword=password;model.draftMetadata=metadataToken}
