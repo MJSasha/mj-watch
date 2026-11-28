@@ -178,7 +178,11 @@ class AppLifecycleUiTest {
         compose.mainClock.advanceTimeBy(1800)
         compose.runOnIdle {model.page("settings")}
         val exit=compose.onNodeWithText("Выйти из приложения")
-        if(!false) compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Выйти из приложения"))
+        val settings=compose.onNodeWithTag("settings-list")
+        // The scroll viewport extends behind the floating navigation. Scroll to the footer
+        // so the exit button sits above the navigation before sending a real touch.
+        settings.performScrollToNode(hasText("Тестовое видео:",substring=true))
+        settings.performTouchInput {swipeUp()}
         exit.performClick()
         compose.onNodeWithText("Выйти из MJWatch?").assertIsDisplayed()
         compose.onNodeWithText("Остаться").performClick()

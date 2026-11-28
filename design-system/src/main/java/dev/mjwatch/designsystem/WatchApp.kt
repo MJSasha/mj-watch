@@ -380,7 +380,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier
                                     .then(if(tv) Modifier.focusRequester(backFocus).onFocusChanged {backFocused=it.isFocused} else Modifier)
                                     .tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
-                                val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->if(state.config.managed) "Поиск раздач" else "Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
+                                val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->if(state.config.managed) "Поиск раздач" else "Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"settings-device"->"Настройки устройства";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 if(page=="home") HomeServerButton(state,model,tv)
                                 else if(state.config.demo&&page!="settings"&&page!="connections"&&!page.startsWith("settings-")) Badge("ДЕМО",accent=true)
@@ -398,7 +398,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 .then(if(releaseSheet) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier),
                         ) {
                             val bounded=if(tv) page=="settings-search"||page=="settings-server"&&!state.config.managed
-                                else page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(page=="settings-server"&&state.config.managed)
+                                else page in setOf("settings","connections","settings-search","settings-server","settings-catalog","settings-updates","settings-device","invitation-register","managed-account","managed-devices","managed-pairing","preparing","files","releases")&&!(page=="settings-server"&&state.config.managed)
                             BoundedPane(bounded,maxWidth=if(tv) tvUnit(720f) else if(page=="releases"||page=="files") 840.dp else 640.dp) {
                             CompositionLocalProvider(LocalFloatingNavigationClearance provides clearance) {
                             saved.SaveableStateProvider(screenKey) {
@@ -407,6 +407,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                     "home"->HomeScreen(state,currentLibrary,model,tv,!railFocused)
                                     "settings"->if(state.configured) SettingsOverview(state,model,tv,settingsSectionFocus,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,onBack={if(tv) exitRequested=true else model.back()},registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
+                                    "settings-device"->DeviceSettings(model,tv)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
                                     "connection-choice","managed-login","server-overview","server-resources","server-tmdb","server-history","server-retention","server-torr","server-jacred","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,onBack={
                                         if(tv&&!state.configured&&page=="connection-choice") exitRequested=true else model.back()
@@ -1725,7 +1726,7 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
                 "Аккаунт"->AccountLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true,model)
                 "Оформление"->appearance()
-                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);DiagnosticsSettings(model.diagnostics,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
+                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);if(!s.config.managed)DeviceSettingsLink(model,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
             }}
         }
         return
@@ -1737,37 +1738,12 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         item {SettingsCard("Оформление",Icons.Outlined.Contrast,false) {
             SettingsActionRow(Icons.Outlined.Palette,"Тема",when(s.config.theme) {"dark"->"Тёмная";"light"->"Светлая";else->"Как в системе"},false) {themes=true}
         }}
-        item {SettingsCard("Приложение",Icons.Outlined.Info,false){UpdateLink(model,false)}}
-        item {DiagnosticsSettings(model.diagnostics,false)}
+        item {SettingsCard("Приложение",Icons.Outlined.Info,false) {
+            UpdateLink(model,false)
+            if(!s.config.managed)DeviceSettingsLink(model,false)
+        }}
         item {Action("Выйти из приложения",false,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)}
         item {Text("MJWatch ${model.updates.versionName}\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=12.sp)}
-    }
-}
-@Composable private fun DiagnosticsSettings(diagnostics:Diagnostics,tv:Boolean) {
-    val enabled by diagnostics.enabled.collectAsStateWithLifecycle()
-    val scope=rememberCoroutineScope()
-    var message by remember {mutableStateOf("")}
-    SettingsCard("Диагностика",Icons.Outlined.Info,tv) {
-        SettingsToggle("Собирать диагностику",enabled,{value ->
-            scope.launch {
-                try {
-                    diagnostics.setEnabled(value)
-                    message=""
-                } catch (_:java.io.IOException) {
-                    message="Не удалось сохранить настройку"
-                }
-            }
-        },description="До 20 событий на этом устройстве. Отправка только вручную.")
-        Action("Скопировать диагностику",tv,secondary=true) {
-            scope.launch {
-                try {
-                    message=if(diagnostics.copyReport()) "Диагностика скопирована" else "Журнал пока пуст"
-                } catch (_:java.io.IOException) {
-                    message="Не удалось прочитать журнал"
-                }
-            }
-        }
-        if(message.isNotEmpty()) SettingsHint(message)
     }
 }
 @Composable private fun PlaybackPreferences(tv:Boolean,model:WatchModel) {

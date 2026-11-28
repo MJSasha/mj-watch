@@ -16,8 +16,10 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.mjwatch.core.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable internal fun AccountLinks(s:WatchState,model:WatchModel,tv:Boolean) {
@@ -32,6 +34,43 @@ import org.json.JSONObject
     }
 }
 
+@Composable internal fun DeviceSettingsLink(model:WatchModel,tv:Boolean) {
+    SettingsActionRow(Icons.Outlined.Devices,"Настройки устройства","Локальные параметры",tv){model.page("settings-device")}
+}
+
+@Composable internal fun DeviceSettings(model:WatchModel,tv:Boolean) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp)) {
+        DiagnosticsSettings(model.diagnostics,tv)
+    }
+}
+
+@Composable private fun DiagnosticsSettings(diagnostics:Diagnostics,tv:Boolean) {
+    val enabled by diagnostics.enabled.collectAsStateWithLifecycle()
+    val scope=rememberCoroutineScope()
+    var message by remember {mutableStateOf("")}
+    SettingsDisclosure("Диагностика","Локальный журнал ошибок",Icons.Outlined.Info,tv) {
+        SettingsToggle("Собирать диагностику",enabled,{value ->
+            scope.launch {
+                try {
+                    diagnostics.setEnabled(value)
+                    message=""
+                } catch (_:java.io.IOException) {
+                    message="Не удалось сохранить настройку"
+                }
+            }
+        },description="До 20 событий на этом устройстве. Отправка только вручную.")
+        Action("Скопировать диагностику",tv,secondary=true) {
+            scope.launch {
+                try {
+                    message=if(diagnostics.copyReport()) "Диагностика скопирована" else "Журнал пока пуст"
+                } catch (_:java.io.IOException) {
+                    message="Не удалось прочитать журнал"
+                }
+            }
+        }
+        if(message.isNotEmpty()) SettingsHint(message)
+    }
+}
 @Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
     val controller=model.managed
     val qr by controller.qr.phone.collectAsState()
@@ -143,6 +182,7 @@ import org.json.JSONObject
                     if(count==0)Text("Нет прежней истории для импорта")
                     Action("Импорт прежней истории · $count",tv,secondary=true,enabled=count>0&&!managed.busy){confirm="Импортировать $count записей в аккаунт ${managed.me?.optString("name")} на ${s.config.managedUrl}?" to {controller.importLegacy()}}
                 }
+                DiagnosticsSettings(model.diagnostics,tv)
                 TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={logout=true}){Text("Выйти из аккаунта",color=MaterialTheme.colorScheme.error)}
             }
         }
