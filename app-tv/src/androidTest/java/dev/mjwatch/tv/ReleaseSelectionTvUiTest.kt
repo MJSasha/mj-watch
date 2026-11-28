@@ -49,17 +49,16 @@ class ReleaseSelectionTvUiTest {
         val filterContent=hasAnyAncestor(hasTestTag("release-filters"))
         ui.onNode(hasText("Все") and filterContent).assertIsFocused()
         remote.pressDPadRight()
-        try {ui.onNode(hasText("1080p") and filterContent).assertIsFocused()} catch(e:AssertionError) {
-            throw AssertionError(ui.onAllNodes(isFocused()).printToString(),e)
-        }
+        ui.onNode(hasText("1080p") and filterContent).assertIsFocused()
         remote.pressDPadRight()
         val quality=ui.onNode(hasText("720p") and filterContent).assertIsFocused()
         remote.pressDPadCenter()
-        ui.waitUntil(5000) {ui.onAllNodesWithTag("release-filters-ready").fetchSemanticsNodes().isNotEmpty()}
         quality.assertIsFocused().assertIsSelected()
         remote.pressBack()
+        ui.waitUntil(5000) {ui.activity.hasWindowFocus()}
         ui.onNodeWithText("Фильтры · 1").assertIsFocused()
         remote.pressDPadCenter()
+        ui.waitUntil(5000) {ui.onAllNodesWithTag("release-filters-ready").fetchSemanticsNodes().isNotEmpty()}
         quality.assertIsFocused()
         remote.pressDPadLeft()
         ui.onNode(hasText("1080p") and filterContent).assertIsFocused()
