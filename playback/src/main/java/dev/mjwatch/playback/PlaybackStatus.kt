@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.mjwatch.core.TorrentPlaybackStats
+import dev.mjwatch.core.Diagnostics
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 internal data class PlaybackLoadingMetrics(
@@ -183,6 +185,21 @@ internal fun PlaybackStatusOverlay(
                     modifier = Modifier.focusRequester(focus).playerFocus()) { Text("Аудиодорожки") }
                 TextButton(onClick = onBack, colors = actionColors,
                     modifier = (if (status.retry || status.audioRecovery) Modifier else Modifier.focusRequester(focus)).playerFocus()) { Text(status.backLabel) }
+                val diagnostics = remember(context) { Diagnostics.get(context) }
+                val enabled by diagnostics.enabled.collectAsState()
+                if (enabled) {
+                    val scope = rememberCoroutineScope()
+                    var label by remember(status) { mutableStateOf("Скопировать диагностику") }
+                    TextButton(onClick = {
+                        scope.launch {
+                            label = try {
+                                if (diagnostics.copyReport()) "Скопировано" else "Журнал пуст"
+                            } catch (_: java.io.IOException) {
+                                "Не удалось скопировать"
+                            }
+                        }
+                    }, colors = actionColors, modifier = Modifier.playerFocus()) { Text(label) }
+                }
             }
         }
     }

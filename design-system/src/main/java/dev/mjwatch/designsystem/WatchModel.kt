@@ -32,6 +32,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     val canStartPlayback get()=isTv||!state.value.remotePlayback||remote.value.canLaunch&&remote.value.profileKey==state.value.config.profileKey
     val updates=UpdateManager(app,viewModelScope)
     private val settings=Settings(app)
+    val diagnostics=Diagnostics.get(app)
     val secrets=SecretStore(app)
     private val db=Room.databaseBuilder(app,WatchDatabase::class.java,"watch.db").addMigrations(WatchDatabase.MIGRATION_1_2,WatchDatabase.MIGRATION_2_3).enableMultiInstanceInvalidation().build()
     val dao=db.dao()
@@ -164,7 +165,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         if(c.demo) return DemoReleases to DemoGateway
         val api=if(c.managed) ManagedApi(c,secrets) else null
         val client=if(api!=null&&runCatching{endpoint(c.jackett).origin()==api.base.origin()}.getOrDefault(false)) api.client else guardedClient(c)
-        val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client,api)
+        val r=TorznabRepository(c,secrets.get("jackett:${c.jackett}"),client,api,diagnostics)
         return (r to if(api!=null) ManagedGateway(api,r) else TorrServerGateway(c,secrets.get("torrAuth:${c.torrServer}"),client,r)).also {cachedConfig=c;cachedRepositories=it}
     }
     private fun metadataRepository(c:Config=state.value.config):MetadataRepository {return MetadataRepository(if(c.managed) ManagedMetadata(ManagedApi(c,secrets)) else TmdbAdapter(secrets.get("tmdb"),guardedClient(c)),dao,if(c.managed) c.scope else "direct")}
@@ -198,7 +199,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         catalogJob=viewModelScope.launch {try {
             val result=withContext(Dispatchers.IO) {metadataRepository().home(force,state.value.catalogSection)}
             update {it.copy(catalog=result.items,catalogBusy=false,catalogMessage="")}
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}}}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {
+            diagnostics.failure(Diagnostics.Event.CATALOG,e)
+            update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}
+        }}
     }
     fun search(query:String) = search(query,releasesOnly=false)
     private fun search(query:String,releasesOnly:Boolean) {
@@ -441,8 +445,14 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                 h
             } }
                 if(token==generation) update { it.copy(handle=handle,page="files",busy=false,message="") }
-            } catch(e:CancellationException) { if(e is TimeoutCancellationException && token==generation) update { it.copy(busy=false,message="Сервер не подготовил файлы за 60 секунд. Повторить или выбрать другую раздачу.") } else throw e
-            } catch(e:Exception) { if(token==generation) update { it.copy(busy=false,message=safeError(e)) } }
+            } catch(e:CancellationException) {
+                if(e !is TimeoutCancellationException || token!=generation) throw e
+                diagnostics.failure(Diagnostics.Event.PLAYBACK_PREPARATION,e)
+                update { it.copy(busy=false,message="Сервер не подготовил файлы за 60 секунд. Повторить или выбрать другую раздачу.") }
+            } catch(e:Exception) {
+                diagnostics.failure(Diagnostics.Event.PLAYBACK_PREPARATION,e)
+                if(token==generation) update { it.copy(busy=false,message=safeError(e)) }
+            }
         }
     }
     fun playerClosed() {
@@ -466,7 +476,10 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                     if(jackett) r.check() else TorrServerGateway(scoped,if(user.isBlank()) "" else Credentials.basic(user,password),client,r).check()
                 }
             }; if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=result,checkingJackett=false) else it.copy(checkTorr=result,checkingTorr=false) }
-            } catch(e:CancellationException) {throw e} catch(e:Exception) { if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=safeError(e),checkingJackett=false) else it.copy(checkTorr=safeError(e),checkingTorr=false) } }
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {
+                diagnostics.failure(Diagnostics.Event.CONNECTION_CHECK,e)
+                if(revision==checkRevision) update { if(jackett) it.copy(checkJackett=safeError(e),checkingJackett=false) else it.copy(checkTorr=safeError(e),checkingTorr=false) }
+            }
         }
     }
     fun invalidateChecks() {checkRevision++;checkJobs.values.forEach {it.cancel()}; update { it.copy(checkJackett="Не проверено",checkTorr="Не проверено",checkingJackett=false,checkingTorr=false) } }

@@ -303,6 +303,7 @@ class OfflineDownloads private constructor(private val app: Context) {
             }
             throw e
         } catch (e: Exception) {
+            Diagnostics.get(app).failure(Diagnostics.Event.DOWNLOAD, e)
             val message = when (e) {
                 is OfflineProblem, is HttpFailure, is NetworkPolicyFailure -> safeError(e)
                 is javax.net.ssl.SSLException -> "Не удалось проверить сертификат сервера"

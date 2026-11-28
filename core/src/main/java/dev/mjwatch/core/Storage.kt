@@ -70,7 +70,12 @@ abstract class WatchDatabase : RoomDatabase() {
     }
 }
 private val Context.configStore by preferencesDataStore("config", corruptionHandler=androidx.datastore.core.handlers.ReplaceFileCorruptionHandler {emptyPreferences()})
+private val diagnosticsKey = booleanPreferencesKey("diagnostics")
 class Settings(private val context: Context) {
+    internal val diagnosticsEnabled = context.configStore.data.map { it[diagnosticsKey] ?: false }.distinctUntilChanged()
+    internal suspend fun setDiagnosticsEnabled(enabled: Boolean) {
+        context.configStore.edit { it[diagnosticsKey] = enabled }
+    }
     val legacyHistoryHandled=context.configStore.data.map {it[booleanPreferencesKey("legacy-history-handled")] ?: false}
     suspend fun handleLegacyHistory(){context.configStore.edit {it[booleanPreferencesKey("legacy-history-handled")]=true}}
     val destination = context.configStore.data.map {it[stringPreferencesKey("destination")] ?: "home"}.distinctUntilChanged()

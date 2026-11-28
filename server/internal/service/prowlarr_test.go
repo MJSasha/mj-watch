@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestManagedProwlarrSearchAndDownload(t *testing.T) {
@@ -33,6 +34,10 @@ func TestManagedProwlarrSearchAndDownload(t *testing.T) {
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
 				`[{"enable":true,"supportsSearch":true,"protocol":"torrent"}]`))}, nil
 		case "/api/v1/search":
+			deadline, ok := r.Context().Deadline()
+			if remaining := time.Until(deadline); !ok || remaining <= 29*time.Second || remaining > 30*time.Second {
+				t.Fatalf("Prowlarr search deadline = %v, want 30s", remaining)
+			}
 			if r.URL.Query().Get("query") != "Film & Series" {
 				t.Fatal(r.URL.Query())
 			}
