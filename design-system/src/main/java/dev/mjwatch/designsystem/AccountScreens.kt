@@ -23,12 +23,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable internal fun AccountLinks(s:WatchState,model:WatchModel,tv:Boolean) {
-    if(!s.config.managed) {
-        SettingsGroup(tv) {
-            SettingsActionRow(Icons.Outlined.ManageAccounts,"Настройки устройства","Без аккаунта MJWatch",tv){model.page("managed-account")}
-        }
-        return
-    }
     val state by model.managed.state.collectAsState()
     val me=state.takeIf {it.scope==s.config.scope}?.me
     SettingsGroup(tv) {
@@ -37,6 +31,16 @@ import org.json.JSONObject
             SettingsDivider()
             SettingsActionRow(Icons.Outlined.AdminPanelSettings,"Мой сервер",s.config.managedUrl,tv){model.page("server-overview")}
         }
+    }
+}
+
+@Composable internal fun DeviceSettingsLink(model:WatchModel,tv:Boolean) {
+    SettingsActionRow(Icons.Outlined.Devices,"Настройки устройства","Локальные параметры",tv){model.page("settings-device")}
+}
+
+@Composable internal fun DeviceSettings(model:WatchModel,tv:Boolean) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp)) {
+        DiagnosticsSettings(model.diagnostics,tv)
     }
 }
 
@@ -68,14 +72,6 @@ import org.json.JSONObject
     }
 }
 @Composable internal fun AccountScreen(s:WatchState,model:WatchModel,tv:Boolean,scanQr:(()->Unit)?=null) {
-    if(!s.config.managed) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical=16.dp),
-            verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            Text("Настройки устройства",fontSize=26.sp,fontWeight=FontWeight.Bold,modifier=Modifier.semantics {heading()})
-            DiagnosticsSettings(model.diagnostics,tv)
-        }
-        return
-    }
     val controller=model.managed
     val qr by controller.qr.phone.collectAsState()
     val raw by controller.state.collectAsState()
