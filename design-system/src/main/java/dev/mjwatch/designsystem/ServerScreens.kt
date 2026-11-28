@@ -61,9 +61,10 @@ private enum class JacredSection(val title: String) {
  val adminTarget=searchAdmin?.takeIf {managed.me?.optString("role")=="admin"}
  fun leaveOr(action:()->Unit) {if(dirty)leave=action else action()}
  val back:()->Unit={
-  if(adminTarget!=null)searchAdmin=null else leaveOr {
+  if(adminTarget!=null)searchAdmin=null
+  else if(page=="managed-login"&&mobileQr)mobileQr=false
+  else leaveOr {
    when {
-    page=="managed-login"&&mobileQr -> mobileQr=false
     page=="managed-login"&&tv&&manualLogin -> manualLogin=false
     page=="managed-login"&&tv&&tvLegacy -> tvLegacy=false
     else -> onBack()
@@ -101,12 +102,15 @@ private enum class JacredSection(val title: String) {
     Action("Удалить прежнюю локальную историю",tv,secondary=true){confirm="Будут удалены прежние открытия и позиции. Избранное сохранится." to {controller.direct(true);model.page("settings-server")}}
    }
    "managed-login"->{
+    var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
+    LaunchedEffect(manualLogin) {
+     if(tv&&!manualLogin) {url=s.config.managedUrl;name="";password="";invite="";ca="";advanced=false}
+    }
     if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){
      leaveOr {tvLegacy=false;manualLogin=false}
     }
     if(!tv&&mobileQr) TvQrScreen(model,tv=false){mobileQr=false}
     else if(tv&&!manualLogin) {if(tvLegacy)TvPairingScreen(s,model){manualLogin=true} else TvQrScreen(model){tvLegacy=true}} else {
-    var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
     DisposableEffect(Unit){onDispose{controller.cancelPairing()}}
     val loginContext=LocalContext.current
     var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
