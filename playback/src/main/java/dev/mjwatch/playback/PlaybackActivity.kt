@@ -139,6 +139,8 @@ class PlaybackActivity : ComponentActivity() {
     private var retries=0
     private var panel: android.app.AlertDialog?=null
     private var startedAt=0L
+    private lateinit var diagnostics: Diagnostics
+    private var decoderRecoveryPending: DecoderFallback.Recovery? = null
     private var playbackConfig:Config?=null
     private var playbackSession=java.util.UUID.randomUUID().toString()
     private var streamView=java.util.UUID.randomUUID().toString()
@@ -163,6 +165,7 @@ class PlaybackActivity : ComponentActivity() {
     private lateinit var db: WatchDatabase
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        diagnostics = Diagnostics.get(this)
         active?.get()?.takeIf {it!==this}?.let {previous -> previous.save();previous.releasePlayer();previous.finish()}
         active=java.lang.ref.WeakReference(this)
         if(intent.getBooleanExtra("mobile",true)&&resources.configuration.smallestScreenWidthDp<600) requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -215,6 +218,7 @@ class PlaybackActivity : ComponentActivity() {
             val dataSource:DataSource.Factory
             if(offline) {
                 if(!isLocalFile(uri)) {
+                    diagnostics.record(Diagnostics.Event.PLAYBACK_PREPARATION) {"local_file_unavailable=true"}
                     showPlaybackFailure()
                     return@launch
                 }
@@ -228,6 +232,7 @@ class PlaybackActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {ManagedApi(config,SecretStore(applicationContext)).also {it.authorized("me")}}
                     } catch(e:CancellationException) {throw e}
                     catch(e:Exception) {
+                        diagnostics.failure(Diagnostics.Event.PLAYBACK_PREPARATION,e)
                         status=PlaybackStatus("Сессия недоступна","Вернитесь в аккаунт и проверьте подключение.")
                         return@launch
                     }
@@ -285,6 +290,10 @@ class PlaybackActivity : ComponentActivity() {
                     view.keepScreenOn=player.isPlaying||(player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)
                 }
                 override fun onRenderedFirstFrame() {
+                    decoderRecoveryPending?.let { recovery ->
+                        diagnostics.record(Diagnostics.Event.DECODER_RECOVERED) {"recovery=$recovery"}
+                        decoderRecoveryPending = null
+                    }
                     firstFrame=true; firstFrameSeen=true; artworkJob?.cancel(); view.setKeepContentOnPlayerReset(true); status=null
                     frozenFrame.showLiveVideo()
                     surface.postOnAnimation { if (!released && firstFrame) frozenFrame.sample(surface) }
@@ -319,8 +328,25 @@ class PlaybackActivity : ComponentActivity() {
                 override fun onPlayerError(error: PlaybackException) {
                     if (firstFrame) frozenFrame.hold(waitForFirstFrame = true)
                     save()
-                    if(!offline&&(streamLimitScope(error)!=null||streamWasStopped(error))){showPlaybackFailure(error);return}
-                    if(!released&&decoderFallback.recover(this@PlaybackActivity,player,error)) {
+                    val streamStopped = !offline && (streamLimitScope(error)!=null || streamWasStopped(error))
+                    val recovered = !streamStopped && !released && decoderFallback.recover(this@PlaybackActivity,player,error)
+                    val previousRecovery = decoderRecoveryPending
+                    val nextRecovery = decoderFallback.lastRecovery.takeIf { recovered }
+                    decoderRecoveryPending = nextRecovery
+                    diagnostics.record(Diagnostics.Event.PLAYER_ERROR) {
+                        val format = (error as? ExoPlaybackException)?.rendererFormat
+                        val http = generateSequence<Throwable>(error) { it.cause }
+                            .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                            .firstOrNull()?.responseCode
+                        val codecError = generateSequence<Throwable>(error) { it.cause }
+                            .filterIsInstance<android.media.MediaCodec.CodecException>().firstOrNull()
+                        "code=${error.errorCode} cause=${error.cause?.javaClass?.simpleName} http=$http " +
+                            "mime=${format?.sampleMimeType} codec=${format?.codecs} size=${format?.width}x${format?.height} " +
+                            "fps=${format?.frameRate} decoder=${error.failedMediaCodec()?.name} codec_error=${codecError?.errorCode} " +
+                            "offline=$offline posMs=${player.currentPosition} previous_recovery=$previousRecovery retry=$nextRecovery"
+                    }
+                    if(streamStopped){showPlaybackFailure(error);return}
+                    if(recovered) {
                         terminalError=false;startedAt=System.currentTimeMillis()
                         status=PlaybackStatus("Восстанавливаем декодер","Пробуем совместимый режим или другой декодер.",loading=true,compact=firstFrame)
                         return
@@ -343,7 +369,13 @@ class PlaybackActivity : ComponentActivity() {
             while(isActive) { delay(15000); save()
                 if(!terminalError&&(player.playbackState==Player.STATE_BUFFERING || !firstFrame)) {
                     val elapsed=System.currentTimeMillis()-startedAt
-                    if(elapsed>180_000) {terminalError=true;recoveryJob?.cancel();if(firstFrame)frozenFrame.hold(waitForFirstFrame=true);player.stop();status=if(offline) localFailureStatus(retry=true) else PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)}
+                    if(elapsed>180_000) {
+                        diagnostics.record(Diagnostics.Event.PLAYBACK_TIMEOUT) {
+                            "ms=$elapsed offline=$offline first_frame=$firstFrame recovery=$decoderRecoveryPending"
+                        }
+                        decoderRecoveryPending=null
+                        terminalError=true;recoveryJob?.cancel();if(firstFrame)frozenFrame.hold(waitForFirstFrame=true);player.stop();status=if(offline) localFailureStatus(retry=true) else PlaybackStatus("Не удалось загрузить видео","Повторите попытку или выберите другую раздачу.",retry=true)
+                    }
                     else if(!offline&&elapsed>=30_000) status=bufferingStatus(firstFrame,elapsed)
                 }
             }
@@ -517,6 +549,7 @@ class PlaybackActivity : ComponentActivity() {
         episodeLoad?.cancel();recoveryJob?.cancel();stablePlayback?.cancel();handler.removeCallbacksAndMessages(null)
         segmentLookup?.cancel();skipSegments=emptyList()
         firstFrame=false;firstFrameSeen=false;episodeCompleted=false;terminalError=false;retries=0
+        decoderRecoveryPending=null
         resetLoadingProgress()
         startupExpectedBytes = startupByteTarget(0, 0, INITIAL_BUFFER_MS)
         frozenFrame.clear()

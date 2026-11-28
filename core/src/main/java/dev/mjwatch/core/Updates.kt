@@ -211,9 +211,15 @@ class UpdateManager(private val context:Context,private val scope:CoroutineScope
                     promptInstall=file != null && file == it.ready && it.promptInstall,
                     message=if(found==null) "Обновлений нет" else "Проверка завершена")}
             }
-        } catch(_:TimeoutCancellationException) {mutable.update {it.copy(checking=false,message="Проверка обновления заняла слишком много времени. Проверьте интернет и повторите")}}
+        } catch(e:TimeoutCancellationException) {
+            Diagnostics.get(context).failure(Diagnostics.Event.UPDATE_CHECK,e)
+            mutable.update {it.copy(checking=false,message="Проверка обновления заняла слишком много времени. Проверьте интернет и повторите")}
+        }
         catch(e:CancellationException) {mutable.update {it.copy(checking=false)};throw e}
-        catch(e:Exception) {mutable.update {it.copy(checking=false,message=if(e is HttpFailure) "Не удалось проверить обновление: HTTP ${e.status}. Откройте GitHub Releases или повторите позже" else "Не удалось проверить обновление. Проверьте интернет или откройте GitHub Releases")}}}
+        catch(e:Exception) {
+            Diagnostics.get(context).failure(Diagnostics.Event.UPDATE_CHECK,e)
+            mutable.update {it.copy(checking=false,message=if(e is HttpFailure) "Не удалось проверить обновление: HTTP ${e.status}. Откройте GitHub Releases или повторите позже" else "Не удалось проверить обновление. Проверьте интернет или откройте GitHub Releases")}
+        }}
     }
     fun cancel() {job?.cancel();mutable.update {it.copy(message="Загрузка отменена")}}
     fun download() {
@@ -233,9 +239,13 @@ class UpdateManager(private val context:Context,private val scope:CoroutineScope
                 }
                 mutable.update {it.copy(downloading=false,available=update,ready=apk,promptInstall=true,message="APK проверен. Подтвердите установку в Android")}
             } catch(e:TimeoutCancellationException) {
+                Diagnostics.get(context).failure(Diagnostics.Event.UPDATE_DOWNLOAD,e)
                 mutable.update {it.copy(message="Загрузка заняла слишком много времени. Повторите позже")}
             } catch(e:CancellationException) {throw e}
-            catch(e:Exception) {mutable.update {it.copy(downloading=false,message=if(e is IllegalArgumentException||e is IllegalStateException) e.message?.take(150) ?: "APK не прошёл проверку" else "Загрузка не удалась. Повторите позже")}}
+            catch(e:Exception) {
+                Diagnostics.get(context).failure(Diagnostics.Event.UPDATE_DOWNLOAD,e)
+                mutable.update {it.copy(downloading=false,message=if(e is IllegalArgumentException||e is IllegalStateException) e.message?.take(150) ?: "APK не прошёл проверку" else "Загрузка не удалась. Повторите позже")}
+            }
             finally {mutable.update {it.copy(downloading=false)}}
         }
     }

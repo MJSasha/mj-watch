@@ -54,7 +54,18 @@ class ManagedController(private val context:android.content.Context,private val 
    }
  }}}}
  private fun api(c:Config=config())=ManagedApi(c,secrets)
- fun run(action:suspend ()->Unit) {if(state.value.busy)return;mutable.update {it.copy(busy=true,message="")};scope.launch {try{withContext(Dispatchers.IO){action()}}catch(e:CancellationException){throw e}catch(e:Exception){mutable.update {it.copy(message=safeError(e))}}finally{mutable.update {it.copy(busy=false)}}}}
+ fun run(action:suspend ()->Unit) {
+  if(state.value.busy)return
+  mutable.update {it.copy(busy=true,message="")}
+  scope.launch {
+   try {withContext(Dispatchers.IO){action()}}
+   catch(e:CancellationException){throw e}
+   catch(e:Exception){
+    Diagnostics.get(context).failure(Diagnostics.Event.SERVER_ACTION,e)
+    mutable.update {it.copy(message=safeError(e))}
+   } finally {mutable.update {it.copy(busy=false)}}
+  }
+ }
  fun login(url:String,name:String,password:String,invite:String="")=run {
   check(!PlaybackActivity.hasActivePlayback()) {"Остановите воспроизведение перед сменой аккаунта"}
   val c=config().copy(connectionMode="managed",managedUrl=url.trim(),demo=false,serverId="",userId="")

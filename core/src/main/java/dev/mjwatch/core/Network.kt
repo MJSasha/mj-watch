@@ -53,7 +53,7 @@ class HttpFailure(val status:Int,val retryAfterSeconds:Long?=null,val responseBo
 suspend fun OkHttpClient.bytes(request: Request, limit: Long = 10L*1024*1024, allowMagnetRedirect:Boolean=false): ByteArray = suspendCancellableCoroutine { c ->
     val call=newCall(request); c.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) { if(c.isActive) c.resumeWithException(if(e is NetworkPolicyFailure) e else IOException(when(e) { is java.net.UnknownHostException -> "Имя сервера не найдено. Для .local попробуйте IP-адрес"; is javax.net.ssl.SSLException -> "Не удалось проверить TLS-сертификат сервера"; is java.net.SocketTimeoutException -> "Время ожидания сервера истекло"; is java.net.ConnectException -> "Не удалось подключиться. Проверьте адрес, порт и доступ из сети устройства"; else -> "Сеть недоступна или соединение прервано" })) }
+        override fun onFailure(call: Call, e: IOException) { if(c.isActive) c.resumeWithException(if(e is NetworkPolicyFailure) e else IOException(when(e) { is java.net.UnknownHostException -> "Имя сервера не найдено. Для .local попробуйте IP-адрес"; is javax.net.ssl.SSLException -> "Не удалось проверить TLS-сертификат сервера"; is java.net.SocketTimeoutException -> "Время ожидания сервера истекло"; is java.net.ConnectException -> "Не удалось подключиться. Проверьте адрес, порт и доступ из сети устройства"; else -> "Сеть недоступна или соединение прервано" }, e)) }
         override fun onResponse(call: Call, response: Response) {
             try { response.use { r ->
                 val location=r.header("Location")
@@ -118,7 +118,7 @@ object TorznabXml {
     }
 }
 class TorznabRepository(private val config: Config, private val apiKey: String, private val client: OkHttpClient,
-    private val internalSearch: ManagedApi? = null) : ReleaseRepository {
+    private val internalSearch: ManagedApi? = null, private val diagnostics: Diagnostics? = null) : ReleaseRepository {
     private val permits=Semaphore(3)
     private val caps=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,Caps>>()
     private val sources get()=if(internalSearch!=null) listOf("all")
@@ -189,9 +189,11 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
     suspend fun searchPage(query:String,page:Int=0,onlySources:Set<String>?=null,cursor:String?=null):SearchResult = supervisorScope {
         val selected=sources.filter {onlySources==null||it in onlySources}
         require(selected.isNotEmpty()) {"Добавьте индексаторы в настройках"}
+        val managedTimeout=40_000L
         val responses=java.util.concurrent.ConcurrentHashMap<String,SearchResult>()
         val jobs=selected.map {source -> async {permits.withPermit {
-            val result=try {withTimeout(20_000) {
+            val started=System.nanoTime()
+            val result=try {withTimeout(if(internalSearch!=null) managedTimeout else 20_000) {
                 if(internalSearch!=null) {
                     if(page>0&&cursor==null) return@withTimeout SearchResult(emptyList())
                     val data=managedSearch(internalSearch,query,cursor)
@@ -209,13 +211,22 @@ class TorznabRepository(private val config: Config, private val apiKey: String, 
                     .apply {if(page>0) addQueryParameter("offset",(page*cap.max).toString())}.build()
                 val items=TorznabXml.releases(String(read(u)),source)
                 SearchResult(items,more=cap.offset&&items.size>=cap.max)
-            }} catch(e:TimeoutCancellationException) {SearchResult(emptyList(),listOf("$source: Время ожидания истекло"))}
+            }} catch(e:TimeoutCancellationException) {
+                diagnostics?.failure(Diagnostics.Event.RELEASE_SEARCH,e,(System.nanoTime()-started)/1_000_000)
+                SearchResult(emptyList(),listOf("$source: Время ожидания истекло"))
+            }
             catch(e:CancellationException) {throw e}
-            catch(e:Exception) {SearchResult(emptyList(),listOf("$source: ${safeError(e)}"))}
+            catch(e:Exception) {
+                diagnostics?.failure(Diagnostics.Event.RELEASE_SEARCH,e,(System.nanoTime()-started)/1_000_000)
+                SearchResult(emptyList(),listOf("$source: ${safeError(e)}"))
+            }
             responses[source]=result
         }}}
-        val complete=withTimeoutOrNull(25_000) {jobs.awaitAll();true}==true
-        if(!complete) jobs.forEach {it.cancel()}
+        val complete=withTimeoutOrNull(if(internalSearch!=null) managedTimeout else 25_000) {jobs.awaitAll();true}==true
+        if(!complete) {
+            jobs.forEach {it.cancel()}
+            diagnostics?.record(Diagnostics.Event.RELEASE_SEARCH) {"overall_timeout=true"}
+        }
         jobs.forEach {it.join()}
         val results=selected.map {responses[it] ?: SearchResult(emptyList(),listOf("$it: Общий срок поиска истёк"))}
         SearchResult(results.flatMap {it.releases}.distinctBy {it.hash ?: it.id},results.flatMap {it.failures},

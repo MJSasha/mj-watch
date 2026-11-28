@@ -36,13 +36,13 @@ func (s *Server) searchProvider() searchProvider {
 	return provider
 }
 
-func (s *Server) prowlarrGet(ctx context.Context, key, path string) (*http.Response, error) {
+func prowlarrGet(ctx context.Context, client *http.Client, key, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, prowlarrOrigin+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Api-Key", key)
-	return s.Client.Do(req)
+	return client.Do(req)
 }
 
 func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identity) {
@@ -92,15 +92,15 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identit
 		writeProwlarrPage(w, snapshot.rows, id, start)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 18*time.Second)
-	defer cancel()
 	results := make([]prowlarrRelease, 0)
 	if query == "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 18*time.Second)
+		defer cancel()
 		var indexers []struct {
 			Enable, SupportsSearch bool
 			Protocol               string
 		}
-		resp, err := s.prowlarrGet(ctx, provider.APIKey, "/api/v1/indexer")
+		resp, err := prowlarrGet(ctx, s.Client, provider.APIKey, "/api/v1/indexer")
 		if readJSONResponse(resp, err, &indexers) != nil {
 			fail(w, 503, "prowlarr_unavailable")
 			return
@@ -120,7 +120,11 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identit
 			Seeders                                                          *int
 		}
 		parameters := url.Values{"query": {query}, "type": {"search"}, "limit": {"500"}}
-		resp, err := s.prowlarrGet(ctx, provider.APIKey, "/api/v1/search?"+parameters.Encode())
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		client := *s.Client
+		client.Timeout = 0 // Use the search deadline instead of the shared client timeout.
+		resp, err := prowlarrGet(ctx, &client, provider.APIKey, "/api/v1/search?"+parameters.Encode())
 		if readJSONResponse(resp, err, &rows) != nil || rows == nil {
 			fail(w, 503, "prowlarr_unavailable")
 			return
@@ -260,7 +264,7 @@ func (s *Server) prowlarrDownload(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, "playback_busy")
 		return
 	}
-	resp, err := s.prowlarrGet(r.Context(), key, path)
+	resp, err := prowlarrGet(r.Context(), s.Client, key, path)
 	if err != nil {
 		fail(w, 503, "prowlarr_download_failed")
 		return

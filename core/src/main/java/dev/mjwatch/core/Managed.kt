@@ -206,13 +206,18 @@ fun managedImageClient(config: Config, secrets: SecretStore): OkHttpClient {
 class ManagedApi(val config:Config,val secrets:SecretStore,caOverride:String?=null) {
  companion object {private val refreshMutex=Mutex()}
  val client=managedClient(config,secrets,caOverride)
+ private val releaseSearchClient by lazy {
+  client.newBuilder().readTimeout(35, java.util.concurrent.TimeUnit.SECONDS)
+   .callTimeout(38, java.util.concurrent.TimeUnit.SECONDS).build()
+ }
  val base=endpoint(config.managedUrl)
  suspend fun request(path:String,method:String="GET",body:JSONObject?=null,revision:String?=null,headers:Map<String,String> = emptyMap()):JSONObject {
   require(!path.startsWith('/')&&!path.contains(".."))
   val url=base.newBuilder().addPathSegments("api/v1/"+path.substringBefore('?')).apply {path.substringAfter('?',"").takeIf {it.isNotEmpty()}?.let {encodedQuery(it)}}.build()
   val builder=Request.Builder().url(url);if(revision!=null) builder.header("If-Match",revision);headers.forEach {builder.header(it.key,it.value)}
   builder.method(method,if(method in setOf("GET","HEAD")) null else (body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()))
-  return try {JSONObject(String(client.bytes(builder.build(),4L*1024*1024))).also {response->if(path=="me"){require(response.optInt("apiVersion",1)==1&&response.optInt("minClientApiVersion",1)<=1){"Обновите приложение для этой версии сервера"};if(config.scope.isNotBlank())require(response.getString("serverId")==config.serverId&&response.getString("userId")==config.userId){"Аккаунт изменился. Выполните вход заново."}}}} catch(e:HttpFailure) {
+  val requestClient=if(method=="GET"&&path.substringBefore('?')=="search/releases") releaseSearchClient else client
+  return try {JSONObject(String(requestClient.bytes(builder.build(),4L*1024*1024))).also {response->if(path=="me"){require(response.optInt("apiVersion",1)==1&&response.optInt("minClientApiVersion",1)<=1){"Обновите приложение для этой версии сервера"};if(config.scope.isNotBlank())require(response.getString("serverId")==config.serverId&&response.getString("userId")==config.userId){"Аккаунт изменился. Выполните вход заново."}}}} catch(e:HttpFailure) {
    throw serverMove(config,e) ?: e
   }
  }

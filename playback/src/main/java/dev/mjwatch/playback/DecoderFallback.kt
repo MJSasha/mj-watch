@@ -19,6 +19,9 @@ internal fun PlaybackException.failedMediaCodec()=generateSequence<Throwable>(th
 
 /** Exclusions last only for this file. Reads also happen on ExoPlayer's playback thread. */
 internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCodecSelector.DEFAULT):MediaCodecSelector {
+    enum class Recovery { SAME_DECODER, ALTERNATE_DECODER, SOFTWARE_AAC }
+    var lastRecovery: Recovery? = null
+        private set
     private val failed=ConcurrentHashMap.newKeySet<String>()
     private var factory:DefaultRenderersFactory?=null
     private var compatibilityTried=false
@@ -49,6 +52,7 @@ internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCode
     }
 
     fun recover(context: Context, player: ExoPlayer, error: PlaybackException): Boolean {
+        lastRecovery = null
         if (error.errorCode != PlaybackException.ERROR_CODE_DECODING_FAILED &&
             error.errorCode != PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) return false
         val failure = error as? ExoPlaybackException ?: return false
@@ -60,6 +64,7 @@ internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCode
             if (useSoftwareAac || format.sampleMimeType != MimeTypes.AUDIO_AAC || format.drmInitData != null ||
                 failure.rendererName != "MediaCodecAudioRenderer" || !FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_AAC)) return false
             useSoftwareAac = true
+            lastRecovery = Recovery.SOFTWARE_AAC
         }
         val position = player.currentPosition.coerceAtLeast(0)
         val playing = player.playWhenReady
@@ -74,12 +79,15 @@ internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCode
         val renderers = factory
         if (renderers != null && tryCompatibility(codec.name, runCatching { codec.isFormatSupported(context, format) }.getOrDefault(false))) {
             renderers.forceDisableMediaCodecAsynchronousQueueing()
+            lastRecovery = Recovery.SAME_DECODER
             return true
         }
         val candidates = runCatching {
             MediaCodecUtil.getDecoderInfosSoftMatch(this,format,codec.secure,codec.tunneling)
                 .filter { it.isFormatSupported(context, format) }.map { it.name }
         }.getOrDefault(emptyList())
-        return excludeFailed(codec.name, candidates)
+        return excludeFailed(codec.name, candidates).also {
+            if (it) lastRecovery = Recovery.ALTERNATE_DECODER
+        }
     }
 }
