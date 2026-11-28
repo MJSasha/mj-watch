@@ -43,7 +43,7 @@ func TestManagedProwlarrSearchAndDownload(t *testing.T) {
 			}
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[
 				{"title":"Unknown","protocol":"torrent","magnetUrl":"` + magnet + `"},
-				{"title":"Film","indexer":"Test","protocol":"torrent","seeders":12,"downloadUrl":"` + prowlarrOrigin + `/1/download?apikey=` + key + `&link=opaque&file=Test"},
+				{"title":"Film","indexer":"Test","protocol":"torrent","seeders":12,"categories":[{"id":2040,"name":"Movies/HD"}],"downloadUrl":"` + prowlarrOrigin + `/1/download?apikey=` + key + `&link=opaque&file=Test"},
 				{"title":"Zero","protocol":"torrent","seeders":0,"magnetUrl":"` + magnet + `"},
 				{"title":"Top","protocol":"torrent","seeders":40,"magnetUrl":"` + magnet + `"},
 				{"title":"Tie","protocol":"torrent","seeders":12,"magnetUrl":"` + magnet + `"},
@@ -88,6 +88,10 @@ func TestManagedProwlarrSearchAndDownload(t *testing.T) {
 	if release["title"] != "Film" || release["seeds"] != float64(12) ||
 		token != prowlarrDownloadToken(key, "/1/download?file=Test&link=opaque") {
 		t.Fatal(release)
+	}
+	categories, ok := release["categories"].([]any)
+	if !ok || len(categories) != 1 || categories[0].(map[string]any)["id"] != float64(2040) {
+		t.Fatalf("unexpected categories: %v", release["categories"])
 	}
 	const downloadRoute = "search/prowlarr-download?token="
 	if code, _ := call(t, s, owner, "GET", downloadRoute+token+"x", nil); code != 400 || downloads != 0 {

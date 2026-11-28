@@ -21,7 +21,8 @@ object JacredJson {
             val tracker=string("tracker") ?: source
             val identity=hash ?: magnet
             val id=java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") {"%02x".format(it)}
-            Release("jacred:$source:$id",title,tracker,hash,magnet,size=number("size")?.toLong(),seeds=number("seeders")?.takeIf {it<=Int.MAX_VALUE}?.toInt())
+            Release("jacred:$source:$id",title,tracker,hash,magnet,size=number("size")?.toLong(),seeds=number("seeders")?.takeIf {it<=Int.MAX_VALUE}?.toInt(),
+                categories=releaseCategories((fields["categories"] ?: fields["category"])?.let(item::opt)))
         }.distinctBy {it.hash ?: it.id}
     }
 }

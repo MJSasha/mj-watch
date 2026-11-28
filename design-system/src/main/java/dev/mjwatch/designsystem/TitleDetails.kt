@@ -120,7 +120,7 @@ private fun DetailContent(
         }.maxByOrNull { it.updatedAt }
     }
     val bookmarked = entries.any { it.id == id && it.bookmarked }
-    val choose: () -> Unit = { if (release == null) model.findReleases() else model.page("releases") }
+    val choose: () -> Unit = { if (release == null || metadata?.kind == "movie") model.findReleases() else model.page("releases") }
     val primaryFocus = remember { FocusRequester() }
     val tabFocus = remember { FocusRequester() }
     var focusTab by remember(id) { mutableStateOf(false) }
@@ -386,16 +386,17 @@ private fun DetailTabs(labels:List<String>,current:String,focus:FocusRequester,t
 private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: Dp, header: @Composable () -> Unit) {
     val m=s.selectedMetadata
     val release=s.selected
-    var result by remember(m?.id,s.config) { mutableStateOf<SearchResult?>(null) }
-    var retry by remember(m?.id,s.config) { mutableIntStateOf(0) }
-    var page by remember(m?.id,s.config) { mutableIntStateOf(0) }
-    var loadingNext by remember(m?.id,s.config) { mutableStateOf(false) }
-    var error by remember(m?.id,s.config) { mutableStateOf("") }
-    LaunchedEffect(m?.id,s.config,retry,page) {
+    val searchKey=m?.let { listOf(it.id,it.title,it.year,it.originalTitle) } to s.config
+    var result by remember(searchKey) { mutableStateOf<SearchResult?>(null) }
+    var retry by remember(searchKey) { mutableIntStateOf(0) }
+    var page by remember(searchKey) { mutableIntStateOf(0) }
+    var loadingNext by remember(searchKey) { mutableStateOf(false) }
+    var error by remember(searchKey) { mutableStateOf("") }
+    LaunchedEffect(searchKey,retry,page) {
         if (m==null) return@LaunchedEffect
         error=""
         try {
-            val next=model.titleReleases(m.title,refresh=retry>0&&page==0,loadMore=page>0)
+            val next=model.titleReleases(m,refresh=retry>0&&page==0,loadMore=page>0)
             result=next
             error=next.failures.joinToString("\n")
         } catch (cancel:CancellationException) { throw cancel }
@@ -403,7 +404,11 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
         finally { loadingNext=false }
     }
     val cursor=result?.nextCursor
-    val candidates=result?.releases?.ifEmpty {listOfNotNull(release)}
+    val more=result?.more==true && (m?.kind=="movie" && !s.config.demo || cursor!=null)
+    val fallback=release?.takeIf {
+        m==null || m.kind!="movie" || s.config.demo || MovieReleaseMatcher(m).match(it)!=null
+    }
+    val candidates=result?.releases?.ifEmpty {listOfNotNull(fallback)}
         ?: if(m==null) listOfNotNull(release) else null
     val retrySearch = {
         result=null
@@ -412,7 +417,7 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
         retry++
         Unit
     }
-    val showStatus = cursor==null && (candidates.isNullOrEmpty() || error.isNotEmpty())
+    val showStatus = !more && (candidates.isNullOrEmpty() || error.isNotEmpty())
     val status: (@Composable () -> Unit)? = if (!showStatus) null else {{
         Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
             when {
@@ -424,11 +429,11 @@ private fun DetailSources(s: WatchState, model: WatchModel, tv: Boolean, inset: 
             if(error.isNotEmpty()) Action("Настроить источник",tv,secondary=true) {model.page("settings-search")}
         }
     }}
-    val shown = s.copy(results=candidates.orEmpty(),busy=false,more=cursor!=null,nextReleaseCursor=cursor,
+    val shown = s.copy(results=candidates.orEmpty(),busy=false,more=more,nextReleaseCursor=cursor,
         loadingMore=loadingNext,failures=listOf(error).filter {it.isNotEmpty()},releaseSeason=null,releaseEpisode=null,
         episodeDownload=false,episodeTargetId=null)
     ReleasesScreen(shown,model,tv,header,inset,status,onLoadMore={
-        if(cursor!=null&&!loadingNext) {
+        if(more&&!loadingNext) {
             loadingNext=true
             page++
         }

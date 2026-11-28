@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -118,6 +119,7 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identit
 			Title, Indexer, Protocol, MagnetURL, DownloadURL, InfoHash, Guid string
 			Size                                                             int64
 			Seeders                                                          *int
+			Categories                                                       json.RawMessage
 		}
 		parameters := url.Values{"query": {query}, "type": {"search"}, "limit": {"500"}}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -134,7 +136,7 @@ func (s *Server) releaseSearch(w http.ResponseWriter, r *http.Request, i identit
 				continue
 			}
 			item := prowlarrRelease{Title: row.Title, Tracker: row.Indexer, Hash: row.InfoHash,
-				Size: row.Size, Seeds: row.Seeders}
+				Size: row.Size, Seeds: row.Seeders, Categories: row.Categories}
 			if row.Guid != "" {
 				identity := sha256.Sum256([]byte(row.Indexer + "\x00" + row.Guid))
 				item.ID = base64.RawURLEncoding.EncodeToString(identity[:])
@@ -212,14 +214,15 @@ func writeProwlarrPage(w http.ResponseWriter, rows []prowlarrRelease, id string,
 }
 
 type prowlarrRelease struct {
-	ID       string `json:"id,omitempty"`
-	Title    string `json:"title"`
-	Tracker  string `json:"tracker"`
-	Hash     string `json:"hash,omitempty"`
-	Magnet   string `json:"magnet,omitempty"`
-	Download string `json:"download,omitempty"`
-	Size     int64  `json:"size"`
-	Seeds    *int   `json:"seeds,omitempty"`
+	ID         string          `json:"id,omitempty"`
+	Title      string          `json:"title"`
+	Tracker    string          `json:"tracker"`
+	Hash       string          `json:"hash,omitempty"`
+	Magnet     string          `json:"magnet,omitempty"`
+	Download   string          `json:"download,omitempty"`
+	Size       int64           `json:"size"`
+	Seeds      *int            `json:"seeds,omitempty"`
+	Categories json.RawMessage `json:"categories,omitempty"`
 }
 
 func prowlarrProxyPath(raw string) string {

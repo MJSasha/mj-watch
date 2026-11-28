@@ -96,14 +96,22 @@ object TorznabXml {
     }
     fun releases(xml: String, source: String): List<Release> {
         val p=parser(xml); val result=mutableListOf<Release>(); var item: MutableMap<String,String>?=null
+        val categories=mutableSetOf<Int>()
         p.nextTag();require(p.name in setOf("rss","error")) {"Ожидался Torznab RSS. Проверьте API поиска"}
         while(p.eventType!=XmlPullParser.END_DOCUMENT) {
             if(p.eventType==XmlPullParser.START_TAG) when(p.name) {
                 "error" -> error("Torznab: проверьте API-ключ или доступ к источнику")
-                "item" -> { require(result.size<500) { "Слишком много результатов" }; item=mutableMapOf() }
-                "attr" -> { val name=p.getAttributeValue(null,"name"); val value=p.getAttributeValue(null,"value"); if(name!=null&&value!=null) item?.set(name.lowercase(), value) }
+                "item" -> { require(result.size<500) { "Слишком много результатов" }; item=mutableMapOf();categories.clear() }
+                "attr" -> { val name=p.getAttributeValue(null,"name"); val value=p.getAttributeValue(null,"value"); if(name!=null&&value!=null) {
+                    if(name.equals("category",true)) value.toIntOrNull()?.let(categories::add)
+                    else item?.set(name.lowercase(),value)
+                }}
                 "enclosure" -> p.getAttributeValue(null,"url")?.let { item?.set("download",it) }
-                "title","guid","link","size","pubDate","category" -> if(item!=null) { val name=p.name; item[name]=p.nextText() }
+                "title","guid","link","size","pubDate","category" -> if(item!=null) {
+                    val name=p.name; val value=p.nextText()
+                    if(name=="category") value.toIntOrNull()?.let(categories::add)
+                    item[name]=value
+                }
             }
             if(p.eventType==XmlPullParser.END_TAG && p.name=="item") {
                 val m=item!!; val title=m["title"] ?: "Без названия"; val hash=m["infohash"]?.lowercase()
@@ -111,7 +119,7 @@ object TorznabXml {
                 val identity=m["guid"] ?: hash ?: link ?: m.toSortedMap().toString()
                 val id=java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") {"%02x".format(it)}
                 result+=Release("$source:$id", title,source,hash,
-                    m["magneturl"] ?: link?.takeIf { it.startsWith("magnet:?") },link?.takeUnless { it.startsWith("magnet:") }, m["size"]?.toLongOrNull(),m["seeders"]?.toIntOrNull())
+                    m["magneturl"] ?: link?.takeIf { it.startsWith("magnet:?") },link?.takeUnless { it.startsWith("magnet:") }, m["size"]?.toLongOrNull(),m["seeders"]?.toIntOrNull(),categories.toSet())
                 item=null
             }; p.next()
         }; return result.distinctBy { it.hash ?: it.id }

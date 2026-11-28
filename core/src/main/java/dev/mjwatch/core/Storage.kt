@@ -142,11 +142,13 @@ fun decodeConfig(raw: String): Config {
 }
 
 fun Release.json(): String = JSONObject().put("id", id).put("title", title).put("source", source)
-    .put("hash", hash).put("magnet", magnet).put("download", download).put("size", size).put("seeds", seeds).toString()
+    .put("hash", hash).put("magnet", magnet).put("download", download).put("size", size).put("seeds", seeds)
+    .put("categories", categories.takeIf {it.isNotEmpty()}?.let {org.json.JSONArray(it)}).toString()
 fun releaseFromJson(raw: String): Release { val j=JSONObject(raw)
     fun optional(k: String) = if (j.isNull(k)) null else j.optString(k).takeIf { it.isNotBlank() }
     return Release(j.getString("id"), j.getString("title"), j.getString("source"), optional("hash"), optional("magnet"), optional("download"),
-        if(j.isNull("size")) null else j.getLong("size"), if(j.isNull("seeds")) null else j.getInt("seeds"))
+        if(j.isNull("size")) null else j.getLong("size"), if(j.isNull("seeds")) null else j.getInt("seeds"),
+        releaseCategories(j.opt("categories")))
 }
 /** All sensitive URLs (including tracker passkeys) stay encrypted; backups are disabled in both APKs. */
 class SecretStore(context: Context) {

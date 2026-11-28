@@ -308,7 +308,7 @@ class ManagedMetadata(private val api:ManagedApi):MetadataAdapter {
   val genres=v.optJSONArray("genre_ids") ?: JSONArray()
   Metadata("tmdb:$kind:${v.getInt("id")}",v.optString(if(kind=="movie") "title" else "name"),image("poster_path"),v.optString("overview"),kind,v.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),image("backdrop_path"),(0 until genres.length()).any {genres.optInt(it)==16},v.optString("original_language"),v.primaryGenre(),v.runtimeMinutes(),tmdbLogo(v) { file ->
       file.takeIf {it.startsWith("/api/v1/metadata/images/")}?.let {api.base.child(it.removePrefix("/")).toString()}
-  })
+  }, v.optString(if(kind=="movie") "original_title" else "original_name").takeIf {it.isNotBlank()})
  }}}
  override suspend fun cast(id: String): List<CastMember> =
   parseCast(api.authorized("metadata/${titleCreditsPath(id)}")) { path ->
