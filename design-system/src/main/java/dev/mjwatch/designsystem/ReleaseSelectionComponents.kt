@@ -31,7 +31,8 @@ import kotlinx.coroutines.delay
     selectedFocus:FocusRequester?=null,onSelect:(String)->Unit,
 ) {
     SettingsCard(title,icon,tv) {
-        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(if(tv)8.dp else 0.dp)) {
+        FlowRow(modifier=if(tv) Modifier.focusGroup() else Modifier,
+            horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(if(tv)8.dp else 0.dp)) {
             options.forEach {label->key(label) {
                 val active=selected==label
                 val modifier=if(tv&&active&&selectedFocus!=null) Modifier.focusRequester(selectedFocus) else Modifier
@@ -52,13 +53,14 @@ import kotlinx.coroutines.delay
         var focusPlaced by remember {mutableStateOf(false)}
         LaunchedEffect(windowFocused) {
             if(tv&&windowFocused&&!focusPlaced) {
-                withFrameNanos {}
                 focusPlaced=initialFocus.requestFocus()
             }
         }
         Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.background,modifier=Modifier.testTag("release-filters-dialog").padding(16.dp).widthIn(max=if(tv)840.dp else 640.dp).fillMaxWidth().heightIn(max=(configuration.screenHeightDp*.92f).dp)) {
             Column {
-                Row(Modifier.fillMaxWidth().padding(start=20.dp,end=8.dp,top=8.dp,bottom=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth()
+                    .then(if(windowFocused&&focusPlaced) Modifier.testTag("release-filters-ready") else Modifier)
+                    .padding(start=20.dp,end=8.dp,top=8.dp,bottom=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Tune,null,tint=MaterialTheme.colorScheme.primary)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Text("Фильтры раздач",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,modifier=Modifier.semantics{heading()})

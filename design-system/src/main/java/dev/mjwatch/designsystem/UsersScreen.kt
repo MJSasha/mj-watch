@@ -116,7 +116,7 @@ private data class UserConfirmation(val title:String,val body:String,val button:
                 UserHeading("Новый пользователь")
                 SettingsCard("Аккаунт пользователя",Icons.Outlined.PersonAdd,tv){
                 Text("У каждого пользователя будут отдельные история и избранное.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(current.draftName,controller::editName,label={Text("Имя пользователя")},singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation())
+                NavigationTextField(current.draftName,controller::editName,label={Text("Имя пользователя")},singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation())
                 OperationMessage(message,current.error)
                 Action(if(current.busy)"Создаём пользователя…" else "Создать и получить приглашение",tv,enabled=validManagedUserName(current.draftName)&&!current.busy){controller.create {if(model.state.value.page=="server-user-create")model.page("server-user-invite")}}
                 }

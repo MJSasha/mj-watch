@@ -80,14 +80,18 @@ class NovemberIssuesUiTest {
         capture("history-episode")
         val card=compose.onNodeWithText("Тест истории")
         card.performSemanticsAction(SemanticsActions.RequestFocus)
-        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand("input keyevent --longpress 23")
+        val remote=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        remote.executeShellCommand("input keyevent --longpress 23")
         compose.waitForIdle()
         Assert.assertEquals("history",m.state.value.page)
         Assert.assertEquals(1,m.scopedLibrary.value.entries.size)
         compose.onNodeWithText("Удалить").assertIsDisplayed()
         capture("history-actions")
-        compose.waitUntil(5000) {runCatching {compose.onNodeWithText("Удалить").assertIsFocused();true}.getOrDefault(false)}
-        compose.onNodeWithText("Удалить").assertIsFocused().performKeyInput {pressKey(Key.DirectionCenter)}
+        val cancel=compose.onNodeWithText("Отмена")
+        compose.waitUntil(5000) {runCatching {cancel.assertIsFocused();true}.getOrDefault(false)}
+        remote.pressDPadRight()
+        val delete=compose.onNodeWithText("Удалить").assertIsFocused()
+        delete.performKeyInput {pressKey(Key.DirectionCenter)}
         compose.waitUntil(10000) {m.scopedLibrary.value.entries.isEmpty()}
         compose.onNodeWithText("Пока пусто").assertExists()
     }

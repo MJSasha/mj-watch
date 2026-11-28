@@ -184,6 +184,15 @@ internal fun titleKind(m:Metadata) = if(m.kind=="tv") "Сериал" else "Фи�
     return this.onFocusChanged {focused=it.isFocused}.border(if(focused) 2.dp else 0.dp,if(focused) MaterialTheme.colorScheme.primary else Color.Transparent,RoundedCornerShape(8.dp)).background(if(focused) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,RoundedCornerShape(8.dp)).selectable(selected=selected,role=Role.Tab,onClick=onClick).padding(horizontal=4.dp)
 }
 
+/** A dialog gets its own window. Place focus after that window becomes active. */
+@Composable internal fun Modifier.tvDialogStartFocus(tv:Boolean):Modifier {
+    if(!tv) return this
+    val requester=remember {FocusRequester()}
+    val windowFocused=androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused) {if(windowFocused) {withFrameNanos {};requester.requestFocus()}}
+    return focusRequester(requester)
+}
+
 @Composable internal fun Modifier.tvFocusRing(tv:Boolean,shape:Shape=RoundedCornerShape(24.dp)):Modifier {
     if(!tv) return this
     var focused by remember {mutableStateOf(false)}
@@ -266,21 +275,26 @@ internal val LocalTvNavigation=staticCompositionLocalOf {false}
 internal val LocalTvShelfFocus=staticCompositionLocalOf<((FocusRequester,Boolean)->Unit)?> {null}
 
 /** With no keyboard shown, arrows navigate the screen instead of moving the text cursor. */
-@Composable internal fun Modifier.tvFieldNavigation(horizontal:Boolean=false):Modifier {
+@Composable internal fun Modifier.tvFieldNavigation(trailing:FocusRequester?=null):Modifier {
     if(!LocalTvNavigation.current) return this
     val focus=LocalFocusManager.current
     val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
-    return onPreviewKeyEvent {event->
+    var editingFieldFocused by remember {mutableStateOf(false)}
+    return onFocusChanged {editingFieldFocused=it.isFocused}.onPreviewKeyEvent {event->
         val direction=when(event.key) {
             Key.DirectionUp -> FocusDirection.Up
             Key.DirectionDown -> FocusDirection.Down
-            Key.DirectionLeft -> FocusDirection.Left.takeIf {horizontal}
-            Key.DirectionRight -> FocusDirection.Right.takeIf {horizontal}
+            Key.DirectionLeft -> FocusDirection.Left
+            Key.DirectionRight -> FocusDirection.Right
             else -> null
         }
         if(imeVisible||direction==null) false
         else {
-            if(event.type==KeyEventType.KeyDown) focus.moveFocus(direction)
+            if(event.type==KeyEventType.KeyDown) {
+                if(direction!=FocusDirection.Right||!editingFieldFocused||trailing?.requestFocus(direction)!=true) {
+                    focus.moveFocus(direction)
+                }
+            }
             true
         }
     }

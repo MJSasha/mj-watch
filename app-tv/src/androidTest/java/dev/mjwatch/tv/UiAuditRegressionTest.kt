@@ -116,9 +116,10 @@ class UiAuditRegressionTest {
         val realHandlers=context.packageManager.queryIntentActivities(intent,0).filter {it.activityInfo.packageName!="com.android.tv.frameworkpackagestubs"}
         Assume.assumeTrue("This case needs a TV without a document provider",realHandlers.isEmpty())
         compose.runOnIdle {model.page("connections")}
-        compose.waitUntil(5000) {androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true}
-        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        compose.waitUntil(5000) {androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())!=true}
+        compose.onNodeWithText("Адрес Jackett / JacRed").assertIsFocused()
+        compose.runOnIdle {
+            Assert.assertFalse(compose.activity.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime())==true)
+        }
         compose.onNodeWithTag("settings-list").performScrollToNode(hasText("Импорт конфигурации"))
         compose.onNodeWithText("Импорт конфигурации").performSemanticsAction(SemanticsActions.OnClick) {it()}
         compose.onNodeWithText("На устройстве нет приложения для выбора файлов. Подключитесь по QR или введите настройки вручную.").assertIsDisplayed()

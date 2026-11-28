@@ -74,7 +74,7 @@ import androidx.compose.ui.unit.dp
   else->"${java.text.NumberFormat.getIntegerInstance(java.util.Locale.forLanguageTag("ru")).format(number)} $unit".trim()
  }
  Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-  OutlinedTextField(value,onChange,label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,
+  NavigationTextField(value,onChange,label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,
    keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),shape=MaterialTheme.shapes.small,
    modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},
    supportingText={if(invalid)Text("Введите число от $min до $max")})

@@ -89,7 +89,7 @@ import org.json.JSONObject
  val exceeds=value!=null&&value>advice.maximum&&(if(name=="CacheSize")value>old||torrCacheUsesDisk(snapshot.getJSONObject("settings"))!=torrCacheUsesDisk(draft) else value!=old)
  val invalid=value==null||value<field.optLong("min")||value>field.optLong("max")||exceeds
  Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-  OutlinedTextField(text,{text=it;onChange(it.toLongOrNull()?.let{n->runCatching{Math.multiplyExact(n,scale)}.getOrNull()} ?: it)},label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,
+  NavigationTextField(text,{text=it;onChange(it.toLongOrNull()?.let{n->runCatching{Math.multiplyExact(n,scale)}.getOrNull()} ?: it)},label={Text(label)},suffix={Text(unit)},singleLine=true,isError=invalid,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,
    supportingText={if(invalid)Text(if(exceeds)"Выше доступного бюджета сервера" else "Введите число от ${field.optLong("min")/scale} до ${advice.maximum/scale}")})
   Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)){
    advice.recommended?.let{n->AdviceTile("Рекомендуем",if(n==0L&&name.endsWith("RateLimit"))"Без лимита" else "${n/scale} $unit".trim(),tv,Modifier.weight(1f).fillMaxHeight()){onChange(n)}}
