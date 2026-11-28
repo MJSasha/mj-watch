@@ -72,7 +72,7 @@ class TmdbAdapter(private val token:String,private val client:OkHttpClient):Meta
                         image("poster_path"),item.optString("overview"),kind,item.optString(if(kind=="movie") "release_date" else "first_air_date").take(4).toIntOrNull(),
                         image("backdrop_path"),(0 until (genreIds?.length() ?: 0)).any {genreIds!!.optInt(it)==16},item.optString("original_language").takeIf {it.isNotBlank()}, item.primaryGenre(), item.runtimeMinutes(), tmdbLogo(item) { file ->
                             file.takeIf(tmdbLogoPath::matches)?.let {"https://image.tmdb.org/t/p/w500"+it.replace(".svg",".png")}
-                        })
+                        }, item.optString(if(kind=="movie") "original_title" else "original_name").takeIf {it.isNotBlank()})
                 }
             }
     }
@@ -94,10 +94,10 @@ internal fun JSONObject.primaryGenre(): String? = optJSONArray("genres")?.optJSO
 internal fun JSONObject.runtimeMinutes(): Int? = optInt("runtime").takeIf { it > 0 }
 
 fun Metadata.json():String=JSONObject().put("id",id).put("title",title).put("poster",poster).put("overview",overview)
-    .put("kind",kind).put("year",year).put("backdrop",backdrop).put("animation",animation).put("originalLanguage",originalLanguage).put("genre",genre).put("runtimeMinutes",runtimeMinutes).put("logo",logo).toString()
+    .put("kind",kind).put("year",year).put("backdrop",backdrop).put("animation",animation).put("originalLanguage",originalLanguage).put("genre",genre).put("runtimeMinutes",runtimeMinutes).put("logo",logo).put("originalTitle",originalTitle).toString()
 fun metadataFromJson(raw:String):Metadata {val j=JSONObject(raw)
     fun optional(key:String)=if(j.isNull(key)) null else j.optString(key)
-    return Metadata(j.getString("id"),j.getString("title"),optional("poster"),optional("overview"),j.optString("kind","movie"),if(j.isNull("year")) null else j.getInt("year"),optional("backdrop"),j.optBoolean("animation"),optional("originalLanguage"),optional("genre"),j.optInt("runtimeMinutes").takeIf { it > 0 },optional("logo"))
+    return Metadata(j.getString("id"),j.getString("title"),optional("poster"),optional("overview"),j.optString("kind","movie"),if(j.isNull("year")) null else j.getInt("year"),optional("backdrop"),j.optBoolean("animation"),optional("originalLanguage"),optional("genre"),j.optInt("runtimeMinutes").takeIf { it > 0 },optional("logo"),optional("originalTitle"))
 }
 data class MetadataResult(val items:List<Metadata>,val cached:Boolean)
 class MetadataRepository(private val adapter:MetadataAdapter,private val dao:WatchDao,private val namespace:String="") {

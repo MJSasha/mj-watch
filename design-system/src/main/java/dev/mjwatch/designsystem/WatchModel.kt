@@ -183,7 +183,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             if (current.config != config || selected?.id != item.id || current.page != "detail") current
             else current.copy(selectedMetadata = selected.copy(
                 genre = detail.genre ?: selected.genre, runtimeMinutes = detail.runtimeMinutes ?: selected.runtimeMinutes,
-                logo = detail.logo ?: selected.logo
+                logo = detail.logo ?: selected.logo, originalTitle = detail.originalTitle ?: selected.originalTitle
             ))
         }
     }
@@ -204,13 +204,21 @@ class WatchModel(app:Application): AndroidViewModel(app) {
             update {it.copy(catalogBusy=false,catalogMessage=safeError(e)+". Поиск раздач и просмотр работают независимо.")}
         }}
     }
+    private var movieSearch:MovieReleaseSearch?=null
+
+    private fun releasePage(repository:ReleaseRepository):suspend (String,Int,String?) -> SearchResult = { query,page,cursor ->
+        if(page==0) repository.search(query)
+        else if(repository is TorznabRepository) repository.searchPage(query,page,cursor=cursor)
+        else SearchResult(emptyList())
+    }
+
     fun search(query:String) = search(query,releasesOnly=false)
-    private fun search(query:String,releasesOnly:Boolean) {
+    private fun search(query:String,releasesOnly:Boolean,movie:Metadata?=null) {
         if(!releasesOnly) tvSearchOrigin=null
         val term=query.trim()
         val activeQuery=term.length>=2||releasesOnly&&term.isNotEmpty()
         val config=state.value.config
-        cancel(); pageIndex=0; val token=generation
+        cancel(); pageIndex=0; movieSearch=null; val token=generation
         update { it.copy(selectedMetadata=it.selectedMetadata?.takeIf {m->m.title==term},metadata=emptyList(),results=emptyList(),more=false,nextReleaseCursor=null,episodeTargetId=null,episodeDownload=false,releaseSeason=null,releaseEpisode=null,query=query,focusKey=if(isTv&&!releasesOnly) "" else it.focusKey,page=if(releasesOnly) "releases" else "search",busy=activeQuery,message="",failures=emptyList()) }
         if(!activeQuery) return
         work=viewModelScope.launch {
@@ -221,8 +229,20 @@ class WatchModel(app:Application): AndroidViewModel(app) {
                     catch(e:CancellationException) {throw e} catch(_:Exception) {if(token==generation) update {it.copy(metadata=emptyList())}}
                 }
                 try {
-                    val result=withContext(Dispatchers.IO) {repositories(config).first.search(term)}
-                    if(token==generation) update {it.copy(results=result.releases,more=result.more,nextReleaseCursor=result.nextCursor,failures=result.failures,message=if(result.releases.isEmpty()) if(result.failures.isEmpty()) "Ничего не найдено. Измените запрос." else "Не удалось выполнить поиск" else "")}
+                    val repository=repositories(config).first
+                    val contextual=movie?.takeUnless {config.demo}?.let {
+                        withContext(Dispatchers.IO) {MovieReleaseSearch.start(it,releasePage(repository))}
+                    }
+                    val result=contextual?.result ?: withContext(Dispatchers.IO) {repository.search(term)}
+                    if(token==generation) {
+                        movieSearch=contextual
+                        update {it.copy(results=result.releases,more=result.more,nextReleaseCursor=result.nextCursor,failures=result.failures,message=when {
+                            result.releases.isNotEmpty() -> ""
+                            result.failures.isNotEmpty() -> "Не удалось выполнить поиск"
+                            contextual!=null -> "Раздачи фильма не найдены."
+                            else -> "Ничего не найдено. Измените запрос."
+                        })}
+                    }
                 } catch(e:CancellationException) {throw e} catch(e:Exception) {if(token==generation) update {it.copy(message=safeError(e))}}
             }
             if(token==generation) update {it.copy(busy=false)}
@@ -231,10 +251,20 @@ class WatchModel(app:Application): AndroidViewModel(app) {
 
     fun loadMore(retryFailed:Boolean=false) {
         val previous=state.value
+        val contextual=movieSearch.takeIf {previous.page=="releases" && previous.selectedMetadata?.kind=="movie"}
         if(previous.busy || previous.loadingMore || (!retryFailed && !previous.more)) return
         cancel();val token=generation;update {it.copy(loadingMore=true)}
         work=viewModelScope.launch {
             try {
+                if(contextual!=null) {
+                    val next=withContext(Dispatchers.IO) {contextual.loadMore(releasePage(repositories(previous.config).first))}
+                    if(token==generation) {
+                        movieSearch=next
+                        update {it.copy(results=next.result.releases,more=next.result.more,nextReleaseCursor=next.result.nextCursor,
+                            failures=next.result.failures,loadingMore=false)}
+                    }
+                    return@launch
+                }
                 val page=if(retryFailed) pageIndex else pageIndex+1
                 val result=withContext(Dispatchers.IO) {
                     val repository=repositories(previous.config).first as? TorznabRepository ?: return@withContext null
@@ -257,6 +287,7 @@ class WatchModel(app:Application): AndroidViewModel(app) {
         if(current.page=="releases") {
             if(current.releaseSeason!=null && current.selectedMetadata!=null) findSeriesReleases(current.selectedMetadata,current.releaseSeason,
                 current.releaseEpisode,current.episodeTargetId,current.episodeDownload)
+            else if(current.selectedMetadata?.kind=="movie") findReleases()
             else search(current.query,releasesOnly=true)
         } else search(current.query)
     }
@@ -269,30 +300,49 @@ class WatchModel(app:Application): AndroidViewModel(app) {
     }
     private data class DetailOrigin(val release:Release?, val focusKey:String)
     private var detailOrigin:DetailOrigin?=null
-    private var detailSourceKey:Pair<Config,String>?=null
+    private data class DetailSourceKey(val config:Config,val id:String,val title:String,val year:Int?,val originalTitle:String?)
+    private var detailSourceKey:DetailSourceKey?=null
     private var detailSourceResult:SearchResult?=null
+    private var detailMovieSearch:MovieReleaseSearch?=null
 
     /** Look up sources for the detail tab without replacing the user's search results. */
-    suspend fun titleReleases(title:String,refresh:Boolean=false,loadMore:Boolean=false):SearchResult {
-        val key=state.value.config to title
+    suspend fun titleReleases(item:Metadata,refresh:Boolean=false,loadMore:Boolean=false):SearchResult {
+        val config=state.value.config
+        val key=DetailSourceKey(config,item.id,item.title,item.year,item.originalTitle)
         val previous=detailSourceResult.takeIf {detailSourceKey==key}
-        if(!refresh && !loadMore && previous!=null) return previous
-        val repository=repositories().first
+        if(!refresh && !loadMore && previous!=null &&
+            (previous.releases.isNotEmpty() || previous.failures.isEmpty() || previous.more)) return previous
+        val repository=repositories(config).first
+        if(item.kind=="movie" && !config.demo) {
+            val current=detailMovieSearch.takeIf {detailSourceKey==key}
+            val next=withContext(Dispatchers.IO) {
+                val fetch=releasePage(repository)
+                if(loadMore && current!=null) current.loadMore(fetch) else MovieReleaseSearch.start(item,fetch)
+            }
+            detailSourceKey=key
+            detailMovieSearch=next
+            detailSourceResult=next.result
+            return next.result
+        }
         return withContext(Dispatchers.IO) {
-            if(!loadMore) repository.search(title)
+            if(!loadMore) repository.search(item.title)
             else if(previous?.nextCursor!=null && repository is TorznabRepository) {
-                val next=repository.searchPage(title,page=1,cursor=previous.nextCursor)
+                val next=repository.searchPage(item.title,page=1,cursor=previous.nextCursor)
                 if(next.releases.isEmpty() && next.failures.isNotEmpty()) previous.copy(failures=next.failures)
                 else next.copy(releases=(previous.releases+next.releases).distinctBy {it.hash ?: it.id})
             } else previous ?: SearchResult(emptyList())
         }.also {result ->
             if (result.releases.isNotEmpty() || result.failures.isEmpty()) {
                 detailSourceKey=key
+                detailMovieSearch=null
                 detailSourceResult=result
             }
         }
     }
-    fun findReleases() {val item=state.value.selectedMetadata ?: return;search(item.title,releasesOnly=true)}
+    fun findReleases() {
+        val item=state.value.selectedMetadata ?: return
+        search(item.title,releasesOnly=true,movie=item.takeIf {it.kind=="movie"})
+    }
     fun findSeriesReleases(item:Metadata,season:Int,episode:Int?,targetId:String?=null,download:Boolean=false) {
         search(item.title,releasesOnly=true)
         update {it.copy(selectedMetadata=item,releaseSeason=season,releaseEpisode=episode,episodeTargetId=targetId,episodeDownload=download,resumePath=null)}

@@ -1,7 +1,8 @@
 package dev.mjwatch.core
 
 data class Release(val id: String, val title: String, val source: String, val hash: String? = null,
-    val magnet: String? = null, val download: String? = null, val size: Long? = null, val seeds: Int? = null) {
+    val magnet: String? = null, val download: String? = null, val size: Long? = null, val seeds: Int? = null,
+    val categories: Set<Int> = emptySet()) {
     val resolution: String get() = releaseResolution(title)
 }
 private val videoExtensions=setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
@@ -44,7 +45,7 @@ interface MetadataAdapter {
     suspend fun actorFilmography(personId: Long): List<Metadata> = emptyList()
 }
 data class CastMember(val id: Long, val name: String, val character: String, val profile: String?)
-data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null, val genre:String?=null, val runtimeMinutes:Int?=null, val logo:String?=null)
+data class Metadata(val id: String, val title: String, val poster: String?, val overview: String?, val kind:String="movie", val year:Int?=null, val backdrop:String?=null, val animation:Boolean=false, val originalLanguage:String?=null, val genre:String?=null, val runtimeMinutes:Int?=null, val logo:String?=null, val originalTitle:String?=null)
 object NoMetadata : MetadataAdapter { override suspend fun search(query: String) = emptyList<Metadata>() }
 object DemoReleases : ReleaseRepository {
     val items = listOf(Release("demo:orbit", "Тихая орбита • тестовое видео 720p", "Локальный fixture", seeds = 8),

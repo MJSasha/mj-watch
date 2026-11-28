@@ -15,6 +15,16 @@ internal fun prowlarrReleases(data: JSONObject): List<Release> {
             .joinToString("") { "%02x".format(it) }
         Release("prowlarr:$id", row.getString("title"), row.optString("tracker").ifBlank { "Prowlarr" },
             hash, magnet, download, row.optLong("size", -1).takeIf { it >= 0 },
-            row.optInt("seeds", -1).takeIf { it >= 0 })
+            row.optInt("seeds", -1).takeIf { it >= 0 }, releaseCategories(row.opt("categories")))
     }.distinctBy { it.hash ?: it.id }
+}
+
+internal fun releaseCategories(value: Any?): Set<Int> = when (value) {
+    is org.json.JSONArray -> (0 until value.length()).mapNotNullTo(mutableSetOf()) { index ->
+        when (val entry = value.opt(index)) {
+            is JSONObject -> entry.optString("id").toIntOrNull()
+            else -> entry?.toString()?.toIntOrNull()
+        }
+    }
+    else -> setOfNotNull(value?.toString()?.toIntOrNull())
 }

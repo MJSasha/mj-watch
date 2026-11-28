@@ -744,7 +744,7 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
 
 @Composable private fun ReleasePageAction(s:WatchState,tv:Boolean,load:()->Unit,retry:()->Unit) {
     when {
-        s.nextReleaseCursor!=null&&s.failures.isNotEmpty() -> Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        s.more&&s.failures.isNotEmpty()&&!s.loadingMore -> Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Text(s.failures.joinToString("\n"),color=MaterialTheme.colorScheme.error)
             Action("Повторить поиск",tv,secondary=true,onClick=retry)
         }
@@ -950,6 +950,7 @@ private class ReleaseOptions(
     val voices:List<String>,
     val qualities:List<String>,
     val sources:List<String>,
+    val collectionIds:Set<String>,
 )
 private data class ReleaseListFilters(val criteria:ReleaseFilter,val source:String,val seeds:String,val language:String)
 private data class VisibleReleaseList(val options:ReleaseOptions,val filters:ReleaseListFilters,val releases:List<Release>)
@@ -992,15 +993,20 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         }
         return
     }
+    val movie=s.selectedMetadata?.takeIf {it.kind=="movie"&&!s.config.demo}
     val selectedFallback=s.selected.takeIf {s.nextReleaseCursor==null}
-    val indexedOptions=backgroundValue(s.results,selectedFallback) {
-        val candidates=(s.results+listOfNotNull(selectedFallback)).distinctBy {it.id}
+    val indexedOptions=backgroundValue(s.results,selectedFallback,movie) {
+        val matcher=movie?.let(::MovieReleaseMatcher)
+        val candidates=if(selectedFallback==null || s.results.any {it.id==selectedFallback.id}) s.results
+            else if(matcher==null) s.results+selectedFallback
+            else matcher.rank(s.results+selectedFallback)
         val rows=candidates.map {
             ensureActive()
             IndexedRelease(it,it.resolution,seasonNumbers(it.title),releaseVoices(it.title),russianRelease.containsMatchIn(it.title))
         }
         ReleaseOptions(rows,rows.flatMap {it.seasons}.distinct().sorted(),rows.flatMap {it.voices}.distinct().sorted(),
-            rows.map {it.quality}.distinct().sorted(),candidates.map {it.source}.distinct())
+            rows.map {it.quality}.distinct().sorted(),candidates.map {it.source}.distinct(),
+            candidates.filter {matcher?.match(it)==MovieReleaseMatch.Collection}.mapTo(mutableSetOf()) {it.id})
     }
     val criteria=ReleaseFilter(filter,season,voice)
     val selectedSource=source
@@ -1024,8 +1030,13 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }
     val options=displayed?.options
     val filtering=displayed?.filters!=currentFilters
-    val releases=displayed?.releases.orEmpty()
-    LoadReleasePageOnScroll(releaseScroll,s.nextReleaseCursor,releases,
+    val allReleases=displayed?.releases.orEmpty()
+    val collectionIds=options?.collectionIds.orEmpty()
+    val (collections,individual)=remember(allReleases,collectionIds) {allReleases.partition {it.id in collectionIds}}
+    var collectionsExpanded by rememberSaveable(movie?.id) {mutableStateOf(false)}
+    val releases=if(collectionsExpanded) allReleases else individual
+    val pageCursor=s.nextReleaseCursor.takeUnless {movie!=null&&individual.isEmpty()}
+    LoadReleasePageOnScroll(releaseScroll,pageCursor,releases,
         !filtering&&options===indexedOptions&&!s.loadingMore&&s.failures.isEmpty(),onLoadMore)
     val seasons=options?.seasons.orEmpty()
     val voices=options?.voices.orEmpty()
@@ -1035,7 +1046,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         filter="Все";season=null;voice=null;source="Все источники";seeds="Любые сиды";language="Любой язык"
         releaseScroll.requestScrollToItem(if(detailHeader==null) 0 else 1)
     }
-    if(filters) ReleaseFiltersDialog(tv,releases.size.takeUnless {filtering},filterDialogFocus,onReset={resetFilters()},onDismiss={
+    if(filters) ReleaseFiltersDialog(tv,allReleases.size.takeUnless {filtering},filterDialogFocus,onReset={resetFilters()},onDismiss={
         restoreFilterFocus=tv
         filters=false
     }) {
@@ -1071,7 +1082,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         if(filtering) LoadingIndicator("Применяем фильтры…")
         else {
             val resourceContext=LocalContext.current
-            val countText=remember(resourceContext,releases.size) {releaseCountText(resourceContext,releases.size)}
+            val countText=remember(resourceContext,allReleases.size) {releaseCountText(resourceContext,allReleases.size)}
             Text(if(tv) "$countText · свойства указаны источником" else countText,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }}
@@ -1087,19 +1098,31 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         } else LazyColumn(Modifier.weight(1f).testTag("release-list"),state=releaseScroll,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(bottom=12.dp+if(showActions) 0.dp else navigationClearance)) {
             if(detailHeader!=null) item(key="detail-header") {detailHeader()}
             if(scrollingHeader && sourceStatus==null) item(key="release-filters-header") {Box(Modifier.padding(horizontal=detailInset)) {header()}}
-            items(releases,key={it.id}) {r->Box(Modifier.padding(horizontal=detailInset)) {
-                ReleaseCard(r,tv,focus=focusInitialRelease&&r.id==(s.selected?.id ?: releases.firstOrNull()?.id),selected=selectedId==r.id) {
+            val initialRelease=s.selected?.id?.takeIf {id -> releases.any {it.id==id}} ?: releases.firstOrNull()?.id
+            val releaseRow:@Composable (Release)->Unit = { r -> Box(Modifier.padding(horizontal=detailInset)) {
+                ReleaseCard(r,tv,focus=focusInitialRelease&&r.id==initialRelease,selected=selectedId==r.id) {
                     if(!filtering) {
                         selectedId=r.id
                         if(tv) model.playRelease(r,season,fromDetailTab=detailHeader!=null)
                     }
                 }
             }}
-            if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
-            else if(s.nextReleaseCursor!=null||s.loadingMore) item(key=releasePageFooter(s.nextReleaseCursor)) {
-                Box(Modifier.padding(horizontal=detailInset)) {ReleasePageAction(s,tv,onLoadMore,onRetrySearch)}
+            items(individual,key={it.id}) {releaseRow(it)}
+            if(collections.isNotEmpty()) item(key="release-collections") {
+                Box(Modifier.padding(horizontal=detailInset)) {
+                    Action("Коллекции · ${collections.size}",tv,secondary=true,
+                        icon=if(collectionsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore) {
+                        focusInitialRelease=false
+                        collectionsExpanded=!collectionsExpanded
+                    }
+                }
             }
-            else if(!filtering&&releases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {
+            if(collectionsExpanded) items(collections,key={it.id}) {releaseRow(it)}
+            if(sourceStatus!=null) item {Box(Modifier.padding(horizontal=detailInset)) {sourceStatus()}}
+            else if(s.more||pageCursor!=null||s.loadingMore) item(key=releasePageFooter(pageCursor)) {
+                Box(Modifier.padding(horizontal=detailInset)) {ReleasePageAction(s.copy(nextReleaseCursor=pageCursor),tv,onLoadMore,onRetrySearch)}
+            }
+            else if(!filtering&&allReleases.isEmpty()) item {Box(Modifier.padding(horizontal=detailInset)) {
                 if(options?.rows.isNullOrEmpty()&&s.message.isNotBlank()&&s.selectedMetadata!=null) {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text(s.message,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
