@@ -19,6 +19,10 @@ internal fun PlaybackException.failedMediaCodec()=generateSequence<Throwable>(th
 
 /** Exclusions last only for this file. Reads also happen on ExoPlayer's playback thread. */
 internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCodecSelector.DEFAULT):MediaCodecSelector {
+    private companion object {
+        val HEVC_RANGE_EXTENSIONS = Regex("^(?:hvc1|hev1)\\.[ABC]?4\\.")
+    }
+
     enum class Recovery { SAME_DECODER, ALTERNATE_DECODER, SOFTWARE_AAC }
     var lastRecovery: Recovery? = null
         private set
@@ -31,8 +35,12 @@ internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCode
         .setEnableDecoderFallback(true)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         .setMediaCodecSelector(this).also {factory=it}
-    fun tryCompatibility(name:String?,supported:Boolean):Boolean {
-        if(name.isNullOrBlank()||!supported||compatibilityTried||name in failed)return false
+    fun tryCompatibility(name:String?,supported:Boolean,format:Format?=null):Boolean {
+        // Media3 rejects HEVC Range Extensions at profile parsing. A runtime error identifies
+        // a decoder that already initialized, so allow one synchronous retry for this profile.
+        val hevcRangeExtensions = format?.sampleMimeType == MimeTypes.VIDEO_H265 &&
+            format.codecs?.let { HEVC_RANGE_EXTENSIONS.containsMatchIn(it) } == true
+        if(name.isNullOrBlank()||(!supported&&!hevcRangeExtensions)||compatibilityTried||name in failed)return false
         compatibilityTried=true
         return true
     }
@@ -77,7 +85,9 @@ internal class DecoderFallback(private val delegate:MediaCodecSelector=MediaCode
     private fun retryPlatformDecoder(context: Context, error: PlaybackException, format: Format): Boolean {
         val codec = error.failedMediaCodec() ?: return false
         val renderers = factory
-        if (renderers != null && tryCompatibility(codec.name, runCatching { codec.isFormatSupported(context, format) }.getOrDefault(false))) {
+        val clearFormat = format.takeIf { !codec.secure && it.drmInitData == null }
+        if (renderers != null && tryCompatibility(codec.name,
+                runCatching { codec.isFormatSupported(context, format) }.getOrDefault(false), clearFormat)) {
             renderers.forceDisableMediaCodecAsynchronousQueueing()
             lastRecovery = Recovery.SAME_DECODER
             return true

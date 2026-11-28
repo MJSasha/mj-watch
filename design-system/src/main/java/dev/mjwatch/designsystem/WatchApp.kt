@@ -1709,7 +1709,7 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
             Column(Modifier.width(tvUnit(320f)).verticalScroll(rememberScrollState()).focusProperties {
                 onEnter={if(requestedFocusDirection==FocusDirection.Left) sectionFocus.requestFocus()}
             }.focusGroup(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                ((listOf("Подключения")+if(s.config.managed)listOf("Аккаунт") else emptyList())+listOf("Воспроизведение","Оформление","О приложении")).forEach {label->
+                listOf("Подключения","Аккаунт","Воспроизведение","Оформление","О приложении").forEach {label->
                     val active=section==label
                     Action(label,true,Modifier.fillMaxWidth().then(if(active) Modifier.focusRequester(sectionFocus) else Modifier)
                         .focusProperties {right=panelFocus}
@@ -1725,49 +1725,21 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
                 "Аккаунт"->AccountLinks(s,model,true)
                 "Воспроизведение"->PlaybackPreferences(true,model)
                 "Оформление"->appearance()
-                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);DiagnosticsSettings(model.diagnostics,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
+                else->Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {Wordmark();UpdateLink(model,true);Text("TMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.")}
             }}
         }
         return
     }
     LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
         item {SettingsCard("Источники и сервер",Icons.Outlined.Hub,false){ConnectionLinks(s,model,false)}}
-        if(s.config.managed)item {SettingsCard("Аккаунт",Icons.Outlined.PersonOutline,false){AccountLinks(s,model,false)}}
+        item {SettingsCard("Аккаунт",Icons.Outlined.PersonOutline,false){AccountLinks(s,model,false)}}
         item {PlaybackPreferences(false,model)}
         item {SettingsCard("Оформление",Icons.Outlined.Contrast,false) {
             SettingsActionRow(Icons.Outlined.Palette,"Тема",when(s.config.theme) {"dark"->"Тёмная";"light"->"Светлая";else->"Как в системе"},false) {themes=true}
         }}
         item {SettingsCard("Приложение",Icons.Outlined.Info,false){UpdateLink(model,false)}}
-        item {DiagnosticsSettings(model.diagnostics,false)}
         item {Action("Выйти из приложения",false,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.ExitToApp,onClick=onExit)}
         item {Text("MJWatch ${model.updates.versionName}\nTMDB: необязательный каталог. This product uses the TMDB API but is not endorsed or certified by TMDB.\nТестовое видео: Android Emulator virtual scene, Apache 2.0",color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=12.sp)}
-    }
-}
-@Composable private fun DiagnosticsSettings(diagnostics:Diagnostics,tv:Boolean) {
-    val enabled by diagnostics.enabled.collectAsStateWithLifecycle()
-    val scope=rememberCoroutineScope()
-    var message by remember {mutableStateOf("")}
-    SettingsCard("Диагностика",Icons.Outlined.Info,tv) {
-        SettingsToggle("Собирать диагностику",enabled,{value ->
-            scope.launch {
-                try {
-                    diagnostics.setEnabled(value)
-                    message=""
-                } catch (_:java.io.IOException) {
-                    message="Не удалось сохранить настройку"
-                }
-            }
-        },description="До 20 событий на этом устройстве. Отправка только вручную.")
-        Action("Скопировать диагностику",tv,secondary=true) {
-            scope.launch {
-                try {
-                    message=if(diagnostics.copyReport()) "Диагностика скопирована" else "Журнал пока пуст"
-                } catch (_:java.io.IOException) {
-                    message="Не удалось прочитать журнал"
-                }
-            }
-        }
-        if(message.isNotEmpty()) SettingsHint(message)
     }
 }
 @Composable private fun PlaybackPreferences(tv:Boolean,model:WatchModel) {
