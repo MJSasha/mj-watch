@@ -1731,8 +1731,7 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
         }
         return
     }
-    LazyColumn(Modifier.padding(bottom=LocalFloatingNavigationClearance.current).testTag("settings-list"),
-        verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(vertical=16.dp)) {
+    LazyColumn(Modifier.testTag("settings-list"),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(top=16.dp,bottom=16.dp+LocalFloatingNavigationClearance.current)) {
         item {SettingsCard("Источники и сервер",Icons.Outlined.Hub,false){ConnectionLinks(s,model,false)}}
         if(s.config.managed)item {SettingsCard("Аккаунт",Icons.Outlined.PersonOutline,false){AccountLinks(s,model,false)}}
         item {PlaybackPreferences(false,model)}
