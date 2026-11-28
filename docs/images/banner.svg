@@ -2,32 +2,40 @@
   <title id="title">MJWatch — Кино на любом экране</title>
   <defs>
     <linearGradient id="bg" x2="100%" y2="100%"><stop stop-color="#222431"/><stop offset="1" stop-color="#10121B"/></linearGradient>
-    <radialGradient id="halo"><stop stop-color="#00CEE2" stop-opacity=".25"/><stop offset="1" stop-color="#00CEE2" stop-opacity="0"/></radialGradient>
-    <linearGradient id="front" x2="80%" y2="100%"><stop stop-color="#50F099"/><stop offset="1" stop-color="#00CEE2"/></linearGradient>
-    <linearGradient id="warm" x2="85%" y2="95%"><stop stop-color="#00CEE2"/><stop offset="1" stop-color="#00CEE2" stop-opacity=".56"/></linearGradient>
-    <clipPath id="frame"><rect width="1200" height="360" rx="26"/></clipPath>
+    <linearGradient id="accent" x2="100%" y2="0%"><stop stop-color="#50F099"/><stop offset="1" stop-color="#00CEE2"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#00CEE2" stop-opacity=".26"/><stop offset="1" stop-color="#00CEE2" stop-opacity="0"/></radialGradient>
+    <clipPath id="frame"><rect width="1200" height="360" rx="28"/></clipPath>
+    <linearGradient id="icon-0" gradientUnits="userSpaceOnUse" x1="45" y1="23" x2="82" y2="58"><stop stop-color="#0BD6A3"/><stop offset="1" stop-color="#09BDEA"/></linearGradient>
+<linearGradient id="icon-1" gradientUnits="userSpaceOnUse" x1="30" y1="26" x2="66" y2="68"><stop stop-color="#69F796"/><stop offset="1" stop-color="#00CDA7"/></linearGradient>
   </defs>
   <style>
     @media (prefers-reduced-motion: no-preference) {
-      .light { animation: breathe 2.8s ease-out both; }
-      @keyframes breathe { 0% { opacity: .55; transform: translateX(-65px); } 65% { opacity: 1; } 100% { opacity: .9; transform: translateX(0); } }
+      .halo { animation: reveal 2.4s ease-out both; }
+      @keyframes reveal {
+        0% { opacity: .5; transform: translateX(-54px); }
+        70% { opacity: 1; }
+        100% { opacity: .92; transform: translateX(0); }
+      }
     }
   </style>
   <g clip-path="url(#frame)">
     <rect width="1200" height="360" fill="url(#bg)"/>
-    <ellipse class="light" cx="980" cy="173" rx="395" ry="220" fill="url(#halo)"/>
-    <g fill="none" stroke="#50F099" opacity=".17" transform="rotate(-24 966 180)">
-      <ellipse cx="966" cy="180" rx="251" ry="100"/><ellipse cx="966" cy="180" rx="290" ry="128"/>
+    <ellipse class="halo" cx="987" cy="178" rx="380" ry="230" fill="url(#halo)"/>
+    <g fill="none" stroke="url(#accent)" opacity=".23" transform="rotate(-24 972 181)">
+      <ellipse cx="972" cy="181" rx="205" ry="81"/><ellipse cx="972" cy="181" rx="239" ry="108"/>
     </g>
-    <path d="M72 287H719" stroke="#fff" stroke-opacity=".14"/>
-    <path d="M72 287h82" stroke="url(#front)" stroke-width="3" stroke-linecap="round"/>
     <g font-family="system-ui, Arial, sans-serif">
-      <text x="72" y="86" fill="#50F099" font-size="27" font-weight="700" letter-spacing="1">MJWatch</text>
-      <text x="69" y="178" fill="#F5F2F6" font-size="53" font-weight="750">Кино на любом экране</text>
-      <text x="72" y="233" fill="#C7C4D0" font-size="25">Телефон · Планшет · Android TV</text>
+      <text x="70" y="86" fill="#50F099" font-size="26" font-weight="700" letter-spacing="1">MJWatch</text>
+      <text x="68" y="177" fill="#F5F2F6" font-size="52" font-weight="750">Кино на любом экране</text>
+      <text x="71" y="231" fill="#C7C4D0" font-size="25">Телефон · Планшет · Android TV</text>
     </g>
-    <g transform="translate(832 57)"><path fill="url(#warm)" d="M109 33q-19-11-19 13v151q0 23 21 11l123-71q23-13 0-26Z"/>
-    <path fill="url(#front)" d="M65 53q-21-12-21 13v146q0 23 21 11l121-70q23-13 0-26Z"/>
-    <path fill="#f6fffc" d="M103 109q-5-3-5 3v51q0 6 5 3l43-25q6-3 0-6Z"/></g>
+    <path d="M72 284h76" stroke="url(#accent)" stroke-width="3" stroke-linecap="round"/>
+    <g transform="translate(867 75) scale(1.944444444)">
+      <rect width="108" height="108" rx="26" fill="#1E222D"/>
+<g transform="translate(54 54) scale(0.88 0.88) translate(-54 -54)"><path d="M45,27 Q45,20 52,21 Q54,21 57,23 L80,38 Q90,45 80,52 L55,67 Q45,72 45,61 Z" fill="url(#icon-0)"/>
+<path d="M27,32 Q27,24 35,26 Q37,26 40,28 L67,43 Q77,49 67,56 L39,72 Q27,78 27,67 Z" fill="url(#icon-1)"/>
+<path d="M43,42 Q43,39 46,41 L57,48 Q60,50 57,52 L46,59 Q43,61 43,58 Z" fill="#FDFFFE"/>
+<path d="M46,84 L48,77 L51,81 L55,77 L54,84 M62,77 L61,81 Q60,85 57,84" fill="none" stroke="#B1BAC8" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+    </g>
   </g>
 </svg>

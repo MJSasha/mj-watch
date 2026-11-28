@@ -1,53 +1,42 @@
 # MJWatch
 
-<p align="center"><img src="docs/images/banner.svg" alt="MJWatch — Кино на любом экране" width="100%"></p>
+<p align="center"><img src="docs/images/banner.svg" width="100%" alt="MJWatch — Кино на любом экране"></p>
 
 <p align="center">
-  <a href="https://github.com/MJSasha/mj-watch/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK-50F099?style=for-the-badge&amp;logo=android&amp;logoColor=161622" alt="Скачать APK с GitHub Releases"></a>
+  <a href="https://github.com/MJSasha/mj-watch/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK-50F099?style=for-the-badge&amp;logo=android&amp;logoColor=161622" alt="Скачать APK"></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?label=%D0%92%D0%B5%D1%80%D1%81%D0%B8%D1%8F&amp;color=303344" alt="Версия последнего стабильного релиза">
-  <img src="https://img.shields.io/badge/Android_8.0%2B-00CEE2" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/Android_8.0%2B-393B48" alt="Android 8.0+">
   <a href="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml"><img src="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml/badge.svg" alt="Статус проверок"></a>
 </p>
 
 <p align="center">
-  <a href="#как-выглядит">Скриншоты</a> · <a href="#установка-и-обновления">Установка</a> · <a href="#сборка">Сборка</a> · <a href="design/README.md">Документация</a>
+  <a href="#возможности">Возможности</a> · <a href="#как-выглядит">Скриншоты</a> · <a href="#установка-и-обновления">Установка</a> · <a href="design/README.md">Документация</a>
 </p>
 
 Фильмы и сериалы на телефоне, планшете и Android TV.
 
-| Главное | Что можно делать |
-| --- | --- |
-| **Поиск раздач** | Jackett или JacRed, фильтры качества и языка. |
-| **Просмотр** | TorrServer и Media3, выбор дорожек и субтитров. |
-| **Продолжение** | История и синхронизация позиции в managed-режиме. |
+## Возможности
+
+- Поиск через Jackett, JacRed или Prowlarr.
+- Плеер Media3 с выбором дорожек и субтитров.
+- История и синхронизация позиции в managed-режиме.
 
 ## Как выглядит
 
-<img src="docs/images/tv-home.png" width="100%" alt="Кинематографичная главная MJWatch на Android TV">
-
 <table>
-<tr><td width="33%" align="center"><b>Находите своё кино</b><br>Каталог TMDB, постеры и описания.<br>Поиск Jackett / JacRed и фильтры раздач.</td><td width="33%" align="center"><b>Смотрите на любом экране</b><br>Телефон, две панели планшета, TV с пультом.<br>Кнопка «Смотреть» предлагает экран, когда подключён TV.</td><td width="33%" align="center"><b>Возвращайтесь к просмотру</b><br>Избранное, сезоны и серии.<br>История и позиции между устройствами в managed.</td></tr>
+  <tr>
+    <th width="50%" align="center">Главная на телефоне</th>
+    <th width="50%" align="center">Главная на Android TV</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/images/showcase-1.png"><img src="docs/images/showcase-1.png" width="100%" alt="MJWatch: Главная на телефоне"></a></td>
+    <td align="center"><a href="docs/images/showcase-2.png"><img src="docs/images/showcase-2.png" width="100%" alt="MJWatch: Главная на Android TV"></a></td>
+  </tr>
 </table>
 
-## Ваше кино — всегда под рукой
-
-<table>
-<tr><td align="center" width="34%"><img src="docs/images/mobile-home.png" width="300" alt="Главная MJWatch на телефоне"></td><td width="66%"><img src="docs/images/tablet.png" width="100%" alt="Поиск и карточка фильма рядом на планшете"><br><b>Больше экран — больше пространства для кино.</b><br>Адаптивные экраны, тёмная и светлая темы, управление касанием или пультом.</td></tr>
-</table>
-
-## Плеер, в котором главное — видео
-
-<img src="docs/images/player.jpg" width="100%" alt="Плеер MJWatch с тонкой шкалой времени и компактными элементами управления">
-
-**MKV и MP4 · аудиодорожки и субтитры · двойной тап ±10 секунд · PiP · серии и автопереход.**
-Контейнеры воспроизводит Media3; доступность конкретных кодеков зависит от Android-устройства.
-
-<table>
-<tr><td align="center"><b>Ваши подключения</b><br><img src="docs/images/settings.png" width="280" alt="Настройки подключений MJWatch"></td><td align="center"><b>Обновления внутри приложения</b><br><img src="docs/images/updates.png" width="280" alt="Проверка и установка обновлений MJWatch"></td></tr>
-</table>
+<sub>Снимки MJWatch 0.12.55 с демонстрационным каталогом и локальным видео.</sub>
 
 ## Установка и обновления
 
@@ -85,4 +74,4 @@ Kotlin · Jetpack Compose · Media3 · Go / SQLite. JDK 21, Android SDK 36, Buil
 
 ## Семейство MJ
 
-<a href="https://github.com/MJSasha/mj-reader">MJReader</a> · <a href="https://github.com/MJSasha/mj-anime">MJAnime</a>
+[MJReader](https://github.com/MJSasha/mj-reader) · [MJAnime](https://github.com/MJSasha/mj-anime)
