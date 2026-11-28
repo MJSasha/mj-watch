@@ -1,12 +1,30 @@
-<p align="center"><img src="docs/images/banner.svg" alt="MJWatch — ваше кино на любом экране" width="100%"></p>
+# MJWatch
+
+<p align="center"><img src="docs/images/banner.svg" alt="MJWatch — Кино на любом экране" width="100%"></p>
 
 <p align="center">
-  <a href="https://github.com/MJSasha/mj-watch/releases/latest"><img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?style=for-the-badge&label=Скачать%20APK&color=c7ff68" alt="Скачать MJWatch"></a>
-  <img src="https://img.shields.io/badge/Android-8.0%2B-c7ff68?style=for-the-badge&logo=android" alt="Android 8.0+">
-  <a href="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml"><img src="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml/badge.svg" alt="Android checks"></a>
+  <a href="https://github.com/MJSasha/mj-watch/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK-50F099?style=for-the-badge&amp;logo=android&amp;logoColor=161622" alt="Скачать APK с GitHub Releases"></a>
 </p>
 
-<p align="center"><b>Найдите фильм. Выберите экран. Продолжите с того же места.</b><br>Фильмы и сериалы на телефоне, планшете и Android TV — в одном приложении.</p>
+<p align="center">
+  <img src="https://img.shields.io/github/v/release/MJSasha/mj-watch?label=%D0%92%D0%B5%D1%80%D1%81%D0%B8%D1%8F&amp;color=303344" alt="Версия последнего стабильного релиза">
+  <img src="https://img.shields.io/badge/Android_8.0%2B-00CEE2" alt="Android 8.0+">
+  <a href="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml"><img src="https://github.com/MJSasha/mj-watch/actions/workflows/android.yml/badge.svg" alt="Статус проверок"></a>
+</p>
+
+<p align="center">
+  <a href="#как-выглядит">Скриншоты</a> · <a href="#установка-и-обновления">Установка</a> · <a href="#сборка">Сборка</a> · <a href="design/README.md">Документация</a>
+</p>
+
+Фильмы и сериалы на телефоне, планшете и Android TV.
+
+| Главное | Что можно делать |
+| --- | --- |
+| **Поиск раздач** | Jackett или JacRed, фильтры качества и языка. |
+| **Просмотр** | TorrServer и Media3, выбор дорожек и субтитров. |
+| **Продолжение** | История и синхронизация позиции в managed-режиме. |
+
+## Как выглядит
 
 <img src="docs/images/tv-home.png" width="100%" alt="Кинематографичная главная MJWatch на Android TV">
 
@@ -31,7 +49,7 @@
 <tr><td align="center"><b>Ваши подключения</b><br><img src="docs/images/settings.png" width="280" alt="Настройки подключений MJWatch"></td><td align="center"><b>Обновления внутри приложения</b><br><img src="docs/images/updates.png" width="280" alt="Проверка и установка обновлений MJWatch"></td></tr>
 </table>
 
-## Начните смотреть
+## Установка и обновления
 
 1. [Скачайте последнюю версию](https://github.com/MJSasha/mj-watch/releases/latest): **MJWatch-mobile.apk** для телефона/планшета, **MJWatch-tv.apk** для телевизора.
 2. Подключите **Jackett / JacRed + TorrServer** или войдите на свой **managed-сервер MJWatch**.
@@ -44,6 +62,8 @@ Managed добавляет аккаунты, приглашения, истор�
 Обновляйте APK **поверх установленного приложения**, чтобы сохранить данные. Встроенный updater проверяет размер, SHA-256, пакет и подпись; установку подтверждает Android. [Как выпускаются обновления](docs/UPDATES.md).
 
 <sub>На изображениях — работающий интерфейс с демонстрационным каталогом и локальным видео. Приложение использует настроенные вами источники и не предоставляет фильмы.</sub>
+
+## Сборка
 
 <details>
 <summary><b>Для разработчиков</b></summary>
@@ -59,6 +79,10 @@ Kotlin · Jetpack Compose · Media3 · Go / SQLite. JDK 21, Android SDK 36, Buil
 
 Программное декодирование аудио использует FFmpeg (LGPL 2.1 или новее) через расширение AndroidX Media3. Уведомления о лицензиях входят в APK. [Исходники и инструкции по пересборке и замене библиотеки](https://repo.maven.apache.org/maven2/io/put/media3-ffmpeg-decoder/1.11.1+1/media3-ffmpeg-decoder-1.11.1+1-ffmpeg-source.tar.xz) · [Репозиторий сборки и уведомления](https://github.com/putdotio/media3-ffmpeg-decoder/tree/v1.11.1%2B1).
 
-Из семьи [MJAnime](https://github.com/MJSasha/mj-anime) и [MJReader](https://github.com/MJSasha/mj-reader). Ключи и пароли шифруются Android Keystore; внешней аналитики нет.
+Ключи и пароли шифруются Android Keystore; внешней аналитики нет.
 
 </details>
+
+## Семейство MJ
+
+<a href="https://github.com/MJSasha/mj-reader">MJReader</a> · <a href="https://github.com/MJSasha/mj-anime">MJAnime</a>
