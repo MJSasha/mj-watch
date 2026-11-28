@@ -20,12 +20,16 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.mjwatch.core.*
@@ -41,21 +45,38 @@ private enum class JacredSection(val title: String) {
  Overview("Обзор"), Jobs("Задачи"), Settings("Настройки")
 }
 
-@Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,registerBack:((()->Unit)?)->Unit) {
+@Composable internal fun ServerScreen(s:WatchState,model:WatchModel,tv:Boolean,onBack:()->Unit=model::back,registerBack:((()->Unit)?)->Unit) {
  val keyboard=LocalSoftwareKeyboardController.current
  val controller=model.managed;val account by controller.state.collectAsState();val managed=if(account.scope==s.config.scope)account else account.copy(me=null,data=null,pending=emptyList());val page=s.page
  var confirm by remember {mutableStateOf<Pair<String,()->Unit>?>(null)}
  var mobileQr by rememberSaveable(page) {mutableStateOf(false)}
+ var tvLegacy by rememberSaveable(page) {mutableStateOf(false)}
+ var manualLogin by rememberSaveable(page) {mutableStateOf(false)}
+ val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
  val screenScroll=rememberScrollState()
  LaunchedEffect(page,mobileQr) {screenScroll.scrollTo(0)}
  var dirty by remember(page) {mutableStateOf(false)}
- var leave by remember {mutableStateOf(false)}
+ var leave by remember {mutableStateOf<(() -> Unit)?>(null)}
  var searchAdmin by remember(page,s.config.scope,s.config.managedUrl) {mutableStateOf<Boolean?>(null)}
  val adminTarget=searchAdmin?.takeIf {managed.me?.optString("role")=="admin"}
- val back:()->Unit={if(adminTarget!=null)searchAdmin=null else if(page=="managed-login"&&mobileQr)mobileQr=false else if(dirty)leave=true else model.back()}
- DisposableEffect(page,dirty,adminTarget!=null){registerBack(back);onDispose{registerBack(null)}}
- BackHandler(enabled=adminTarget==null) {back()}
- if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Несохранённые изменения")},text={Text("Примените изменения на странице или отбросьте их.")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;dirty=false;model.back()}){Text("Отбросить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false}){Text("Продолжить редактирование")}})
+ fun leaveOr(action:()->Unit) {if(dirty)leave=action else action()}
+ val back:()->Unit={
+  if(adminTarget!=null)searchAdmin=null else leaveOr {
+   when {
+    page=="managed-login"&&mobileQr -> mobileQr=false
+    page=="managed-login"&&tv&&manualLogin -> manualLogin=false
+    page=="managed-login"&&tv&&tvLegacy -> tvLegacy=false
+    else -> onBack()
+   }
+  }
+ }
+ val latestBack by rememberUpdatedState(back)
+ DisposableEffect(page){registerBack {latestBack()};onDispose{registerBack(null)}}
+ BackHandler(enabled=adminTarget==null&&(!tv||!imeVisible)) {back()}
+ leave?.let {discard->AlertDialog(onDismissRequest={leave=null},title={Text("Несохранённые изменения")},
+  text={Text("Примените изменения на странице или отбросьте их.")},
+  confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=null;dirty=false;discard()}){Text("Отбросить")}},
+  dismissButton={TextButton(modifier=Modifier.tvDialogStartFocus(tv).tvFocusRing(tv),onClick={leave=null}){Text("Продолжить редактирование")}})}
  confirm?.let {(text,action)->AlertDialog(onDismissRequest={confirm=null},title={Text("Подтвердите действие")},text={Text(text)},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null;action()}){Text("Подтвердить")}},dismissButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={confirm=null}){Text("Отмена")}})}
  LaunchedEffect(page,s.config.scope,managed.me){if(page=="managed-login"&&s.config.historyEnabled&&managed.me?.optString("userId")==s.config.userId){controller.cancelPairing();model.page("home")}}
  val load=when(page){"server-overview"->"admin/status";"server-users"->"admin/users";"server-tmdb"->"admin/tmdb";"server-jacred"->JACRED_OVERVIEW;"server-history"->"admin/backups";"server-retention"->"admin/settings";"server-maintenance","server-update"->"admin/status";"managed-account"->"devices";else->null}
@@ -80,12 +101,12 @@ private enum class JacredSection(val title: String) {
     Action("Удалить прежнюю локальную историю",tv,secondary=true){confirm="Будут удалены прежние открытия и позиции. Избранное сохранится." to {controller.direct(true);model.page("settings-server")}}
    }
    "managed-login"->{
-    var manualLogin by rememberSaveable {mutableStateOf(false)}
-    var tvLegacy by rememberSaveable {mutableStateOf(false)}
-    var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
-    if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){tvLegacy=false;manualLogin=false}
+    if(tv&&(tvLegacy||manualLogin))Action("Подключиться по QR",true,secondary=true){
+     leaveOr {tvLegacy=false;manualLogin=false}
+    }
     if(!tv&&mobileQr) TvQrScreen(model,tv=false){mobileQr=false}
     else if(tv&&!manualLogin) {if(tvLegacy)TvPairingScreen(s,model){manualLogin=true} else TvQrScreen(model){tvLegacy=true}} else {
+    var url by rememberSaveable {mutableStateOf(s.config.managedUrl)};var name by rememberSaveable {mutableStateOf("")};var password by remember {mutableStateOf("")};var invite by remember {mutableStateOf("")};var ca by remember {mutableStateOf("")};var advanced by remember {mutableStateOf(false)}
     DisposableEffect(Unit){onDispose{controller.cancelPairing()}}
     val loginContext=LocalContext.current
     var importOpen by remember {mutableStateOf(false)};var packet by remember {mutableStateOf("")};var importError by remember {mutableStateOf("")}
@@ -360,7 +381,7 @@ private enum class JacredSection(val title: String) {
  }
  }
  Box(Modifier.fillMaxSize()) {
- BoxWithConstraints(if(adminTarget==null) Modifier.fillMaxSize() else Modifier.fillMaxSize().alpha(0f).clearAndSetSemantics { hideFromAccessibility() }) {
+ BoxWithConstraints(if(adminTarget==null||tv) Modifier.fillMaxSize() else Modifier.fillMaxSize().alpha(0f).clearAndSetSemantics { hideFromAccessibility() }) {
   if((tv||maxWidth>=840.dp)&&page.startsWith("server-")&&page!="server-install") Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
    Column(Modifier.width(if(tv)240.dp else 260.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     listOf("Обзор" to "server-overview","Ресурсы" to "server-resources","Пользователи" to "server-users","TorrServer" to "server-torr","Поиск раздач" to "server-jacred","TMDB и каталог" to "server-tmdb","История и копии" to "server-history","Обслуживание" to "server-maintenance").filter {it.second=="server-overview"||managed.me?.optString("role")=="admin"}.forEach {(label,destination)->Action(label,tv,Modifier.fillMaxWidth(),secondary=page!=destination){if(dirty)confirm="Отбросить несохранённые изменения?" to {dirty=false;model.page(destination)} else model.page(destination)}}
@@ -371,9 +392,12 @@ private enum class JacredSection(val title: String) {
  if(adminTarget!=null) {
   val config=s.config
   val admin=remember(config,model.secrets){ManagedSearchAdmin(ManagedApi(config,model.secrets))}
-  SearchAdminScreen(tv,if(adminTarget)"Prowlarr" else "JacRed",onClose={keyboard?.hide();searchAdmin=null}) { opened ->
-   admin.open(adminTarget,opened)
+  val close={keyboard?.hide();searchAdmin=null}
+  val screen:@Composable ()->Unit={
+   SearchAdminScreen(tv,if(adminTarget)"Prowlarr" else "JacRed",onClose=close) { opened ->admin.open(adminTarget,opened)}
   }
+  if(tv) Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false),content=screen)
+  else screen()
  }
  }
 }
@@ -396,11 +420,22 @@ private enum class JacredSection(val title: String) {
 
 @Composable internal fun SelectionContainerCompat(text:String){androidx.compose.foundation.text.selection.SelectionContainer {Text(text)}}
 @Composable internal fun ServerField(value:String,onChange:(String)->Unit,label:String,singleLine:Boolean=true){
- OutlinedTextField(value,onChange,label={Text(label)},singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
+ NavigationTextField(value,onChange,label={Text(label)},singleLine=singleLine,maxLines=if(singleLine)1 else 6,modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small)
 }
-@Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String){
+@Composable internal fun ServerSecret(value:String,onChange:(String)->Unit,label:String,modifier:Modifier=Modifier.semantics{contentDescription=label}){
  var visible by remember{mutableStateOf(false)}
- OutlinedTextField(value,onChange,label={Text(label)},singleLine=true,keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible)VisualTransformation.None else PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().tvFieldNavigation().semantics{contentDescription=label},shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
+ val tv=LocalTvNavigation.current
+ val field=remember {FocusRequester()}
+ val toggle=remember {FocusRequester()}
+ Box(if(tv) Modifier.focusProperties {onEnter={field.requestFocus()}}.focusGroup() else Modifier) {
+ NavigationTextField(value,onChange,label={Text(label)},singleLine=true,
+  keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password,autoCorrectEnabled=false),
+  hideText=!visible,
+  modifier=modifier.fillMaxWidth().focusRequester(field).tvFieldNavigation(toggle),shape=MaterialTheme.shapes.small,
+  trailingIcon={IconButton(modifier=Modifier.focusRequester(toggle)
+   .then(if(tv) Modifier.focusProperties {left=field} else Modifier).tvFocusRing(tv),
+   onClick={visible=!visible}){Icon(if(visible)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible)"Скрыть пароль" else "Показать пароль")}})
+ }
 }
 @Composable private fun ServerToggle(label:String,value:Boolean,onChange:(Boolean)->Unit){SettingsToggle(label,value,onChange)}
 

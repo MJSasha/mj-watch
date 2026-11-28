@@ -61,7 +61,7 @@ import org.json.JSONObject
     val valid=validDeviceName(name)
     AlertDialog(onDismissRequest={if(!busy)onDismiss()},title={Text("Переименовать устройство")},text={
         Column(Modifier.imePadding().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value=name,onValueChange={name=it;message=""},enabled=!busy,label={Text("Название")},singleLine=true,isError=!valid||message.isNotBlank(),supportingText={Text(message.ifBlank {"${name.trim().codePointCount(0,name.trim().length)} / 32"})},modifier=Modifier.fillMaxWidth().tvFieldNavigation().testTag("device-name"))
+            NavigationTextField(value=name,onValueChange={name=it;message=""},enabled=!busy,label={Text("Название")},singleLine=true,isError=!valid||message.isNotBlank(),supportingText={Text(message.ifBlank {"${name.trim().codePointCount(0,name.trim().length)} / 32"})},modifier=Modifier.fillMaxWidth().tvFieldNavigation().testTag("device-name"))
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     },confirmButton={TextButton(enabled=valid&&!busy,modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={

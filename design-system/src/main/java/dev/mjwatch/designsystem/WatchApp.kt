@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -189,6 +188,11 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             val searchFieldFocus=remember {FocusRequester()}
             val settingsSectionFocus=remember {FocusRequester()}
             val screenFocus=remember {FocusRequester()}
+            val backFocus=remember {FocusRequester()}
+            val windowFocused=LocalWindowInfo.current.isWindowFocused
+            var screenFocused by remember {mutableStateOf(false)}
+            var backFocused by remember {mutableStateOf(false)}
+            var bodyWasFocused by remember(screenKey) {mutableStateOf(false)}
             var railFocused by remember {mutableStateOf(false)}
             var pendingRailPage by remember {mutableStateOf<String?>(null)}
             var railArrowHeld by remember {mutableStateOf(false)}
@@ -200,6 +204,26 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                 else -> state.originPage
             }
             val railDestination=pendingRailPage ?: displayedRailDestination
+            fun enterContent(destination:String):Boolean = when(destination) {
+                "search" -> searchFieldFocus
+                "settings" -> settingsSectionFocus
+                else -> screenFocus
+            }.requestFocus(FocusDirection.Right)
+            fun openRailContent(destination:String) {
+                pendingRailPage=null
+                if(page==destination) enterContent(destination)
+                else {
+                    enterRailPage=destination
+                    model.page(destination)
+                }
+            }
+            LaunchedEffect(windowFocused) {
+                if(!windowFocused) {
+                    pendingRailPage=null
+                    enterRailPage=null
+                    railArrowHeld=false
+                }
+            }
             LaunchedEffect(railFocused,pendingRailPage,railArrowHeld) {
                 val destination=pendingRailPage ?: return@LaunchedEffect
                 if(!railFocused) {
@@ -216,22 +240,33 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
             LaunchedEffect(page,enterRailPage) {
                 if(enterRailPage==page) {
                     withFrameNanos {}
-                    when(page) {
-                        "search" -> searchFieldFocus
-                        "settings" -> settingsSectionFocus
-                        else -> screenFocus
-                    }.requestFocus()
+                    enterContent(page)
                     enterRailPage=null
                 }
             }
             BackHandler(state.page=="home"&&!imeVisible) {exitRequested=true}
             BackHandler(state.page!="home"&&!imeVisible) {model.back()}
-            BackHandler(tv&&top&&state.configured&&!imeVisible&&(!railFocused&&page=="home"||railFocused&&railDestination!="home")) {
+            BackHandler(tv&&top&&state.configured&&!imeVisible&&(!railFocused||railDestination!="home"||page!="home")) {
+                val returnTo=if(railFocused) "home" else page
                 pendingRailPage=null
                 enterRailPage=null
                 railArrowHeld=false
-                if(page!="home") model.page("home")
-                railFocus.getValue("home").requestFocus()
+                if(returnTo!=page) model.page(returnTo)
+                railFocus.getValue(returnTo).requestFocus()
+            }
+            LaunchedEffect(screenKey) {
+                if(tv&&!top) {
+                    withFrameNanos {}
+                    if(!screenFocused&&!screenFocus.requestFocus()) backFocus.requestFocus()
+                }
+            }
+            LaunchedEffect(screenKey,screenFocused,backFocused,railFocused,windowFocused,imeVisible) {
+                if(tv&&windowFocused&&!imeVisible&&bodyWasFocused&&!screenFocused&&!backFocused&&!railFocused) {
+                    withFrameNanos {}
+                    if(!screenFocused&&!backFocused&&!railFocused&&!screenFocus.requestFocus()) {
+                        if(top) railFocus[page]?.requestFocus() else backFocus.requestFocus()
+                    }
+                }
             }
             val detailNav=page=="detail" && width<600 && LocalConfiguration.current.screenHeightDp>=480
             val showBottomBar=!rail&&(top||detailNav)&&state.configured
@@ -305,12 +340,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                             val selected=railDestination==d.id
                             val remoteNavigation=if(tv) Modifier.size(width=tvUnit(96f),height=72.dp)
                                 .focusRequester(railFocus.getValue(d.id))
-                                .focusProperties {
-                                    if(page==d.id) when(d.id) {
-                                        "search" -> right=searchFieldFocus
-                                        "settings" -> right=settingsSectionFocus
-                                    }
-                                }
+                                .focusProperties {canFocus=top}
                                 .onPreviewKeyEvent {event->
                                     val step=when(event.key) {
                                         Key.DirectionUp -> -1
@@ -327,10 +357,10 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                             }
                                             true
                                         }
-                                        event.key==Key.DirectionRight&&event.type==KeyEventType.KeyDown&&pendingRailPage==d.id -> {
-                                            pendingRailPage=null
-                                            enterRailPage=d.id
-                                            model.page(d.id)
+                                        event.key==Key.DirectionRight -> {
+                                            if(event.type==KeyEventType.KeyDown&&event.nativeKeyEvent.repeatCount==0) {
+                                                openRailContent(d.id)
+                                            }
                                             true
                                         }
                                         else -> false
@@ -338,8 +368,8 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 }
                             else Modifier.size(48.dp)
                             RailButton(tv,d.icon,d.title,selected,Modifier.padding(vertical=6.dp).then(remoteNavigation)) {
-                                pendingRailPage=null
-                                if(!tv||page!=d.id) model.page(d.id)
+                                if(tv&&top) openRailContent(d.id)
+                                else if(!tv) model.page(d.id)
                             }
                         }
                     }
@@ -347,7 +377,9 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         .then(if(tv) Modifier else Modifier.softEntrance(screenKey))) {
                         if(!(tv&&(cinematic||page=="search"))&&page!="detail"&&!(tv&&page=="settings"&&!state.configured)) {
                             Row(Modifier.fillMaxWidth().heightIn(min=if(tv) 76.dp else 64.dp).padding(horizontal=if(tv) tvUnit(40f) else 20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier.tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
+                                if(!top) IconButton(onClick={editorBack?.invoke() ?: model.back()},modifier=Modifier
+                                    .then(if(tv) Modifier.focusRequester(backFocus).onFocusChanged {backFocused=it.isFocused} else Modifier)
+                                    .tvFocusRing(tv).background(colors.surface,RoundedCornerShape(24.dp))) {Icon(Icons.Outlined.ArrowBack,"Назад")}
                                 val title=when(page) {"search"->"Поиск";"library"->"Моё";"history"->"История";"settings"->if(state.configured) "Настройки" else "Подключения";"connections"->"Подключения";"settings-search"->if(state.config.managed) "Поиск раздач" else "Jackett / JacRed";"settings-server"->"TorrServer";"settings-catalog"->"Каталог";"settings-updates"->"Обновление MJWatch";"files"->"Выберите файл";"preparing"->"Подготовка";"releases"->"Выберите раздачу";else->""}
                                 if(page=="home") Box(Modifier.weight(1f)) {Wordmark()} else Text(title,fontSize=if(tv) 30.sp else 24.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 if(page=="home") HomeServerButton(state,model,tv)
@@ -356,11 +388,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         }
                         val inset=if(tv) tvUnit(40f) else 20.dp
                         val edge=page in setOf("home","detail")||page=="releases"&&!tv||page=="settings"&&!state.configured&&!tv
-                        LaunchedEffect(page,tv) {
-                            if(tv&&page in setOf("connection-choice","managed-login","connections","settings-search","settings-server","settings-catalog")) {withFrameNanos {};screenFocus.requestFocus()}
-                        }
                         Box(
-                            Modifier.weight(1f).fillMaxWidth().focusRequester(screenFocus).focusGroup()
+                            Modifier.weight(1f).fillMaxWidth()
+                                .then(if(tv) Modifier.testTag("tv-screen-content").focusRequester(screenFocus).onFocusChanged {
+                                    screenFocused=it.hasFocus
+                                    if(it.hasFocus) bodyWasFocused=true
+                                }.focusGroup() else Modifier)
                                 .then(if(edge) Modifier else Modifier.padding(horizontal=inset))
                                 .then(if(releaseSheet) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier),
                         ) {
@@ -372,10 +405,12 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                                 when(page) {
                                     "invitation-register"->InvitationScreen(model,tv)
                                     "home"->HomeScreen(state,currentLibrary,model,tv,!railFocused)
-                                    "settings"->if(state.configured) SettingsOverview(state,model,tv,settingsSectionFocus,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,registerBack={editorBack=it})
+                                    "settings"->if(state.configured) SettingsOverview(state,model,tv,settingsSectionFocus,onExit={exitRequested=true}) else ServerScreen(state.copy(page="connection-choice"),model,tv,onBack={if(tv) exitRequested=true else model.back()},registerBack={editorBack=it})
                                     "managed-account","managed-devices","managed-pairing"->AccountScreen(state,model,tv,scanQr)
                                     "server-users","server-user","server-user-create","server-user-invite","server-user-devices"->UsersScreen(state,model,tv)
-                                    "connection-choice","managed-login","server-overview","server-resources","server-tmdb","server-history","server-retention","server-torr","server-jacred","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,registerBack={editorBack=it})
+                                    "connection-choice","managed-login","server-overview","server-resources","server-tmdb","server-history","server-retention","server-torr","server-jacred","server-install","server-maintenance","server-update","server-migration"->ServerScreen(state,model,tv,onBack={
+                                        if(tv&&!state.configured&&page=="connection-choice") exitRequested=true else model.back()
+                                    },registerBack={editorBack=it})
                                     "connections"->SettingsScreen(state,model,tv,registerBack={editorBack=it})
                                     "settings-search"->SettingsScreen(state,model,tv,showIntro=false,section="search",registerBack={editorBack=it})
                                     "settings-server"->if(state.config.managed) ServerScreen(state.copy(page="server-overview"),model,tv,registerBack={editorBack=it}) else SettingsScreen(state,model,tv,showIntro=false,section="server",registerBack={editorBack=it})
@@ -453,7 +488,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
 }
 @Composable private fun ReleaseCard(release:Release,tv:Boolean,focus:Boolean=false,selected:Boolean=false,onLongClick:(()->Unit)?=null,onClick:()->Unit) {
     val requester=remember {FocusRequester()}
-    LaunchedEffect(focus) {if(tv&&focus) {delay(100);requester.requestFocus()}}
+    LaunchedEffect(focus) {if(tv&&focus) {withFrameNanos {};requester.requestFocus()}}
     NativeCard(tv,Modifier.fillMaxWidth().focusRequester(requester),selected,onLongClick,onClick) {
         Column(Modifier.fillMaxWidth().padding(if(tv) 18.dp else 16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text(release.title,fontSize=if(tv) 17.sp else 16.sp,lineHeight=22.sp,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -480,6 +515,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
     var featured by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     var lastCard by rememberSaveable(s.catalogSection) {mutableStateOf<String?>(null)}
     val restoreCard=remember(s.catalogSection) {lastCard.takeIf {allowAutoFocus}}
+    val restoreDemoCard=remember(s.catalogSection) {s.focusKey.takeIf {allowAutoFocus}}
     val hero=s.catalog.firstOrNull {it.id==featured} ?: entries.firstOrNull {it.metadata?.id==featured}?.metadata ?: s.catalog.firstOrNull()
     val continuing=remember(library) {entries.filter {it.canContinue(library?.unfinishedReleaseIds.orEmpty())}}
     val inset=tvUnit(40f)
@@ -547,7 +583,7 @@ private val destinations=listOf(Destination("home","Главная",Icons.Filled
                         }
                         "demo"->{
                             Box(Modifier.padding(horizontal=inset)) {SectionTitle("Тестовые раздачи")}
-                            TvCarousel(inset) {items(DemoReleases.items,key={it.id}) {r->Box(Modifier.width(tvUnit(360f))) {ReleaseCard(r,true,s.focusKey==r.id) {model.open(r)}}}}
+                            TvCarousel(inset) {items(DemoReleases.items,key={it.id}) {r->Box(Modifier.width(tvUnit(360f))) {ReleaseCard(r,true,restoreDemoCard==r.id) {model.open(r)}}}}
                         }
                         "status"->Box(Modifier.padding(horizontal=inset)) {
                             when {
@@ -725,6 +761,8 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
 ) {
     val keyboard=LocalSoftwareKeyboardController.current
     val resultsFocus=remember {FocusRequester()}
+    val clearFocus=remember {FocusRequester()}
+    val voiceFocus=remember {FocusRequester()}
     val imeVisible=WindowInsets.ime.getBottom(LocalDensity.current)>0
     var fieldFocused by remember {mutableStateOf(false)}
     var submitQuery by remember {mutableStateOf<String?>(null)}
@@ -756,10 +794,10 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     val posterColumns=if(tv) 4 else (maxWidth/180.dp).toInt().coerceIn(2,6)
     val posterRows=remember(s.metadata,posterColumns) {s.metadata.chunked(posterColumns)}
     Column(Modifier.fillMaxSize().padding(top=if(tv) 24.dp else 0.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    OutlinedTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(onClick={model.search("")}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
-        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide();if(tv) submitQuery=s.query}),
-        modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp).tvFieldNavigation(horizontal=true)
-            .focusRequester(fieldFocus).onFocusChanged {fieldFocused=it.isFocused}.testTag("search-field"),shape=RoundedCornerShape(28.dp))
+    NavigationTextField(value=s.query,onValueChange=model::search,label={Text("Название фильма или раздачи")},leadingIcon={Icon(Icons.Outlined.Search,null)},trailingIcon={Row {if(s.query.isNotEmpty()) IconButton(modifier=Modifier.focusRequester(clearFocus).then(if(tv) Modifier.focusProperties {left=fieldFocus;right=if(voiceAvailable) voiceFocus else FocusRequester.Default} else Modifier).tvFocusRing(tv),onClick={model.search("");if(tv)fieldFocus.requestFocus()}) {Icon(Icons.Outlined.Close,"Очистить поиск")};if(voiceAvailable) IconButton(modifier=Modifier.focusRequester(voiceFocus).then(if(tv) Modifier.focusProperties {left=if(s.query.isNotEmpty()) clearFocus else fieldFocus} else Modifier).tvFocusRing(tv),onClick={voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ru-RU"))}) {Icon(Icons.Outlined.Mic,"Голосовой поиск")}}},singleLine=true,
+        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),onSearch={keyboard?.hide();if(tv) submitQuery=model.state.value.query},
+        modifier=Modifier.fillMaxWidth().requiredHeightIn(min=64.dp)
+            .focusRequester(fieldFocus).tvFieldNavigation(if(s.query.isNotEmpty()) clearFocus else voiceFocus.takeIf {voiceAvailable}).onFocusChanged {fieldFocused=it.isFocused}.testTag("search-field"),shape=RoundedCornerShape(28.dp))
     Spacer(Modifier.height(4.dp))
     if(tv) {
         if(s.busy) LoadingIndicator("Поиск…")
@@ -810,7 +848,7 @@ private fun releasePageFooter(cursor:String?) = "release-page-footer/${cursor.or
     modifier:Modifier=Modifier,onClick:()->Unit
 ) {
     val requester=remember {FocusRequester()};var focused by remember {mutableStateOf(false)}
-    LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {delay(100);requester.requestFocus()}}
+    LaunchedEffect(restoreFocus) {if(tv&&restoreFocus) {withFrameNanos {};requester.requestFocus()}}
     LaunchedEffect(focused,m.id) {if(focused) {delay(180);onFocus?.invoke()}}
     NativeCard(tv,modifier.fillMaxWidth().focusRequester(requester).onFocusChanged {focused=it.hasFocus},
         onClick=onClick,outlined=!tv) {
@@ -1000,7 +1038,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         restoreFilterFocus=tv
         filters=false
     }) {
-        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,(listOf("Все",filter)+options?.qualities.orEmpty()).distinct(),
+        ReleaseFilterChoices("Качество",Icons.Outlined.HighQuality,listOf("Все")+(options?.qualities.orEmpty()+filter).filterNot {it=="Все"}.distinct().sorted(),
             filter,tv,selectedFocus=filterDialogFocus) {filter=it}
         if(seasons.isNotEmpty())ReleaseFilterChoices("Сезон",Icons.Outlined.Layers,listOf("Все сезоны")+seasons.map {"Сезон $it"},season?.let {"Сезон $it"} ?: "Все сезоны",tv){label->season=seasons.firstOrNull {"Сезон $it"==label}}
         if(voices.isNotEmpty())ReleaseFilterChoices("Озвучка",Icons.Outlined.RecordVoiceOver,listOf("Любая озвучка")+voices,voice ?: "Любая озвучка",tv,hint="Определена по названию раздачи. Точные дорожки доступны в плеере."){voice=it.takeUnless {it=="Любая озвучка"}}
@@ -1420,8 +1458,7 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     val e=item.entry
     var menu by remember {mutableStateOf(false)}
     if(menu) {
-        val confirmFocus=remember {FocusRequester()}
-        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={LaunchedEffect(Unit) {if(tv) {delay(150);confirmFocus.requestFocus()}};TextButton(modifier=Modifier.heightIn(min=48.dp).focusRequester(confirmFocus).tvFocusRing(tv),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить")}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
+        AlertDialog(onDismissRequest={menu=false},title={Text(e.title)},text={Text(if(bookmarkOnly) "Убрать из подборки?" else "Позиция просмотра будет удалена. Фильм останется доступен в каталоге.")},confirmButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvFocusRing(tv),colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error),onClick={model.remove(item.records,bookmarkOnly);menu=false}) {Icon(Icons.Outlined.DeleteOutline,null);Spacer(Modifier.width(8.dp));Text("Удалить")}},dismissButton={TextButton(modifier=Modifier.heightIn(min=48.dp).tvDialogStartFocus(tv).tvFocusRing(tv),onClick={menu=false}) {Text("Отмена")}})
     }
     val p=remember(item,progress) {item.releaseIds.mapNotNull(progress::get).maxByOrNull {it.updatedAt}}
     val config=state.config
@@ -1566,8 +1603,8 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     val dirty=!serverSearch&&(c!=s.config||listOf(key,user,password,metadataToken)!=baseline)
     val requestBack=rememberUpdatedState<()->Unit>({if(dirty) leave=true else {model.discardDraft();model.back()}})
     DisposableEffect(Unit) {registerBack?.invoke {requestBack.value()};onDispose {registerBack?.invoke(null)}}
-    BackHandler(dirty&&!editorImeVisible) {requestBack.value()}
-    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(onClick={leave=false;model.discardDraft();model.back()}) {Text("Не сохранять")};TextButton(onClick={leave=false}) {Text("Отмена")}}})
+    BackHandler((tv||dirty)&&!editorImeVisible) {requestBack.value()}
+    if(leave) AlertDialog(onDismissRequest={leave=false},title={Text("Сохранить изменения?")},text={Text("Введённые параметры ещё не применены")},confirmButton={TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;applySettings()}) {Text("Сохранить")}},dismissButton={Row {TextButton(modifier=Modifier.tvFocusRing(tv),onClick={leave=false;model.discardDraft();model.back()}) {Text("Не сохранять")};TextButton(modifier=Modifier.tvDialogStartFocus(tv).tvFocusRing(tv),onClick={leave=false}) {Text("Отмена")}}})
     val export=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result -> val uri=result.data?.data?.takeIf {result.resultCode==android.app.Activity.RESULT_OK}; if(uri!=null) context.contentResolver.openOutputStream(uri)?.use { it.write(encodeConfig(c.copy(torrServer=normalizeDirectAddress(c.torrServer)),includeAccount=false).toByteArray()) } }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result -> val uri=result.data?.data?.takeIf {result.resultCode==android.app.Activity.RESULT_OK}; if(uri!=null) try {
         val raw=context.contentResolver.openInputStream(uri)!!.use { String(it.readBytes().also { b -> require(b.size<65536) }) }; preview=decodeConfig(raw)
@@ -1597,14 +1634,14 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
                 }
             } else {
             Text("Jackett / JacRed находит раздачи для просмотра.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            NavigationTextField(c.jackett,{key="";changed(c.copy(jackett=it))},label={Text("Адрес Jackett / JacRed")},isError=urlError(c.jackett),supportingText={Text(if(urlError(c.jackett))"Введите http/https URL без логина, query и fragment" else "Например https://jac.red")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(key,{key=it;model.invalidateChecks()},"API-ключ (если требуется)")
             }
             Action("Проверить поиск",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingJackett){model.check(true,c,key,user,password)}
             OperationMessage(s.checkJackett)
         }}
         if((!setup||setupStep==2)&&(section==null||section=="server"))item {SettingsCard("Сервер видео",Icons.Outlined.Dns,tv){
-            OutlinedTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank())"Введите http/https URL без логина, query и fragment" else runCatching{"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)}"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            NavigationTextField(c.torrServer,{user="";password="";changed(c.copy(torrServer=it))},label={Text("Адрес TorrServer")},isError=runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank(),supportingText={Text(if(runCatching{endpoint(normalizeDirectAddress(c.torrServer))}.isFailure&&c.torrServer.isNotBlank())"Введите http/https URL без логина, query и fragment" else runCatching{"Итоговый адрес: ${normalizeDirectAddress(c.torrServer)}"}.getOrDefault("Введите IP или полный URL"))},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SettingsHint("Для IP без порта используется 8090. В прямом подключении открытия и позиции просмотра не сохраняются.")
             SettingsToggle("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))},description="Для сервера в вашей локальной сети")
             Action("Проверить TorrServer",tv,Modifier.fillMaxWidth(),secondary=true,icon=Icons.Outlined.Refresh,loading=s.checkingTorr){model.check(false,c,key,user,password)}
@@ -1614,11 +1651,11 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
             Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
             SettingsHint("Авто подходит для большинства серверов. Выберите протокол вручную, если автоматическая проверка не распознала источник.")
-            OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
+            NavigationTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
             SettingsToggle("Разрешить локальный HTTP",c.localHttp,{changed(c.copy(localHttp=it))},description="Для источника в вашей локальной сети")
         }}
         if(section=="server")item {SettingsDisclosure("Авторизация сервера",if(user.isNotBlank()||password.isNotBlank())"Авторизация настроена" else "Логин и пароль Basic Auth",Icons.Outlined.Lock,tv,initiallyOpen=user.isNotBlank()||password.isNotBlank()){
-            OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            NavigationTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")
             SettingsHint("Оставьте поля пустыми, если TorrServer не запрашивает логин и пароль.")
         }}
@@ -1634,8 +1671,8 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
         if(section==null)item {SettingsDisclosure("Дополнительные настройки","Протокол, авторизация, каталог и тема",Icons.Outlined.Tune,tv){
             Text("Протокол поиска",style=MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("auto" to "Авто","torznab" to "Torznab","jacred" to "JacRed JSON").forEach{(id,label)->Pill(label,c.releaseApi==id,tv){changed(c.copy(releaseApi=id))}}}
-            OutlinedTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
-            OutlinedTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
+            NavigationTextField(c.indexers,{changed(c.copy(indexers=it))},label={Text("Индексаторы (необязательно)")},supportingText={Text("Пусто — все источники")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small)
+            NavigationTextField(user,{user=it;model.invalidateChecks()},label={Text("Basic Auth: логин (необязательно)")},modifier=Modifier.fillMaxWidth().tvFieldNavigation(),singleLine=true,shape=MaterialTheme.shapes.small)
             SecretField(password,{password=it;model.invalidateChecks()},"Пароль TorrServer")
             SettingsToggle("Каталог TMDB",c.metadataProvider=="tmdb",{changed(c.copy(metadataProvider=if(it)"tmdb" else "none"))})
             if(c.metadataProvider=="tmdb")SecretField(metadataToken,{metadataToken=it},"TMDB Read Access Token")
@@ -1654,10 +1691,8 @@ private data class VisibleReleaseList(val options:ReleaseOptions,val filters:Rel
     }
     preview?.let { imported -> AlertDialog(onDismissRequest={preview=null},title={Text("Применить конфигурацию?")},text={Text("Jackett: ${imported.jackett}\nИндексаторы: ${imported.indexers}\nTorrServer: ${imported.torrServer}\nКлючи потребуется ввести заново. Сетевые запросы не выполнялись.")},confirmButton={TextButton(onClick={c=imported.copy(serverId="",userId="");key="";user="";password="";preview=null;model.invalidateChecks()}) {Text("Применить к форме")}},dismissButton={TextButton(onClick={preview=null}) {Text("Отмена")}}) }
 }
-@Composable private fun SecretField(value:String,onChange:(String)->Unit,label:String) {
-    var visible by remember { mutableStateOf(false) }
-    OutlinedTextField(value,onChange,label={Text(label)},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth().tvFieldNavigation(),shape=MaterialTheme.shapes.small,trailingIcon={IconButton(onClick={visible=!visible}) {Icon(if(visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(visible) "Скрыть пароль" else "Показать пароль")}})
-}
+@Composable private fun SecretField(value:String,onChange:(String)->Unit,label:String) =
+    ServerSecret(value,onChange,label,modifier=Modifier)
 internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 
 @Composable private fun SettingsOverview(s:WatchState,model:WatchModel,tv:Boolean,sectionFocus:FocusRequester,onExit:()->Unit) {
@@ -1775,8 +1810,8 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
 }
 @Composable private fun PreparingScreen(s:WatchState,model:WatchModel,tv:Boolean) {
     val recoveryFocus=remember {FocusRequester()}
-    val missingInput=s.message.contains("Нет magnet",ignoreCase=true)
-    LaunchedEffect(s.busy) {if(tv&&!s.busy){delay(150);recoveryFocus.requestFocus()}}
+    val canRetry=!s.busy&&!s.message.contains("Нет magnet",ignoreCase=true)&&model.canStartPlayback
+    LaunchedEffect(s.busy,canRetry) {if(tv){withFrameNanos {};recoveryFocus.requestFocus()}}
     var elapsed by remember {mutableIntStateOf(0)}
     LaunchedEffect(s.busy) {while(s.busy) {delay(1000);elapsed++}}
     val artwork:@Composable ()->Unit={Artwork(s.selectedMetadata,s.config,Modifier.fillMaxWidth().aspectRatio(if(tv) 1.4f else 2f).clip(RoundedCornerShape(20.dp)),backdrop=true,demo=s.selected?.id?.startsWith("demo:")==true)}
@@ -1794,8 +1829,8 @@ internal fun time(ms:Long):String = "%d:%02d".format(ms/60000,ms/1000%60)
             Text("Прошло $elapsed с. Подготовку можно отменить.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(!s.busy&&s.message.isNotBlank()) Text(s.message,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
-        if(!s.busy) {Icon(Icons.Outlined.CloudOff,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.error);if(!missingInput&&model.canStartPlayback)Action("Повторить",tv,Modifier.focusRequester(recoveryFocus),icon=Icons.Outlined.Refresh) {model.prepare()};Action("Подключения",tv,secondary=true,icon=Icons.Outlined.Settings) {model.page("connections")}}
-        Action(if(s.busy) "Отменить" else "К раздачам",tv,(if(tv&&missingInput) Modifier.focusRequester(recoveryFocus) else Modifier).then(if(tv) Modifier else Modifier.fillMaxWidth()),secondary=true,icon=Icons.Outlined.Close) {model.back()}
+        if(!s.busy) {Icon(Icons.Outlined.CloudOff,null,Modifier.size(48.dp),tint=MaterialTheme.colorScheme.error);if(canRetry)Action("Повторить",tv,Modifier.focusRequester(recoveryFocus),icon=Icons.Outlined.Refresh) {model.prepare()};Action("Подключения",tv,secondary=true,icon=Icons.Outlined.Settings) {model.page("connections")}}
+        Action(if(s.busy) "Отменить" else "К раздачам",tv,(if(tv&&!canRetry) Modifier.focusRequester(recoveryFocus) else Modifier).then(if(tv) Modifier else Modifier.fillMaxWidth()),secondary=true,icon=Icons.Outlined.Close) {model.back()}
     }}
     if(tv) Row(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top=24.dp),horizontalArrangement=Arrangement.spacedBy(28.dp)) {
         if(s.busy) {Box(Modifier.weight(1.1f)) {content()};Box(Modifier.weight(.9f)) {artwork()}} else {Box(Modifier.weight(.8f)) {artwork()};Box(Modifier.weight(1.2f)) {content()}}

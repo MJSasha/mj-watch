@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.mjwatch.core.SearchAdminAddress
@@ -51,7 +53,7 @@ internal fun SearchAdminScreen(
 ) {
     var address by remember { mutableStateOf<SearchAdminAddress?>(null) }
     var error by remember { mutableStateOf("") }
-    val window = LocalActivity.current?.window
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: LocalActivity.current?.window
     DisposableEffect(window) {
         val secureFlag = WindowManager.LayoutParams.FLAG_SECURE
         val wasSecure = window?.attributes?.flags?.and(secureFlag) == secureFlag
@@ -91,7 +93,7 @@ internal fun SearchAdminScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Админка $service", style = MaterialTheme.typography.titleLarge)
-                Action("Закрыть", tv, secondary = true, onClick = onClose)
+                Action("Закрыть", tv, Modifier.tvDialogStartFocus(tv), secondary = true, onClick = onClose)
             }
             val connection = address
             if (connection != null && error.isBlank()) {

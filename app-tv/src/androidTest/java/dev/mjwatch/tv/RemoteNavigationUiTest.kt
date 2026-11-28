@@ -69,6 +69,83 @@ class RemoteNavigationUiTest {
         compose.onNode(hasText("Оформление") and isFocused()).assertExists()
     }
 
+    private fun imeVisible() =
+        compose.activity.window.decorView.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime())==true
+
+    private fun closeImeWithBack() {
+        if(compose.runOnIdle {imeVisible()}) {
+            remote.pressBack()
+            compose.waitUntil(5000) {!imeVisible()}
+        }
+    }
+
+    @Test fun backReturnsFromEveryTopPaneToItsOwnRailItem() {
+        val model=startAtHome()
+        for((page,label) in listOf("search" to "Поиск","history" to "История","library" to "Моё","settings" to "Настройки")) {
+            remote.pressDPadDown()
+            compose.waitUntil(5000) {model.state.value.page==page}
+            remote.pressDPadRight()
+            compose.onNode(hasText(label) and isSelected() and isFocused()).assertDoesNotExist()
+            when(page) {
+                "search" -> compose.onNodeWithTag("search-field").assertIsFocused()
+                "settings" -> compose.onNode(hasText("Подключения") and isFocused()).assertExists()
+                else -> compose.onNode(isFocused() and hasAnyAncestor(hasTestTag("tv-screen-content"))).assertExists()
+            }
+            closeImeWithBack()
+            remote.pressBack()
+            try {compose.onNode(hasText(label) and isSelected() and isFocused()).assertExists()} catch(e:AssertionError) {
+                throw AssertionError("Page ${model.state.value.page}: "+compose.onAllNodes(isFocused()).printToString(),e)
+            }
+            Assert.assertEquals(page,model.state.value.page)
+        }
+        remote.pressBack()
+        compose.onNode(hasText("Главная") and isSelected() and isFocused()).assertExists()
+    }
+
+    @Test fun editorArrowsReachPasswordToggleWithoutLeavingUnsavedSettings() {
+        val model=startAtHome()
+        compose.runOnIdle {model.page("settings-search")}
+        val address=compose.onNodeWithText("Адрес Jackett / JacRed")
+        address.assertIsFocused()
+        Assert.assertFalse("Focusing a field must not open the keyboard",compose.runOnIdle {imeVisible()})
+        remote.pressDPadCenter()
+        compose.waitUntil(5000) {imeVisible()}
+        closeImeWithBack()
+        address.assertIsFocused().performTextReplacement("https://example.invalid")
+        remote.pressDPadDown()
+        val key=compose.onNodeWithText("API-ключ (если требуется)")
+        try {key.assertIsFocused()} catch(e:AssertionError) {
+            throw AssertionError(compose.onAllNodes(isFocused()).printToString(),e)
+        }
+        remote.pressDPadRight()
+        compose.onNodeWithContentDescription("Показать пароль").assertIsFocused()
+        remote.pressDPadCenter()
+        compose.onNodeWithContentDescription("Скрыть пароль").assertIsFocused()
+        remote.pressDPadLeft()
+        key.assertIsFocused()
+        remote.pressDPadLeft()
+        remote.pressDPadUp()
+        Assert.assertEquals("settings-search",model.state.value.page)
+        remote.pressBack()
+        compose.onNodeWithText("Сохранить изменения?").assertIsDisplayed()
+        compose.onNodeWithText("Отмена").assertIsFocused()
+        remote.pressDPadCenter()
+        compose.onNodeWithText("Сохранить изменения?").assertDoesNotExist()
+        Assert.assertEquals("settings-search",model.state.value.page)
+    }
+
+    @Test fun backFromAlternateTvSignInReturnsToQrBeforeLeavingLogin() {
+        val model=startAtHome()
+        compose.runOnIdle {model.page("managed-login")}
+        val alternate=compose.onNodeWithText("Другие способы входа")
+        alternate.performSemanticsAction(SemanticsActions.RequestFocus)
+        remote.pressDPadCenter()
+        compose.onNodeWithText("Войти с паролем или приглашением").assertExists()
+        remote.pressBack()
+        alternate.assertIsDisplayed()
+        Assert.assertEquals("managed-login",model.state.value.page)
+    }
+
     @Test fun heldUpMovesAcrossRailBeforeOpeningHome() {
         val model=startAtHome()
         repeat(4) { remote.pressDPadDown() }
